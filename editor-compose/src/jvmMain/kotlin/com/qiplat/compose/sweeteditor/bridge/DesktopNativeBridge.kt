@@ -29,6 +29,12 @@ internal object DesktopNativeBridgeFactory : NativeBridgeFactory {
 private class DesktopNativeDocumentBridge(
     override var handle: Long,
 ) : NativeDocumentBridge {
+    override fun getLineCount(): Int =
+        DesktopNativeBindings.nativeGetDocumentLineCount(handle)
+
+    override fun getLineText(line: Int): String =
+        DesktopNativeBindings.nativeGetDocumentLineText(handle, line)
+
     override fun release() {
         if (handle == 0L) {
             return
@@ -119,6 +125,26 @@ private class DesktopNativeEditorBridge(
         )
     }
 
+    override fun getCursorPosition(): TextPosition =
+        DesktopNativeBindings.nativeGetCursorPosition(handle).let { values ->
+            TextPosition(
+                line = values.getOrElse(0) { 0 },
+                column = values.getOrElse(1) { 0 },
+            )
+        }
+
+    override fun getSelection(): TextRange? =
+        DesktopNativeBindings.nativeGetSelection(handle)?.let { values ->
+            if (values.size < 4) {
+                null
+            } else {
+                TextRange(
+                    start = TextPosition(values[0], values[1]),
+                    end = TextPosition(values[2], values[3]),
+                )
+            }
+        }
+
     override fun buildRenderModel(): ByteArray? =
         DesktopNativeBindings.nativeBuildRenderModel(handle)
 
@@ -146,12 +172,26 @@ private class DesktopNativeEditorBridge(
     override fun tickAnimations(): ByteArray? =
         DesktopNativeBindings.nativeTickAnimations(handle)
 
-    override fun setScroll(scrollX: Float, scrollY: Float) {
-        DesktopNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
-    }
-
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? =
         DesktopNativeBindings.nativeHandleKeyEvent(handle, keyCode, text, modifiers)
+
+    override fun compositionStart() {
+        DesktopNativeBindings.nativeCompositionStart(handle)
+    }
+
+    override fun compositionUpdate(text: String) {
+        DesktopNativeBindings.nativeCompositionUpdate(handle, text)
+    }
+
+    override fun compositionEnd(committedText: String?): ByteArray? =
+        DesktopNativeBindings.nativeCompositionEnd(handle, committedText)
+
+    override fun compositionCancel() {
+        DesktopNativeBindings.nativeCompositionCancel(handle)
+    }
+
+    override fun isComposing(): Boolean =
+        DesktopNativeBindings.nativeIsComposing(handle)
 
     override fun insertText(text: String): ByteArray? =
         DesktopNativeBindings.nativeInsertText(handle, text)
@@ -174,6 +214,12 @@ private class DesktopNativeEditorBridge(
             range.end.line,
             range.end.column,
         )
+
+    override fun backspace(): ByteArray? =
+        DesktopNativeBindings.nativeBackspace(handle)
+
+    override fun deleteForward(): ByteArray? =
+        DesktopNativeBindings.nativeDeleteForward(handle)
 
     override fun registerBatchTextStyles(data: ByteArray) {
         DesktopNativeBindings.nativeRegisterBatchTextStyles(handle, data)

@@ -2,14 +2,13 @@ package com.qiplat.compose.sweeteditor
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -17,10 +16,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -29,9 +25,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
-import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
-import com.qiplat.compose.sweeteditor.model.foundation.EditorGestureEventType
-import com.qiplat.compose.sweeteditor.model.foundation.GesturePoint
+import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorState
@@ -46,26 +40,49 @@ fun SweetEditor(
     controller: EditorController,
     modifier: Modifier = Modifier,
     theme: EditorTheme = EditorTheme.dark(),
+    onGestureResult: (GestureResult) -> Unit = {},
+    onHitTarget: (HitTarget) -> Unit = {},
+    onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
+    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer()
+    val platformScale = state.lastGestureResult.viewScale
+        .takeIf { it > 0f }
+        ?: state.scrollMetrics.scale.takeIf { it > 0f }
+        ?: 1f
+    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: platformScale
+    val scaledTheme = remember(theme, renderScale) {
+        theme.scaled(renderScale)
+    }
+    var isFocused by remember { mutableStateOf(false) }
 
     DisposableEffect(controller) {
         onDispose {
+            if (controller.isComposing()) {
+                controller.compositionCancel()
+            }
             controller.close()
         }
     }
 
     LaunchedEffect(controller, state.document) {
         if (state.document != null) {
-            controller.onFontMetricsChanged()
-            controller.refresh()
+            controller.syncPlatformScale(platformScale)
         }
     }
 
-    LaunchedEffect(controller, theme.fontFamily, theme.fontSize, theme.lineNumberFontSize, theme.inlayHintFontSize) {
-        controller.onFontMetricsChanged()
+    LaunchedEffect(controller, platformScale) {
+        if (state.document != null) {
+            controller.syncPlatformScale(platformScale)
+        }
+    }
+
+    LaunchedEffect(controller, theme.fontFamily, theme.fontSize, theme.lineNumberFontSize, theme.inlayHintFontSize, platformScale) {
+        if (state.document != null) {
+            controller.syncPlatformScale(platformScale)
+        }
     }
 
     LaunchedEffect(controller, state.lastGestureResult.needsAnimation) {
@@ -76,11 +93,54 @@ fun SweetEditor(
         }
     }
 
+    LaunchedEffect(state.lastGestureResult) {
+        val result = state.lastGestureResult
+        if (result.type != GestureType.Undefined) {
+            onGestureResult(result)
+        }
+        if (result.hitTarget.type != HitTargetType.None) {
+            onHitTarget(result.hitTarget)
+        }
+        if (result.type == GestureType.ContextMenu) {
+            onContextMenuRequest(
+                EditorContextMenuRequest(
+                    gestureResult = result,
+                ),
+            )
+        }
+    }
+
+    LaunchedEffect(
+        state.lastGestureResult.isHandleDrag,
+        state.renderModel?.selectionStartHandle,
+        state.renderModel?.selectionEndHandle,
+    ) {
+        val renderModel = state.renderModel ?: return@LaunchedEffect
+        onSelectionHandleDragStateChange(
+            EditorSelectionHandleDragState(
+                active = state.lastGestureResult.isHandleDrag,
+                gestureResult = state.lastGestureResult,
+                startHandle = renderModel.selectionStartHandle,
+                endHandle = renderModel.selectionEndHandle,
+            ),
+        )
+    }
+
+    val platformImeModifier = InstallPlatformImeSession(
+        controller = controller,
+        state = state,
+        isFocused = isFocused,
+    )
+
     Canvas(
         modifier = modifier
             .clipToBounds()
+            .then(platformImeModifier)
             .focusRequester(focusRequester)
             .focusable(interactionSource = interactionSource)
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+            }
             .onSizeChanged { size ->
                 if (size.width > 0 && size.height > 0) {
                     controller.setViewport(size.width, size.height)
@@ -90,56 +150,93 @@ fun SweetEditor(
                 controller.handleComposeKeyEvent(event)
             }
             .pointerInput(controller) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val renderModel = state.renderModel
-                    val scrollMetrics = state.scrollMetrics
-                    val hitRegion = renderModel?.hitTest(down.position)
-                    focusRequester.requestFocus()
-                    if (hitRegion == EditorHitRegion.VerticalScrollbarThumb) {
-                        trackScrollbarDrag(
-                            initialPosition = down.position,
-                            renderModel = renderModel,
-                            scrollMetrics = scrollMetrics,
-                            vertical = true,
-                            controller = controller,
-                        )
-                        return@awaitEachGesture
-                    }
-                    if (hitRegion == EditorHitRegion.HorizontalScrollbarThumb) {
-                        trackScrollbarDrag(
-                            initialPosition = down.position,
-                            renderModel = renderModel,
-                            scrollMetrics = scrollMetrics,
-                            vertical = false,
-                            controller = controller,
-                        )
-                        return@awaitEachGesture
-                    }
-                    controller.dispatchGestureEvent(
-                        type = down.type.toDownEventType(),
-                        points = listOf(down.position.toGesturePoint()),
-                        modifiers = 0,
-                    )
-                    var active = true
-                    while (active) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val pressedPoints = event.changes
-                            .filter { it.pressed }
-                            .map { it.position.toGesturePoint() }
-                        if (pressedPoints.isNotEmpty()) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val scrollDelta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero
+                        if (scrollDelta != Offset.Zero) {
                             controller.dispatchGestureEvent(
-                                type = down.type.toMoveEventType(),
-                                points = pressedPoints,
+                                type = EditorGestureEventType.MouseWheel,
+                                points = emptyList(),
+                                modifiers = event.toNativeModifiers(),
+                                wheelDeltaX = scrollDelta.x,
+                                wheelDeltaY = scrollDelta.y,
                             )
                         }
-                        val released = event.changes.firstOrNull { it.changedToUpIgnoreConsumed() }
-                        if (released != null) {
+                    }
+                }
+            }
+            .pointerInput(controller) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val eventModifiers = event.toNativeModifiers()
+                        val allPoints = event.changes.map { it.position.toGesturePoint() }
+                        val downChanges = event.changes.filter { it.changedToDownIgnoreConsumed() }
+                        val upChanges = event.changes.filter { it.changedToUpIgnoreConsumed() }
+                        val pressedChanges = event.changes.filter { it.pressed }
+                        val movedPressedPoints = pressedChanges
+                            .filter { it.position != it.previousPosition }
+                            .map { it.position.toGesturePoint() }
+
+                        if (downChanges.isNotEmpty()) {
+                            val primaryDown = downChanges.first()
+                            focusRequester.requestFocus()
+                            if (primaryDown.type == PointerType.Touch && pressedChanges.size > 1 && allPoints.isNotEmpty()) {
+                                controller.dispatchGestureEvent(
+                                    type = EditorGestureEventType.TouchPointerDown,
+                                    points = allPoints,
+                                    modifiers = eventModifiers,
+                                )
+                            } else {
+                                controller.dispatchGestureEvent(
+                                    type = primaryDown.type.toDownEventType(
+                                        isSecondaryPressed = event.buttons.isSecondaryPressed,
+                                    ),
+                                    points = listOf(primaryDown.position.toGesturePoint()),
+                                    modifiers = eventModifiers,
+                                )
+                            }
+                        } else if (upChanges.isNotEmpty()) {
+                            val primaryUp = upChanges.first()
+                            if (primaryUp.type == PointerType.Touch && pressedChanges.isNotEmpty() && allPoints.isNotEmpty()) {
+                                controller.dispatchGestureEvent(
+                                    type = EditorGestureEventType.TouchPointerUp,
+                                    points = allPoints,
+                                    modifiers = eventModifiers,
+                                )
+                            } else {
+                                controller.dispatchGestureEvent(
+                                    type = primaryUp.type.toUpEventType(),
+                                    points = listOf(primaryUp.position.toGesturePoint()),
+                                    modifiers = eventModifiers,
+                                )
+                            }
+                        } else if (movedPressedPoints.isNotEmpty()) {
+                            val pointerType = pressedChanges.firstOrNull()?.type ?: PointerType.Touch
+                            val scaleDelta = if (pointerType == PointerType.Touch && pressedChanges.size >= 2) {
+                                pressedChanges.calculateScaleDelta()
+                            } else {
+                                1f
+                            }
+                            val movePoints = if (pointerType == PointerType.Touch) {
+                                pressedChanges.map { it.position.toGesturePoint() }
+                            } else {
+                                movedPressedPoints
+                            }
                             controller.dispatchGestureEvent(
-                                type = down.type.toUpEventType(),
-                                points = listOf(released.position.toGesturePoint()),
+                                type = pointerType.toMoveEventType(),
+                                points = movePoints,
+                                modifiers = eventModifiers,
                             )
-                            active = false
+                            if (pointerType == PointerType.Touch && pressedChanges.size >= 2 && scaleDelta != 1f) {
+                                controller.dispatchGestureEvent(
+                                    type = EditorGestureEventType.DirectScale,
+                                    points = listOf(pressedChanges.calculateCentroidPoint()),
+                                    modifiers = eventModifiers,
+                                    directScale = scaleDelta,
+                                )
+                            }
                         }
                     }
                 }
@@ -148,7 +245,7 @@ fun SweetEditor(
         drawEditorSurface(
             renderModel = state.renderModel,
             textMeasurer = textMeasurer,
-            theme = theme,
+            theme = scaledTheme,
         )
     }
 }
@@ -173,7 +270,6 @@ private fun DrawScope.drawEditorSurface(
         topLeft = Offset.Zero,
         size = size,
     )
-    drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
     drawSplitLine(renderModel, theme.splitLineColor.toComposeColor())
     drawCurrentLine(renderModel, theme.currentLineColor.toComposeColor())
 
@@ -221,16 +317,7 @@ private fun DrawScope.drawEditorSurface(
     }
 
     renderModel.lines.forEach { line ->
-        drawLineNumber(renderModel, textMeasurer, line, theme)
         drawRuns(textMeasurer, line, theme)
-    }
-
-    renderModel.gutterIcons.forEach { item ->
-        drawGutterIcon(renderModel, item, theme)
-    }
-
-    renderModel.foldMarkers.forEach { marker ->
-        drawFoldMarker(renderModel, marker, theme)
     }
 
     drawSelectionHandle(
@@ -255,6 +342,19 @@ private fun DrawScope.drawEditorSurface(
             ),
             size = Size(2f, renderModel.cursor.height.coerceAtLeast(1f)),
         )
+    }
+
+    drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
+    renderModel.lines.forEach { line ->
+        drawLineNumber(renderModel, textMeasurer, line, theme)
+    }
+
+    renderModel.gutterIcons.forEach { item ->
+        drawGutterIcon(renderModel, item, theme)
+    }
+
+    renderModel.foldMarkers.forEach { marker ->
+        drawFoldMarker(renderModel, marker, theme)
     }
 
     drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
@@ -576,8 +676,21 @@ private fun EditorTextStyle.toComposeTextStyle(theme: EditorTheme): TextStyle {
     )
 }
 
-private fun PointerType.toDownEventType(): EditorGestureEventType = when (this) {
-    PointerType.Mouse -> EditorGestureEventType.MouseDown
+private fun EditorTheme.scaled(scale: Float): EditorTheme {
+    val normalizedScale = scale.coerceAtLeast(0.1f)
+    return copy(
+        fontSize = fontSize * normalizedScale,
+        lineNumberFontSize = lineNumberFontSize * normalizedScale,
+        inlayHintFontSize = inlayHintFontSize * normalizedScale,
+    )
+}
+
+private fun PointerType.toDownEventType(isSecondaryPressed: Boolean): EditorGestureEventType = when (this) {
+    PointerType.Mouse -> if (isSecondaryPressed) {
+        EditorGestureEventType.MouseRightDown
+    } else {
+        EditorGestureEventType.MouseDown
+    }
     else -> EditorGestureEventType.TouchDown
 }
 
@@ -593,104 +706,63 @@ private fun PointerType.toUpEventType(): EditorGestureEventType = when (this) {
 
 private fun Offset.toGesturePoint(): GesturePoint = GesturePoint(x = x, y = y)
 
-private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.trackScrollbarDrag(
-    initialPosition: Offset,
-    renderModel: EditorRenderModel?,
-    scrollMetrics: com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics,
-    vertical: Boolean,
-    controller: EditorController,
-) {
-    if (renderModel == null) {
-        return
+private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculateCentroidPoint(): GesturePoint {
+    if (isEmpty()) {
+        return GesturePoint()
     }
-    val scrollbar = if (vertical) renderModel.verticalScrollbar else renderModel.horizontalScrollbar
-    val thumb = scrollbar.thumb
-    val track = scrollbar.track
-    val initialThumbOrigin = if (vertical) thumb.origin.y else thumb.origin.x
-    val initialPointer = if (vertical) initialPosition.y else initialPosition.x
-    var active = true
-    while (active) {
-        val event = awaitPointerEvent(PointerEventPass.Main)
-        val change = event.changes.firstOrNull()
-        if (change == null) {
-            continue
-        }
-        val pointerValue = if (vertical) change.position.y else change.position.x
-        val delta = pointerValue - initialPointer
-        val trackStart = if (vertical) track.origin.y else track.origin.x
-        val trackSize = if (vertical) track.height else track.width
-        val thumbSize = if (vertical) thumb.height else thumb.width
-        val newThumbOrigin = (initialThumbOrigin + delta)
-            .coerceIn(trackStart, trackStart + trackSize - thumbSize)
-        val progress = if (trackSize <= thumbSize) {
-            0f
-        } else {
-            (newThumbOrigin - trackStart) / (trackSize - thumbSize)
-        }
-        if (vertical) {
-            controller.setScroll(
-                scrollX = scrollMetrics.scrollX,
-                scrollY = scrollMetrics.maxScrollY * progress,
-            )
-        } else {
-            controller.setScroll(
-                scrollX = scrollMetrics.maxScrollX * progress,
-                scrollY = scrollMetrics.scrollY,
-            )
-        }
-        if (change.changedToUpIgnoreConsumed()) {
-            active = false
-        }
+    val centerX = sumOf { it.position.x.toDouble() }.toFloat() / size
+    val centerY = sumOf { it.position.y.toDouble() }.toFloat() / size
+    return GesturePoint(centerX, centerY)
+}
+
+private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculateScaleDelta(): Float {
+    if (size < 2) {
+        return 1f
+    }
+    val currentCentroidX = sumOf { it.position.x.toDouble() }.toFloat() / size
+    val currentCentroidY = sumOf { it.position.y.toDouble() }.toFloat() / size
+    val previousCentroidX = sumOf { it.previousPosition.x.toDouble() }.toFloat() / size
+    val previousCentroidY = sumOf { it.previousPosition.y.toDouble() }.toFloat() / size
+
+    val currentRadius = map {
+        val dx = it.position.x - currentCentroidX
+        val dy = it.position.y - currentCentroidY
+        kotlin.math.sqrt(dx * dx + dy * dy)
+    }.average().toFloat()
+    val previousRadius = map {
+        val dx = it.previousPosition.x - previousCentroidX
+        val dy = it.previousPosition.y - previousCentroidY
+        kotlin.math.sqrt(dx * dx + dy * dy)
+    }.average().toFloat()
+
+    if (previousRadius <= 0.0001f || currentRadius <= 0.0001f) {
+        return 1f
+    }
+
+    val scaleDelta = currentRadius / previousRadius
+    return if (scaleDelta.isFinite() && kotlin.math.abs(scaleDelta - 1f) > 0.001f) {
+        scaleDelta
+    } else {
+        1f
     }
 }
 
-private enum class EditorHitRegion {
-    VerticalScrollbarThumb,
-    HorizontalScrollbarThumb,
-    SelectionStartHandle,
-    SelectionEndHandle,
-    FoldMarker,
-    GutterIcon,
-    Content,
+private fun androidx.compose.ui.input.pointer.PointerEvent.toNativeModifiers(): Int {
+    var value = 0
+    if (keyboardModifiers.isShiftPressed) {
+        value = value or 1
+    }
+    if (keyboardModifiers.isCtrlPressed) {
+        value = value or 2
+    }
+    if (keyboardModifiers.isAltPressed) {
+        value = value or 4
+    }
+    if (keyboardModifiers.isMetaPressed) {
+        value = value or 8
+    }
+    return value
 }
-
-private fun EditorRenderModel.hitTest(position: Offset): EditorHitRegion {
-    if (verticalScrollbar.visible && verticalScrollbar.thumb.contains(position)) {
-        return EditorHitRegion.VerticalScrollbarThumb
-    }
-    if (horizontalScrollbar.visible && horizontalScrollbar.thumb.contains(position)) {
-        return EditorHitRegion.HorizontalScrollbarThumb
-    }
-    if (selectionStartHandle.visible && selectionStartHandle.position.containsHandle(position)) {
-        return EditorHitRegion.SelectionStartHandle
-    }
-    if (selectionEndHandle.visible && selectionEndHandle.position.containsHandle(position)) {
-        return EditorHitRegion.SelectionEndHandle
-    }
-    if (foldMarkers.any { it.contains(position) }) {
-        return EditorHitRegion.FoldMarker
-    }
-    if (gutterIcons.any { it.contains(position) }) {
-        return EditorHitRegion.GutterIcon
-    }
-    return EditorHitRegion.Content
-}
-
-private fun com.qiplat.compose.sweeteditor.model.visual.ScrollbarRect.contains(position: Offset): Boolean =
-    position.x in origin.x..(origin.x + width) &&
-        position.y in origin.y..(origin.y + height)
-
-private fun PointF.containsHandle(position: Offset, radius: Float = 16f): Boolean =
-    position.x in (x - radius)..(x + radius) &&
-        position.y in (y - radius)..(y + radius)
-
-private fun FoldMarkerRenderItem.contains(position: Offset): Boolean =
-    position.x in origin.x..(origin.x + width) &&
-        position.y in origin.y..(origin.y + height)
-
-private fun GutterIconRenderItem.contains(position: Offset): Boolean =
-    position.x in origin.x..(origin.x + width) &&
-        position.y in origin.y..(origin.y + height)
 
 private fun EditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
     if (event.type != KeyEventType.KeyDown) {

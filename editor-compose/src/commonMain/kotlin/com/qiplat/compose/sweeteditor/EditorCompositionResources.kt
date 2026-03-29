@@ -85,12 +85,18 @@ fun rememberEditorTextMeasurer(
 
     return remember(textMeasurer, density, fontConfig) {
         object : EditorTextMeasurer {
+            private var scale: Float = 1f
+
+            override fun setScale(scale: Float) {
+                this.scale = scale.coerceAtLeast(0.1f)
+            }
+
             override fun measureTextWidth(text: String, fontStyle: Int): Float =
                 textMeasurer.measure(
                     text = text,
                     style = editorComposeTextStyle(
                         fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.fontSize,
+                        fontSize = fontConfig.fontSize * scale,
                         fontStyleFlags = fontStyle,
                     ),
                 ).size.width.toFloat()
@@ -100,20 +106,20 @@ fun rememberEditorTextMeasurer(
                     text = text,
                     style = editorComposeTextStyle(
                         fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.inlayHintFontSize,
+                        fontSize = fontConfig.inlayHintFontSize * scale,
                         fontStyleFlags = 0,
                     ),
                 ).size.width.toFloat()
 
             override fun measureIconWidth(iconId: Int): Float =
-                with(density) { fontConfig.iconSize.toPx() }
+                with(density) { (fontConfig.iconSize * scale).toPx() }
 
             override fun getFontMetrics(): FloatArray {
                 val layout = textMeasurer.measure(
                     text = "Hg",
                     style = editorComposeTextStyle(
                         fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.fontSize,
+                        fontSize = fontConfig.fontSize * scale,
                         fontStyleFlags = 0,
                     ),
                 )

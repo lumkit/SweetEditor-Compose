@@ -29,6 +29,12 @@ internal object AndroidNativeBridgeFactory : NativeBridgeFactory {
 private class AndroidNativeDocumentBridge(
     override var handle: Long,
 ) : NativeDocumentBridge {
+    override fun getLineCount(): Int =
+        AndroidNativeBindings.nativeGetDocumentLineCount(handle)
+
+    override fun getLineText(line: Int): String =
+        AndroidNativeBindings.nativeGetDocumentLineText(handle, line)
+
     override fun release() {
         if (handle == 0L) {
             return
@@ -119,6 +125,26 @@ private class AndroidNativeEditorBridge(
         )
     }
 
+    override fun getCursorPosition(): TextPosition =
+        AndroidNativeBindings.nativeGetCursorPosition(handle).let { values ->
+            TextPosition(
+                line = values.getOrElse(0) { 0 },
+                column = values.getOrElse(1) { 0 },
+            )
+        }
+
+    override fun getSelection(): TextRange? =
+        AndroidNativeBindings.nativeGetSelection(handle)?.let { values ->
+            if (values.size < 4) {
+                null
+            } else {
+                TextRange(
+                    start = TextPosition(values[0], values[1]),
+                    end = TextPosition(values[2], values[3]),
+                )
+            }
+        }
+
     override fun buildRenderModel(): ByteArray? =
         AndroidNativeBindings.nativeBuildRenderModel(handle)
 
@@ -146,12 +172,26 @@ private class AndroidNativeEditorBridge(
     override fun tickAnimations(): ByteArray? =
         AndroidNativeBindings.nativeTickAnimations(handle)
 
-    override fun setScroll(scrollX: Float, scrollY: Float) {
-        AndroidNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
-    }
-
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? =
         AndroidNativeBindings.nativeHandleKeyEvent(handle, keyCode, text, modifiers)
+
+    override fun compositionStart() {
+        AndroidNativeBindings.nativeCompositionStart(handle)
+    }
+
+    override fun compositionUpdate(text: String) {
+        AndroidNativeBindings.nativeCompositionUpdate(handle, text)
+    }
+
+    override fun compositionEnd(committedText: String?): ByteArray? =
+        AndroidNativeBindings.nativeCompositionEnd(handle, committedText)
+
+    override fun compositionCancel() {
+        AndroidNativeBindings.nativeCompositionCancel(handle)
+    }
+
+    override fun isComposing(): Boolean =
+        AndroidNativeBindings.nativeIsComposing(handle)
 
     override fun insertText(text: String): ByteArray? =
         AndroidNativeBindings.nativeInsertText(handle, text)
@@ -174,6 +214,12 @@ private class AndroidNativeEditorBridge(
             range.end.line,
             range.end.column,
         )
+
+    override fun backspace(): ByteArray? =
+        AndroidNativeBindings.nativeBackspace(handle)
+
+    override fun deleteForward(): ByteArray? =
+        AndroidNativeBindings.nativeDeleteForward(handle)
 
     override fun registerBatchTextStyles(data: ByteArray) {
         AndroidNativeBindings.nativeRegisterBatchTextStyles(handle, data)

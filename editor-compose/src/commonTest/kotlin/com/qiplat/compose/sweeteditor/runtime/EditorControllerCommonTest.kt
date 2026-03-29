@@ -99,6 +99,10 @@ private class FakeNativeBridgeFactory(
 private class FakeNativeDocumentBridge(
     override val handle: Long,
 ) : NativeDocumentBridge {
+    override fun getLineCount(): Int = 0
+
+    override fun getLineText(line: Int): String = ""
+
     override fun release() = Unit
 }
 
@@ -134,6 +138,8 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     override fun setCompositionEnabled(enabled: Boolean) = Unit
     override fun setCursorPosition(position: TextPosition) = Unit
     override fun setSelection(range: TextRange) = Unit
+    override fun getCursorPosition(): TextPosition = TextPosition.Zero
+    override fun getSelection(): TextRange? = null
     override fun buildRenderModel(): ByteArray? = null
     override fun getScrollMetrics(): ByteArray? = null
     override fun handleGesture(
@@ -153,11 +159,17 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
         return null
     }
     override fun tickAnimations(): ByteArray? = null
-    override fun setScroll(scrollX: Float, scrollY: Float) = Unit
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? = null
+    override fun compositionStart() = Unit
+    override fun compositionUpdate(text: String) = Unit
+    override fun compositionEnd(committedText: String?): ByteArray? = null
+    override fun compositionCancel() = Unit
+    override fun isComposing(): Boolean = false
     override fun insertText(text: String): ByteArray? = insertTextPayload
     override fun replaceText(range: TextRange, text: String): ByteArray? = null
     override fun deleteText(range: TextRange): ByteArray? = null
+    override fun backspace(): ByteArray? = null
+    override fun deleteForward(): ByteArray? = null
     override fun registerBatchTextStyles(data: ByteArray) = Unit
     override fun setBatchLineSpans(data: ByteArray) = Unit
     override fun setBatchLineInlayHints(data: ByteArray) = Unit
@@ -169,6 +181,8 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
 }
 
 private class FakeEditorTextMeasurer : EditorTextMeasurer {
+    override fun setScale(scale: Float) = Unit
+
     override fun measureTextWidth(text: String, fontStyle: Int): Float = text.length.toFloat()
 
     override fun measureInlayHintWidth(text: String): Float = text.length.toFloat()

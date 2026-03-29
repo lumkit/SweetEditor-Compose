@@ -246,6 +246,36 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeFreeDocum
     }
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeGetDocumentLineCount(
+    JNIEnv*,
+    jclass,
+    jlong handle
+) {
+    return static_cast<jint>(get_document_line_count(static_cast<intptr_t>(handle)));
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeGetDocumentLineText(
+    JNIEnv* env,
+    jclass,
+    jlong handle,
+    jint line
+) {
+    const U16Char* text = get_document_line_text(
+        static_cast<intptr_t>(handle),
+        static_cast<size_t>(line)
+    );
+    if (text == nullptr) {
+        return env->NewString(nullptr, 0);
+    }
+    size_t length = 0;
+    while (text[length] != 0) {
+        length++;
+    }
+    return env->NewString(reinterpret_cast<const jchar*>(text), static_cast<jsize>(length));
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeCreateEditor(
     JNIEnv* env,
@@ -455,6 +485,57 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetSelect
     );
 }
 
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeGetCursorPosition(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t line = 0;
+    size_t column = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    editor_get_cursor_position(static_cast<intptr_t>(editor_handle), &line, &column);
+    jint values[2] = {
+        static_cast<jint>(line),
+        static_cast<jint>(column),
+    };
+    jintArray result = env->NewIntArray(2);
+    env->SetIntArrayRegion(result, 0, 2, values);
+    return result;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeGetSelection(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t start_line = 0;
+    size_t start_column = 0;
+    size_t end_line = 0;
+    size_t end_column = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const int has_selection = editor_get_selection(
+        static_cast<intptr_t>(editor_handle),
+        &start_line,
+        &start_column,
+        &end_line,
+        &end_column
+    );
+    if (has_selection == 0) {
+        return nullptr;
+    }
+    jint values[4] = {
+        static_cast<jint>(start_line),
+        static_cast<jint>(start_column),
+        static_cast<jint>(end_line),
+        static_cast<jint>(end_column),
+    };
+    jintArray result = env->NewIntArray(4);
+    env->SetIntArrayRegion(result, 0, 4, values);
+    return result;
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeBuildRenderModel(
     JNIEnv* env,
@@ -527,17 +608,6 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeTickAnima
     return copy_binary_payload(env, data, out_size);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetScroll(
-    JNIEnv*,
-    jclass,
-    jlong editor_handle,
-    jfloat scroll_x,
-    jfloat scroll_y
-) {
-    editor_set_scroll(static_cast<intptr_t>(editor_handle), scroll_x, scroll_y);
-}
-
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeHandleKeyEvent(
     JNIEnv* env,
@@ -561,6 +631,68 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeHandleKey
         env->ReleaseStringUTFChars(text, chars);
     }
     return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeCompositionStart(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    editor_composition_start(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeCompositionUpdate(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jstring text
+) {
+    const char* chars = text == nullptr ? nullptr : env->GetStringUTFChars(text, nullptr);
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    editor_composition_update(static_cast<intptr_t>(editor_handle), chars);
+    if (text != nullptr) {
+        env->ReleaseStringUTFChars(text, chars);
+    }
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeCompositionEnd(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jstring committed_text
+) {
+    const char* chars = committed_text == nullptr ? nullptr : env->GetStringUTFChars(committed_text, nullptr);
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_composition_end(static_cast<intptr_t>(editor_handle), chars, &out_size);
+    if (committed_text != nullptr) {
+        env->ReleaseStringUTFChars(committed_text, chars);
+    }
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeCompositionCancel(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    editor_composition_cancel(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeIsComposing(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    return editor_is_composing(static_cast<intptr_t>(editor_handle)) != 0;
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -629,6 +761,30 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeDeleteTex
         static_cast<size_t>(end_column),
         &out_size
     );
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeBackspace(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_backspace(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeDeleteForward(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_delete_forward(static_cast<intptr_t>(editor_handle), &out_size);
     return copy_binary_payload(env, data, out_size);
 }
 

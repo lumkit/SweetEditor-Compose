@@ -7,13 +7,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import org.jetbrains.compose.resources.Font
 import sweeteditor_compose.example.generated.resources.JetBrainsMono_Regular
 import sweeteditor_compose.example.generated.resources.Res
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +45,10 @@ fun App() {
         )
         var sampleLoaded by remember { mutableStateOf(false) }
         var languageTitle by remember { mutableStateOf("Sweet Editor Demo") }
+        var gestureSummary by remember { mutableStateOf("No gesture") }
+        var hitTargetSummary by remember { mutableStateOf("No hit target") }
+        var contextMenuSummary by remember { mutableStateOf("No context menu") }
+        var handleDragSummary by remember { mutableStateOf("HandleDrag=false") }
 
         LaunchedEffect(editorController) {
             val languageConfig = LanguageConfigurationParser.parse(
@@ -83,14 +90,63 @@ fun App() {
                 }
             ) { innerPadding ->
                 if (sampleLoaded) {
-                    SweetEditor(
-                        state = editorState,
-                        controller = editorController,
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding),
-                        theme = editorAppearance.theme,
-                    )
+                    ) {
+                        SweetEditor(
+                            state = editorState,
+                            controller = editorController,
+                            modifier = Modifier.fillMaxSize(),
+                            theme = editorAppearance.theme,
+                            onGestureResult = { result ->
+                                gestureSummary = "${result.type.name} · scale=${result.viewScale.toReadableScale()}"
+                            },
+                            onHitTarget = { hitTarget ->
+                                hitTargetSummary = buildString {
+                                    append(hitTarget.type.name)
+                                    if (hitTarget.line != 0 || hitTarget.column != 0) {
+                                        append(" @ ")
+                                        append(hitTarget.line)
+                                        append(':')
+                                        append(hitTarget.column)
+                                    }
+                                }
+                            },
+                            onContextMenuRequest = { request ->
+                                contextMenuSummary = buildString {
+                                    append("ContextMenu @ ")
+                                    append(request.gestureResult.tapPoint.x.toInt())
+                                    append(',')
+                                    append(request.gestureResult.tapPoint.y.toInt())
+                                    append(" · ")
+                                    append(request.hitTarget.type.name)
+                                }
+                            },
+                            onSelectionHandleDragStateChange = { dragState ->
+                                handleDragSummary = buildString {
+                                    append("HandleDrag=")
+                                    append(dragState.active)
+                                    if (dragState.active) {
+                                        append(" @ ")
+                                        append(dragState.startHandle.position.x.toInt())
+                                        append(',')
+                                        append(dragState.startHandle.position.y.toInt())
+                                        append(" -> ")
+                                        append(dragState.endHandle.position.x.toInt())
+                                        append(',')
+                                        append(dragState.endHandle.position.y.toInt())
+                                    }
+                                }
+                            },
+                        )
+                        Text(
+                            text = "$gestureSummary · $hitTargetSummary · $contextMenuSummary · $handleDragSummary",
+                            modifier = Modifier.padding(start = 16.dp, top = 12.dp),
+                            color = editorAppearance.theme.lineNumberColor.toComposeColor(),
+                        )
+                    }
                 } else {
                     Box(
                         modifier = Modifier
@@ -106,4 +162,7 @@ fun App() {
     }
 }
 
-private fun Int.toComposeColor() = androidx.compose.ui.graphics.Color(this)
+private fun Int.toComposeColor() = Color(this)
+
+private fun Float.toReadableScale(): String =
+    ((this * 100).roundToInt() / 100f).toString()

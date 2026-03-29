@@ -7,6 +7,10 @@ import com.qiplat.compose.sweeteditor.bridge.platformNativeBridgeFactory
 class EditorDocument internal constructor(
     internal val nativeBridge: NativeDocumentBridge,
 ) {
+    internal fun getLineCount(): Int = nativeBridge.getLineCount()
+
+    internal fun getLineText(line: Int): String = nativeBridge.getLineText(line)
+
     fun close() {
         nativeBridge.release()
     }

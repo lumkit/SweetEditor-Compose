@@ -13,9 +13,10 @@ class EditorController(
     val state: EditorState = EditorState(),
     textMeasurer: EditorTextMeasurer,
 ) {
+    private val editorTextMeasurer: EditorTextMeasurer = textMeasurer
     private val nativeEditorBridge: NativeEditorBridge =
         state.bridgeFactory.createEditor(
-            textMeasurer = textMeasurer.asNativeTextMeasurer(),
+            textMeasurer = editorTextMeasurer.asNativeTextMeasurer(),
         )
 
     fun setDocument(document: EditorDocument?) {
@@ -71,6 +72,13 @@ class EditorController(
     fun setScale(scale: Float) {
         ensureActive()
         nativeEditorBridge.setScale(scale)
+        refresh()
+    }
+
+    fun syncPlatformScale(scale: Float) {
+        ensureActive()
+        editorTextMeasurer.setScale(scale)
+        nativeEditorBridge.onFontMetricsChanged()
         refresh()
     }
 
@@ -133,6 +141,46 @@ class EditorController(
         refresh()
     }
 
+    fun getCursorPosition(): TextPosition {
+        ensureActive()
+        return nativeEditorBridge.getCursorPosition()
+    }
+
+    fun getSelection(): TextRange? {
+        ensureActive()
+        return nativeEditorBridge.getSelection()
+    }
+
+    fun compositionStart() {
+        ensureActive()
+        nativeEditorBridge.compositionStart()
+        refresh()
+    }
+
+    fun compositionUpdate(text: String) {
+        ensureActive()
+        nativeEditorBridge.compositionUpdate(text)
+        refresh()
+    }
+
+    fun compositionEnd(committedText: String? = null): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.compositionEnd(committedText))
+        refresh()
+        return editResult
+    }
+
+    fun compositionCancel() {
+        ensureActive()
+        nativeEditorBridge.compositionCancel()
+        refresh()
+    }
+
+    fun isComposing(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.isComposing()
+    }
+
     fun insertText(text: String): TextEditResult {
         ensureActive()
         val editResult = decodeEditResult(nativeEditorBridge.insertText(text))
@@ -150,6 +198,20 @@ class EditorController(
     fun deleteText(range: TextRange): TextEditResult {
         ensureActive()
         val editResult = decodeEditResult(nativeEditorBridge.deleteText(range))
+        refresh()
+        return editResult
+    }
+
+    fun backspace(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.backspace())
+        refresh()
+        return editResult
+    }
+
+    fun deleteForward(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.deleteForward())
         refresh()
         return editResult
     }
@@ -215,12 +277,6 @@ class EditorController(
         state.lastGestureResult = result
         refresh()
         return result
-    }
-
-    fun setScroll(scrollX: Float, scrollY: Float) {
-        ensureActive()
-        nativeEditorBridge.setScroll(scrollX, scrollY)
-        refresh()
     }
 
     fun registerTextStyles(stylesById: Map<Int, TextStyle>) {

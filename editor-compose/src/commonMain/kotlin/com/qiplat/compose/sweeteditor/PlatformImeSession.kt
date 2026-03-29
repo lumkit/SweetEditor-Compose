@@ -1,0 +1,13 @@
+package com.qiplat.compose.sweeteditor
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import com.qiplat.compose.sweeteditor.runtime.EditorController
+import com.qiplat.compose.sweeteditor.runtime.EditorState
+
+@Composable
+internal expect fun InstallPlatformImeSession(
+    controller: EditorController,
+    state: EditorState,
+    isFocused: Boolean,
+): Modifier

@@ -15,6 +15,10 @@ internal interface NativeTextMeasurer {
 internal interface NativeDocumentBridge {
     val handle: Long
 
+    fun getLineCount(): Int
+
+    fun getLineText(line: Int): String
+
     fun release()
 }
 
@@ -55,6 +59,10 @@ internal interface NativeEditorBridge {
 
     fun setSelection(range: TextRange)
 
+    fun getCursorPosition(): TextPosition
+
+    fun getSelection(): TextRange?
+
     fun buildRenderModel(): ByteArray?
 
     fun getScrollMetrics(): ByteArray?
@@ -70,15 +78,27 @@ internal interface NativeEditorBridge {
 
     fun tickAnimations(): ByteArray?
 
-    fun setScroll(scrollX: Float, scrollY: Float)
-
     fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray?
+
+    fun compositionStart()
+
+    fun compositionUpdate(text: String)
+
+    fun compositionEnd(committedText: String?): ByteArray?
+
+    fun compositionCancel()
+
+    fun isComposing(): Boolean
 
     fun insertText(text: String): ByteArray?
 
     fun replaceText(range: TextRange, text: String): ByteArray?
 
     fun deleteText(range: TextRange): ByteArray?
+
+    fun backspace(): ByteArray?
+
+    fun deleteForward(): ByteArray?
 
     fun registerBatchTextStyles(data: ByteArray)
 

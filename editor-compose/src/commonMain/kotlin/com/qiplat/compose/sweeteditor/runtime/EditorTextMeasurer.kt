@@ -5,6 +5,8 @@ fun interface FontMetricsProvider {
 }
 
 interface EditorTextMeasurer {
+    fun setScale(scale: Float)
+
     fun measureTextWidth(text: String, fontStyle: Int): Float
 
     fun measureInlayHintWidth(text: String): Float

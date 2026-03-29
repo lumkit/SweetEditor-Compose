@@ -59,11 +59,11 @@ object ProtocolDecoder {
         val reader = BinaryReader(data)
         val type = reader.readInt().toGestureType()
         val tapPoint = when (type) {
-            com.qiplat.compose.sweeteditor.model.foundation.GestureType.Tap,
-            com.qiplat.compose.sweeteditor.model.foundation.GestureType.DoubleTap,
-            com.qiplat.compose.sweeteditor.model.foundation.GestureType.LongPress,
-            com.qiplat.compose.sweeteditor.model.foundation.GestureType.DragSelect,
-            com.qiplat.compose.sweeteditor.model.foundation.GestureType.ContextMenu,
+            GestureType.Tap,
+            GestureType.DoubleTap,
+            GestureType.LongPress,
+            GestureType.DragSelect,
+            GestureType.ContextMenu,
             -> GesturePoint(
                 x = reader.readFloat(),
                 y = reader.readFloat(),

@@ -15,6 +15,12 @@ internal object AndroidNativeBindings {
     external fun nativeFreeDocument(handle: Long)
 
     @JvmStatic
+    external fun nativeGetDocumentLineCount(handle: Long): Int
+
+    @JvmStatic
+    external fun nativeGetDocumentLineText(handle: Long, line: Int): String
+
+    @JvmStatic
     external fun nativeCreateEditor(textMeasurer: NativeTextMeasurer, optionsData: ByteArray): Long
 
     @JvmStatic
@@ -75,6 +81,12 @@ internal object AndroidNativeBindings {
     )
 
     @JvmStatic
+    external fun nativeGetCursorPosition(editorHandle: Long): IntArray
+
+    @JvmStatic
+    external fun nativeGetSelection(editorHandle: Long): IntArray?
+
+    @JvmStatic
     external fun nativeBuildRenderModel(editorHandle: Long): ByteArray?
 
     @JvmStatic
@@ -95,15 +107,27 @@ internal object AndroidNativeBindings {
     external fun nativeTickAnimations(editorHandle: Long): ByteArray?
 
     @JvmStatic
-    external fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float)
-
-    @JvmStatic
     external fun nativeHandleKeyEvent(
         editorHandle: Long,
         keyCode: Int,
         text: String?,
         modifiers: Int,
     ): ByteArray?
+
+    @JvmStatic
+    external fun nativeCompositionStart(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeCompositionUpdate(editorHandle: Long, text: String)
+
+    @JvmStatic
+    external fun nativeCompositionEnd(editorHandle: Long, committedText: String?): ByteArray?
+
+    @JvmStatic
+    external fun nativeCompositionCancel(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeIsComposing(editorHandle: Long): Boolean
 
     @JvmStatic
     external fun nativeInsertText(editorHandle: Long, text: String): ByteArray?
@@ -126,6 +150,12 @@ internal object AndroidNativeBindings {
         endLine: Int,
         endColumn: Int,
     ): ByteArray?
+
+    @JvmStatic
+    external fun nativeBackspace(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeDeleteForward(editorHandle: Long): ByteArray?
 
     @JvmStatic
     external fun nativeRegisterBatchTextStyles(editorHandle: Long, data: ByteArray)
