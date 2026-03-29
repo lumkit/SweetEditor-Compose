@@ -26,12 +26,25 @@ class ThemeAndLanguageCommonTest {
               "brackets": [["{", "}"], ["(", ")"]],
               "autoClosingPairs": [["\"", "\""]],
               "surroundingPairs": [["(", ")"]],
+              "variables": {
+                "identifier": "[a-zA-Z_]\\w*"
+              },
+              "fragments": {
+                "callRule": [
+                  { "pattern": "(${'$'}{identifier})(\\()", "styles": [1, "method", 2, "punctuation"] }
+                ]
+              },
               "states": {
                 "default": [
-                  { "style": "keyword" },
-                  { "styles": [1, "method", 2, "property"] }
+                  { "pattern": "\\b(class)\\b", "style": "keyword" },
+                  { "include": "callRule" },
+                  { "styles": [1, "method", 2, "property"] },
+                  { "subStates": [1, "default"] }
                 ]
-              }
+              },
+              "scopeRules": [
+                { "start": "{", "end": "}" }
+              ]
             }
         """.trimIndent()
 
@@ -49,6 +62,10 @@ class ThemeAndLanguageCommonTest {
         assertEquals(EditorThemeStyleIds.Keyword, configuration.highlightStyleIds["keyword"])
         assertEquals(EditorThemeStyleIds.Function, configuration.highlightStyleIds["method"])
         assertEquals(EditorThemeStyleIds.Property, configuration.highlightStyleIds["property"])
+        assertEquals("[a-zA-Z_]\\w*", configuration.variables["identifier"])
+        assertEquals(1, configuration.fragments["callRule"]?.size)
+        assertEquals(4, configuration.states["default"]?.size)
+        assertEquals(1, configuration.scopeRules.size)
         assertTrue(configuration.highlightStyleIds.isNotEmpty())
     }
 }

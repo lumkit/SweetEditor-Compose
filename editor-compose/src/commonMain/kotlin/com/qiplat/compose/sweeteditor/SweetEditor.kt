@@ -29,6 +29,7 @@ import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.runtime.InstallDecorationProviders
 import com.qiplat.compose.sweeteditor.theme.EditorTheme
 import kotlin.math.min
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
@@ -41,6 +42,7 @@ fun SweetEditor(
     modifier: Modifier = Modifier,
     theme: EditorTheme = EditorTheme.dark(),
     settings: EditorSettings = EditorSettings(),
+    decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
     onHitTarget: (HitTarget) -> Unit = {},
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
@@ -91,6 +93,12 @@ fun SweetEditor(
             controller.applySettings(settings)
         }
     }
+
+    InstallDecorationProviders(
+        controller = controller,
+        state = state,
+        providers = decorationProviders,
+    )
 
     LaunchedEffect(controller, theme.fontFamily, theme.fontSize, theme.lineNumberFontSize, theme.inlayHintFontSize, platformScale) {
         if (state.document != null) {

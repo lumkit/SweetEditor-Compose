@@ -1,5 +1,6 @@
 package com.qiplat.compose.sweeteditor.runtime
 
+import com.qiplat.compose.sweeteditor.DecorationBatch
 import com.qiplat.compose.sweeteditor.EditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
@@ -358,6 +359,34 @@ class EditorController(
         ensureActive()
         nativeEditorBridge.setFoldRegions(
             ProtocolEncoder.encodeFoldRegions(regions),
+        )
+        refresh()
+    }
+
+    internal fun applyDecorationBatch(batch: DecorationBatch) {
+        ensureActive()
+        nativeEditorBridge.registerBatchTextStyles(
+            ProtocolEncoder.encodeBatchTextStyles(batch.textStyles),
+        )
+        batch.spansByLayer.forEach { (layer, spansByLine) ->
+            nativeEditorBridge.setBatchLineSpans(
+                ProtocolEncoder.encodeBatchLineSpans(layer, spansByLine),
+            )
+        }
+        nativeEditorBridge.setBatchLineInlayHints(
+            ProtocolEncoder.encodeBatchLineInlayHints(batch.inlayHints),
+        )
+        nativeEditorBridge.setBatchLinePhantomTexts(
+            ProtocolEncoder.encodeBatchLinePhantomTexts(batch.phantomTexts),
+        )
+        nativeEditorBridge.setBatchLineGutterIcons(
+            ProtocolEncoder.encodeBatchLineGutterIcons(batch.gutterIcons),
+        )
+        nativeEditorBridge.setBatchLineDiagnostics(
+            ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics),
+        )
+        nativeEditorBridge.setFoldRegions(
+            ProtocolEncoder.encodeFoldRegions(batch.foldRegions),
         )
         refresh()
     }

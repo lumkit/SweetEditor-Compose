@@ -12,6 +12,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qiplat.compose.sweeteditor.model.decoration.DiagnosticItem
+import com.qiplat.compose.sweeteditor.model.decoration.DiagnosticSeverity
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import org.jetbrains.compose.resources.Font
@@ -54,6 +56,12 @@ fun App() {
         var wrapEnabled by remember { mutableStateOf(false) }
         var readOnly by remember { mutableStateOf(false) }
         var compositionEnabled by remember { mutableStateOf(true) }
+        val decorationProviders = remember {
+            listOf(
+                LanguageConfigDecorationProvider(),
+                ExampleDiagnosticsDecorationProvider(),
+            )
+        }
         val editorSettings = remember(wrapEnabled, readOnly, compositionEnabled) {
             EditorSettings(
                 wrapMode = if (wrapEnabled) WrapMode.WordBreak else WrapMode.None,
@@ -135,6 +143,7 @@ fun App() {
                             modifier = Modifier.fillMaxSize(),
                             theme = editorAppearance.theme,
                             settings = editorSettings,
+                            decorationProviders = decorationProviders,
                             onGestureResult = { result ->
                                 gestureSummary = "${result.type.name} · scale=${result.viewScale.toReadableScale()}"
                             },
@@ -201,3 +210,30 @@ private fun Int.toComposeColor() = Color(this)
 
 private fun Float.toReadableScale(): String =
     ((this * 100).roundToInt() / 100f).toString()
+
+private class ExampleDiagnosticsDecorationProvider : DecorationProvider {
+    override val id: String = "example.demo.diagnostics"
+    override val overscanLines: Int = 8
+
+    override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
+        val diagnostics = linkedMapOf<Int, List<DiagnosticItem>>()
+        for (line in context.requestedLineRange) {
+            val lineText = context.document.getLineText(line)
+            if ("TODO" !in lineText) {
+                continue
+            }
+            diagnostics[line] = listOf(
+                DiagnosticItem(
+                    column = lineText.indexOf("TODO").coerceAtLeast(0),
+                    length = 4,
+                    severity = DiagnosticSeverity.Hint,
+                ),
+            )
+        }
+        return DecorationUpdate(
+            decorations = DecorationSet(diagnostics = diagnostics),
+            applyMode = DecorationApplyMode.ReplaceRange,
+            lineRange = context.requestedLineRange,
+        )
+    }
+}
