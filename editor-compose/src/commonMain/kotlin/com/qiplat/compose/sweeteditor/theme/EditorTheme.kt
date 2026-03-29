@@ -18,7 +18,47 @@ object EditorThemeStyleIds {
     const val Punctuation: Int = 10
     const val Annotation: Int = 11
     const val Preprocessor: Int = 12
+    const val Property: Int = 13
+    const val Parameter: Int = 14
+    const val Constant: Int = 15
+    const val Operator: Int = 16
+    const val Field: Int = 17
+    const val Namespace: Int = 18
+    const val EnumMember: Int = 19
+    const val Interface: Int = 20
+    const val Enum: Int = 21
+    const val Struct: Int = 22
     const val UserBase: Int = 100
+
+    private val aliases: Map<String, Int> = mapOf(
+        "keyword" to Keyword,
+        "string" to String,
+        "comment" to Comment,
+        "number" to Number,
+        "builtin" to Builtin,
+        "type" to Type,
+        "class" to Class,
+        "interface" to Interface,
+        "enum" to Enum,
+        "struct" to Struct,
+        "function" to Function,
+        "method" to Function,
+        "variable" to Variable,
+        "property" to Property,
+        "parameter" to Parameter,
+        "constant" to Constant,
+        "field" to Field,
+        "namespace" to Namespace,
+        "module" to Namespace,
+        "enum_member" to EnumMember,
+        "enummember" to EnumMember,
+        "operator" to Operator,
+        "punctuation" to Punctuation,
+        "annotation" to Annotation,
+        "preprocessor" to Preprocessor,
+    )
+
+    fun resolve(name: String): Int? = aliases[name.trim().lowercase()]
 }
 
 data class EditorTheme(
@@ -142,8 +182,18 @@ data class EditorTheme(
             EditorThemeStyleIds.Builtin to TextStyle(0xFF7DCFFF.toInt()),
             EditorThemeStyleIds.Type to TextStyle(0xFFBB9AF7.toInt()),
             EditorThemeStyleIds.Class to TextStyle(0xFFE0AF68.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Interface to TextStyle(0xFFE0AF68.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Enum to TextStyle(0xFFE0AF68.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Struct to TextStyle(0xFFE0AF68.toInt(), fontStyle = TextStyle.Bold),
             EditorThemeStyleIds.Function to TextStyle(0xFF73DACA.toInt()),
             EditorThemeStyleIds.Variable to TextStyle(0xFFD7DEE9.toInt()),
+            EditorThemeStyleIds.Property to TextStyle(0xFF9CDCFE.toInt()),
+            EditorThemeStyleIds.Parameter to TextStyle(0xFFDCDCAA.toInt()),
+            EditorThemeStyleIds.Constant to TextStyle(0xFF4FC1FF.toInt()),
+            EditorThemeStyleIds.Field to TextStyle(0xFF9CDCFE.toInt()),
+            EditorThemeStyleIds.Namespace to TextStyle(0xFF4EC9B0.toInt()),
+            EditorThemeStyleIds.EnumMember to TextStyle(0xFFD7BA7D.toInt()),
+            EditorThemeStyleIds.Operator to TextStyle(0xFFB0BED3.toInt()),
             EditorThemeStyleIds.Punctuation to TextStyle(0xFFB0BED3.toInt()),
             EditorThemeStyleIds.Annotation to TextStyle(0xFF2AC3DE.toInt()),
             EditorThemeStyleIds.Preprocessor to TextStyle(0xFFF7768E.toInt()),
@@ -157,8 +207,18 @@ data class EditorTheme(
             EditorThemeStyleIds.Builtin to TextStyle(0xFF0EA5E9.toInt()),
             EditorThemeStyleIds.Type to TextStyle(0xFF7C3AED.toInt()),
             EditorThemeStyleIds.Class to TextStyle(0xFFB7791F.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Interface to TextStyle(0xFFB7791F.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Enum to TextStyle(0xFFB7791F.toInt(), fontStyle = TextStyle.Bold),
+            EditorThemeStyleIds.Struct to TextStyle(0xFFB7791F.toInt(), fontStyle = TextStyle.Bold),
             EditorThemeStyleIds.Function to TextStyle(0xFF0F766E.toInt()),
             EditorThemeStyleIds.Variable to TextStyle(0xFF1F2937.toInt()),
+            EditorThemeStyleIds.Property to TextStyle(0xFF075985.toInt()),
+            EditorThemeStyleIds.Parameter to TextStyle(0xFF854D0E.toInt()),
+            EditorThemeStyleIds.Constant to TextStyle(0xFF0C4A6E.toInt()),
+            EditorThemeStyleIds.Field to TextStyle(0xFF075985.toInt()),
+            EditorThemeStyleIds.Namespace to TextStyle(0xFF0F766E.toInt()),
+            EditorThemeStyleIds.EnumMember to TextStyle(0xFF92400E.toInt()),
+            EditorThemeStyleIds.Operator to TextStyle(0xFF52606D.toInt()),
             EditorThemeStyleIds.Punctuation to TextStyle(0xFF52606D.toInt()),
             EditorThemeStyleIds.Annotation to TextStyle(0xFF0284C7.toInt()),
             EditorThemeStyleIds.Preprocessor to TextStyle(0xFFDC2626.toInt()),

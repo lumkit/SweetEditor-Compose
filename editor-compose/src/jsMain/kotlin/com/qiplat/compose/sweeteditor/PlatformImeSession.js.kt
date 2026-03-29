@@ -12,6 +12,7 @@ internal actual fun InstallPlatformImeSession(
     controller: EditorController,
     state: EditorState,
     isFocused: Boolean,
+    isReadOnly: Boolean,
 ): Modifier {
     val textInputService = LocalTextInputService.current
     val imeEditProcessor = remember { EditProcessor() }
@@ -24,7 +25,7 @@ internal actual fun InstallPlatformImeSession(
         state.lastGestureResult,
         state.renderModel?.cursor?.textPosition,
     ) {
-        if (!isFocused) {
+        if (!isFocused || isReadOnly) {
             return@LaunchedEffect
         }
         val oldValue = imeValue
@@ -36,13 +37,13 @@ internal actual fun InstallPlatformImeSession(
         }
     }
 
-    LaunchedEffect(isFocused, textInputService, controller, state.document) {
+    LaunchedEffect(isFocused, isReadOnly, textInputService, controller, state.document) {
         val service = textInputService
         if (service == null || state.document == null) {
             imeSession = null
             return@LaunchedEffect
         }
-        if (isFocused) {
+        if (isFocused && !isReadOnly) {
             controller.setCompositionEnabled(true)
             if (imeSession == null) {
                 val session = service.startInput(

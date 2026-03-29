@@ -40,6 +40,7 @@ fun SweetEditor(
     controller: EditorController,
     modifier: Modifier = Modifier,
     theme: EditorTheme = EditorTheme.dark(),
+    settings: EditorSettings = EditorSettings(),
     onGestureResult: (GestureResult) -> Unit = {},
     onHitTarget: (HitTarget) -> Unit = {},
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
@@ -76,6 +77,18 @@ fun SweetEditor(
     LaunchedEffect(controller, platformScale) {
         if (state.document != null) {
             controller.syncPlatformScale(platformScale)
+        }
+    }
+
+    LaunchedEffect(controller, state.document, theme) {
+        if (state.document != null) {
+            controller.applyTheme(theme)
+        }
+    }
+
+    LaunchedEffect(controller, state.document, settings) {
+        if (state.document != null) {
+            controller.applySettings(settings)
         }
     }
 
@@ -130,6 +143,7 @@ fun SweetEditor(
         controller = controller,
         state = state,
         isFocused = isFocused,
+        isReadOnly = settings.readOnly,
     )
 
     Canvas(

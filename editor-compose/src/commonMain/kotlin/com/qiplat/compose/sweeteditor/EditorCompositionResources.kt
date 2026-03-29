@@ -180,7 +180,28 @@ private object EditorThemeParser {
             fontSize = fontConfig.fontSize,
             lineNumberFontSize = fontConfig.lineNumberFontSize,
             inlayHintFontSize = fontConfig.inlayHintFontSize,
+            textStyles = fallback.textStyles + parseTextStyles(content),
         )
+    }
+
+    private fun parseTextStyles(content: String): Map<Int, com.qiplat.compose.sweeteditor.model.decoration.TextStyle> {
+        val block = findObjectContent(content, "textStyles") ?: return emptyMap()
+        val entryPattern = Regex("\"([^\"]+)\"\\s*:\\s*\\{([^{}]*)\\}")
+        return buildMap {
+            entryPattern.findAll(block).forEach { match ->
+                val styleId = com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds.resolve(match.groupValues[1])
+                    ?: return@forEach
+                val rawBody = match.groupValues[2]
+                put(
+                    styleId,
+                    com.qiplat.compose.sweeteditor.model.decoration.TextStyle(
+                        color = findColor(rawBody, "color") ?: 0,
+                        backgroundColor = findColor(rawBody, "backgroundColor") ?: 0,
+                        fontStyle = findFontStyleFlags(rawBody),
+                    ),
+                )
+            }
+        }
     }
 
     private fun findColor(content: String, key: String): Int? {
@@ -210,6 +231,59 @@ private object EditorThemeParser {
             }
         }
         return normalized.toLongOrNull()?.toInt()
+    }
+
+    private fun findObjectContent(content: String, key: String): String? {
+        val marker = "\"$key\""
+        val keyIndex = content.indexOf(marker)
+        if (keyIndex < 0) {
+            return null
+        }
+        val startIndex = content.indexOf('{', keyIndex + marker.length)
+        if (startIndex < 0) {
+            return null
+        }
+        var depth = 0
+        for (index in startIndex until content.length) {
+            when (content[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return content.substring(startIndex + 1, index)
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun findFontStyleFlags(content: String): Int {
+        val numericStyle = Regex("\"fontStyle\"\\s*:\\s*(-?\\d+)")
+            .find(content)
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
+        if (numericStyle != null) {
+            return numericStyle
+        }
+        val rawStyle = Regex("\"fontStyle\"\\s*:\\s*\"([^\"]+)\"")
+            .find(content)
+            ?.groupValues
+            ?.get(1)
+            ?.lowercase()
+            ?: return 0
+        var styleFlags = 0
+        if ("bold" in rawStyle) {
+            styleFlags = styleFlags or com.qiplat.compose.sweeteditor.model.decoration.TextStyle.Bold
+        }
+        if ("italic" in rawStyle) {
+            styleFlags = styleFlags or com.qiplat.compose.sweeteditor.model.decoration.TextStyle.Italic
+        }
+        if ("strikethrough" in rawStyle) {
+            styleFlags = styleFlags or com.qiplat.compose.sweeteditor.model.decoration.TextStyle.Strikethrough
+        }
+        return styleFlags
     }
 }
 

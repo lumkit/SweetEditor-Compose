@@ -1,5 +1,6 @@
 package com.qiplat.compose.sweeteditor.runtime
 
+import com.qiplat.compose.sweeteditor.EditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
 import com.qiplat.compose.sweeteditor.model.decoration.*
@@ -8,6 +9,7 @@ import com.qiplat.compose.sweeteditor.protocol.ProtocolDecoder
 import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
 import com.qiplat.compose.sweeteditor.theme.EditorTheme
+import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 
 class EditorController(
     val state: EditorState = EditorState(),
@@ -97,6 +99,28 @@ class EditorController(
     fun applyTheme(theme: EditorTheme) {
         ensureActive()
         registerTextStyles(theme.textStyles)
+    }
+
+    fun applySettings(settings: EditorSettings) {
+        ensureActive()
+        nativeEditorBridge.setWrapMode(settings.wrapMode)
+        nativeEditorBridge.setTabSize(settings.tabSize)
+        nativeEditorBridge.setLineSpacing(
+            settings.lineSpacingExtra,
+            settings.lineSpacingMultiplier,
+        )
+        nativeEditorBridge.setFoldArrowMode(settings.foldArrowMode)
+        nativeEditorBridge.setGutterSticky(settings.gutterSticky)
+        nativeEditorBridge.setGutterVisible(settings.gutterVisible)
+        nativeEditorBridge.setCurrentLineRenderMode(settings.currentLineRenderMode)
+        nativeEditorBridge.setReadOnly(settings.readOnly)
+        nativeEditorBridge.setCompositionEnabled(settings.compositionEnabled)
+        refresh()
+    }
+
+    fun setLanguageConfiguration(configuration: LanguageConfiguration?) {
+        ensureActive()
+        state.languageConfiguration = configuration
     }
 
     fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) {

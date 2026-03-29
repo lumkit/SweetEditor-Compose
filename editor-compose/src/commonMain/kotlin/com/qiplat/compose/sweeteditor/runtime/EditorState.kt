@@ -10,6 +10,7 @@ import com.qiplat.compose.sweeteditor.model.foundation.KeyEventResult
 import com.qiplat.compose.sweeteditor.model.foundation.TextEditResult
 import com.qiplat.compose.sweeteditor.model.visual.EditorRenderModel
 import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
+import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 
 class EditorState internal constructor(
     internal val bridgeFactory: NativeBridgeFactory,
@@ -38,5 +39,8 @@ class EditorState internal constructor(
         internal set
 
     var isDisposed: Boolean by mutableStateOf(false)
+        internal set
+
+    var languageConfiguration: LanguageConfiguration? by mutableStateOf(null)
         internal set
 }

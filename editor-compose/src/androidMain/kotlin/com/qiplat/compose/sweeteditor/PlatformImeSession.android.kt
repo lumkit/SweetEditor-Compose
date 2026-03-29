@@ -32,10 +32,12 @@ internal actual fun InstallPlatformImeSession(
     controller: EditorController,
     state: EditorState,
     isFocused: Boolean,
+    isReadOnly: Boolean,
 ): Modifier = AndroidPlatformImeElement(
     controller = controller,
     state = state,
     isFocused = isFocused,
+    isReadOnly = isReadOnly,
     gestureResult = state.lastGestureResult,
     editToken = state.lastEditResult,
     cursorToken = state.renderModel?.cursor?.textPosition,
@@ -45,6 +47,7 @@ private data class AndroidPlatformImeElement(
     val controller: EditorController,
     val state: EditorState,
     val isFocused: Boolean,
+    val isReadOnly: Boolean,
     val gestureResult: GestureResult,
     val editToken: Any?,
     val cursorToken: Any?,
@@ -56,6 +59,7 @@ private data class AndroidPlatformImeElement(
             controller = controller,
             state = state,
             isFocused = isFocused,
+            isReadOnly = isReadOnly,
             gestureResult = gestureResult,
         )
     }
@@ -69,6 +73,7 @@ private class AndroidPlatformImeNode :
     internal var state: EditorState? = null
     private var externalFocused: Boolean = false
     private var composeFocused: Boolean = false
+    private var readOnly: Boolean = false
     private var gestureResult: GestureResult = GestureResult()
     private var sessionJob: Job? = null
     private var activeView: View? = null
@@ -83,15 +88,17 @@ private class AndroidPlatformImeNode :
         controller: EditorController,
         state: EditorState,
         isFocused: Boolean,
+        isReadOnly: Boolean,
         gestureResult: GestureResult,
     ) {
         this.controller = controller
         this.state = state
         this.externalFocused = isFocused
+        this.readOnly = isReadOnly
         this.gestureResult = gestureResult
         when (gestureResult.type) {
             GestureType.Tap -> {
-                if (gestureResult.hitTarget.type == HitTargetType.None) {
+                if (!readOnly && gestureResult.hitTarget.type == HitTargetType.None) {
                     imeSessionRequested = true
                     pendingKeyboardGesture = gestureResult
                 }
@@ -108,6 +115,10 @@ private class AndroidPlatformImeNode :
 
             GestureType.Undefined,
             -> Unit
+        }
+        if (readOnly) {
+            imeSessionRequested = false
+            pendingKeyboardGesture = null
         }
         syncSession()
         syncImeState(
@@ -141,7 +152,7 @@ private class AndroidPlatformImeNode :
     private fun syncSession() {
         val controller = controller ?: return
         val state = state ?: return
-        val shouldRun = state.document != null && isEditorFocused() && imeSessionRequested
+        val shouldRun = state.document != null && isEditorFocused() && imeSessionRequested && !readOnly
         if (shouldRun) {
             controller.setCompositionEnabled(true)
             if (sessionJob == null) {
@@ -164,13 +175,14 @@ private class AndroidPlatformImeNode :
             hideKeyboard()
             sessionJob?.cancel()
             sessionJob = null
+            activeInputConnection = null
         }
     }
 
     private fun maybeShowKeyboard() {
         val view = activeView ?: return
         val pendingGesture = pendingKeyboardGesture
-        if (pendingGesture != null && isEditorFocused()) {
+        if (pendingGesture != null && isEditorFocused() && !readOnly) {
             view.requestFocus()
             val imm = view.context.inputMethodManager()
             view.post {

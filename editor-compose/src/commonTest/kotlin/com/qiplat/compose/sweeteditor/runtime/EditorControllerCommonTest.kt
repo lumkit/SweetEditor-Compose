@@ -1,5 +1,6 @@
 package com.qiplat.compose.sweeteditor.runtime
 
+import com.qiplat.compose.sweeteditor.EditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeBridgeFactory
 import com.qiplat.compose.sweeteditor.bridge.NativeDocumentBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
@@ -79,6 +80,43 @@ class EditorControllerCommonTest {
         assertEquals(-7f, editorBridge.lastWheelDeltaY)
         assertEquals(1.25f, editorBridge.lastDirectScale)
     }
+
+    @Test
+    fun applySettingsUpdatesNativeBridge() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.applySettings(
+            EditorSettings(
+                wrapMode = WrapMode.WordBreak,
+                tabSize = 2,
+                lineSpacingExtra = 3f,
+                lineSpacingMultiplier = 1.2f,
+                foldArrowMode = FoldArrowMode.Always,
+                gutterSticky = false,
+                gutterVisible = false,
+                currentLineRenderMode = CurrentLineRenderMode.Border,
+                readOnly = true,
+                compositionEnabled = false,
+            ),
+        )
+
+        assertEquals(WrapMode.WordBreak, editorBridge.appliedWrapMode)
+        assertEquals(2, editorBridge.appliedTabSize)
+        assertEquals(3f, editorBridge.lineSpacingAdd)
+        assertEquals(1.2f, editorBridge.lineSpacingMult)
+        assertEquals(FoldArrowMode.Always, editorBridge.appliedFoldArrowMode)
+        assertEquals(false, editorBridge.appliedGutterSticky)
+        assertEquals(false, editorBridge.appliedGutterVisible)
+        assertEquals(CurrentLineRenderMode.Border, editorBridge.appliedCurrentLineRenderMode)
+        assertEquals(true, editorBridge.appliedReadOnly)
+        assertEquals(false, editorBridge.appliedCompositionEnabled)
+    }
 }
 
 private class FakeNativeBridgeFactory(
@@ -116,6 +154,16 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     var lastWheelDeltaX: Float = 0f
     var lastWheelDeltaY: Float = 0f
     var lastDirectScale: Float = 1f
+    var appliedFoldArrowMode: FoldArrowMode = FoldArrowMode.Auto
+    var appliedWrapMode: WrapMode = WrapMode.None
+    var appliedTabSize: Int = 4
+    var lineSpacingAdd: Float = 0f
+    var lineSpacingMult: Float = 1f
+    var appliedCurrentLineRenderMode: CurrentLineRenderMode = CurrentLineRenderMode.Background
+    var appliedGutterSticky: Boolean = true
+    var appliedGutterVisible: Boolean = true
+    var appliedReadOnly: Boolean = false
+    var appliedCompositionEnabled: Boolean = true
 
     override fun release() = Unit
 
@@ -125,17 +173,36 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
 
     override fun setViewport(width: Int, height: Int) = Unit
     override fun onFontMetricsChanged() = Unit
-    override fun setFoldArrowMode(mode: FoldArrowMode) = Unit
-    override fun setWrapMode(mode: WrapMode) = Unit
-    override fun setTabSize(tabSize: Int) = Unit
+    override fun setFoldArrowMode(mode: FoldArrowMode) {
+        appliedFoldArrowMode = mode
+    }
+    override fun setWrapMode(mode: WrapMode) {
+        appliedWrapMode = mode
+    }
+    override fun setTabSize(tabSize: Int) {
+        appliedTabSize = tabSize
+    }
     override fun setScale(scale: Float) = Unit
-    override fun setLineSpacing(add: Float, mult: Float) = Unit
+    override fun setLineSpacing(add: Float, mult: Float) {
+        lineSpacingAdd = add
+        lineSpacingMult = mult
+    }
     override fun setShowSplitLine(show: Boolean) = Unit
-    override fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) = Unit
-    override fun setGutterSticky(sticky: Boolean) = Unit
-    override fun setGutterVisible(visible: Boolean) = Unit
-    override fun setReadOnly(readOnly: Boolean) = Unit
-    override fun setCompositionEnabled(enabled: Boolean) = Unit
+    override fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) {
+        appliedCurrentLineRenderMode = mode
+    }
+    override fun setGutterSticky(sticky: Boolean) {
+        appliedGutterSticky = sticky
+    }
+    override fun setGutterVisible(visible: Boolean) {
+        appliedGutterVisible = visible
+    }
+    override fun setReadOnly(readOnly: Boolean) {
+        appliedReadOnly = readOnly
+    }
+    override fun setCompositionEnabled(enabled: Boolean) {
+        appliedCompositionEnabled = enabled
+    }
     override fun setCursorPosition(position: TextPosition) = Unit
     override fun setSelection(range: TextRange) = Unit
     override fun getCursorPosition(): TextPosition = TextPosition.Zero

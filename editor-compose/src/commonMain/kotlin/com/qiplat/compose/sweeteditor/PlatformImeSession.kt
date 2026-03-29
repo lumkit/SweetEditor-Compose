@@ -10,4 +10,5 @@ internal expect fun InstallPlatformImeSession(
     controller: EditorController,
     state: EditorState,
     isFocused: Boolean,
+    isReadOnly: Boolean,
 ): Modifier
