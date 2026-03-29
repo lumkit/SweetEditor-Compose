@@ -33,3 +33,4 @@ plugins {
 }
 
 include(":example")
+include(":editor-compose")
