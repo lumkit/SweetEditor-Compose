@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.*
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -93,4 +94,70 @@ android {
 
 dependencies {
     debugImplementation(libs.compose.uiTooling)
+}
+
+val isMacOs = System.getProperty("os.name").contains("Mac", ignoreCase = true)
+val desktopArchDir = when {
+    System.getProperty("os.arch").contains("aarch64", ignoreCase = true) -> "arm64"
+    System.getProperty("os.arch").contains("arm64", ignoreCase = true) -> "arm64"
+    else -> "x86_64"
+}
+val desktopBridgeOutputDir = layout.buildDirectory.dir("native/jvm/$desktopArchDir")
+val desktopBridgeBuildDir = layout.buildDirectory.dir("native/jvm/cmake/$desktopArchDir")
+val javaHome = System.getenv("JAVA_HOME") ?: System.getProperty("java.home")
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val androidSdkDir = localProperties.getProperty("sdk.dir")
+    ?: System.getenv("ANDROID_SDK_ROOT")
+    ?: System.getenv("ANDROID_HOME")
+val cmakeExecutable = androidSdkDir
+    ?.let { sdkDir ->
+        file(sdkDir)
+            .resolve("cmake")
+            .listFiles()
+            ?.sortedByDescending { it.name }
+            ?.firstOrNull()
+            ?.resolve("bin/cmake")
+            ?.absolutePath
+    }
+    ?: "cmake"
+
+val configureDesktopBridge by tasks.registering(Exec::class) {
+    onlyIf { isMacOs }
+    inputs.file(file("src/jvmMain/cpp/CMakeLists.txt"))
+    inputs.file(file("src/jvmMain/cpp/desktop_bridge.cpp"))
+    outputs.dir(desktopBridgeBuildDir)
+    doFirst {
+        desktopBridgeBuildDir.get().asFile.mkdirs()
+        commandLine(
+            cmakeExecutable,
+            "-S",
+            file("src/jvmMain/cpp").absolutePath,
+            "-B",
+            desktopBridgeBuildDir.get().asFile.absolutePath,
+            "-DSWEETEDITOR_ARCH_DIR=$desktopArchDir",
+            "-DJAVA_HOME=$javaHome",
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${desktopBridgeOutputDir.get().asFile.absolutePath}",
+        )
+    }
+}
+
+tasks.register<Exec>("buildDesktopBridge") {
+    onlyIf { isMacOs }
+    dependsOn(configureDesktopBridge)
+    outputs.dir(desktopBridgeOutputDir)
+    doFirst {
+        desktopBridgeOutputDir.get().asFile.mkdirs()
+        commandLine(
+            cmakeExecutable,
+            "--build",
+            desktopBridgeBuildDir.get().asFile.absolutePath,
+            "--target",
+            "sweeteditor_desktop_bridge",
+        )
+    }
 }
