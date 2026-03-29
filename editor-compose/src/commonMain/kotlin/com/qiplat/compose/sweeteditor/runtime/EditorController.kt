@@ -7,6 +7,7 @@ import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.protocol.ProtocolDecoder
 import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
+import com.qiplat.compose.sweeteditor.theme.EditorTheme
 
 class EditorController(
     val state: EditorState = EditorState(),
@@ -83,6 +84,11 @@ class EditorController(
         ensureActive()
         nativeEditorBridge.setShowSplitLine(show)
         refresh()
+    }
+
+    fun applyTheme(theme: EditorTheme) {
+        ensureActive()
+        registerTextStyles(theme.textStyles)
     }
 
     fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) {

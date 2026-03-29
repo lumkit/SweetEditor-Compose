@@ -2,7 +2,6 @@ package com.qiplat.compose.sweeteditor.bridge
 
 internal object AndroidNativeBindings {
     init {
-        System.loadLibrary("sweeteditor")
         System.loadLibrary("sweeteditor_bridge")
     }
 

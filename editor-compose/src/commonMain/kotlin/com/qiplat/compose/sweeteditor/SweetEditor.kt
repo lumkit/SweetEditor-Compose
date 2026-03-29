@@ -1,12 +1,10 @@
 package com.qiplat.compose.sweeteditor
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -37,6 +35,7 @@ import com.qiplat.compose.sweeteditor.model.foundation.GesturePoint
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.theme.EditorTheme
 import kotlin.math.min
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
 
@@ -46,31 +45,11 @@ fun SweetEditor(
     state: EditorState,
     controller: EditorController,
     modifier: Modifier = Modifier,
-    backgroundColor: Color = Color.White,
-    gutterBackgroundColor: Color = Color(0xFFF7F7F9),
-    selectionColor: Color = Color(0x332196F3),
-    currentLineColor: Color = Color(0x11000000),
-    cursorColor: Color = Color(0xFF1F1F1F),
+    theme: EditorTheme = EditorTheme.dark(),
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer()
-    val verticalScrollState = rememberScrollableState { delta ->
-        controller.dispatchGestureEvent(
-            type = EditorGestureEventType.DirectScroll,
-            points = emptyList(),
-            wheelDeltaY = -delta,
-        )
-        delta
-    }
-    val horizontalScrollState = rememberScrollableState { delta ->
-        controller.dispatchGestureEvent(
-            type = EditorGestureEventType.DirectScroll,
-            points = emptyList(),
-            wheelDeltaX = -delta,
-        )
-        delta
-    }
 
     DisposableEffect(controller) {
         onDispose {
@@ -80,8 +59,13 @@ fun SweetEditor(
 
     LaunchedEffect(controller, state.document) {
         if (state.document != null) {
+            controller.onFontMetricsChanged()
             controller.refresh()
         }
+    }
+
+    LaunchedEffect(controller, theme.fontFamily, theme.fontSize, theme.lineNumberFontSize, theme.inlayHintFontSize) {
+        controller.onFontMetricsChanged()
     }
 
     LaunchedEffect(controller, state.lastGestureResult.needsAnimation) {
@@ -92,20 +76,11 @@ fun SweetEditor(
         }
     }
 
-    Box(
+    Canvas(
         modifier = modifier
-            .background(backgroundColor)
             .clipToBounds()
             .focusRequester(focusRequester)
             .focusable(interactionSource = interactionSource)
-            .scrollable(
-                state = verticalScrollState,
-                orientation = Orientation.Vertical,
-            )
-            .scrollable(
-                state = horizontalScrollState,
-                orientation = Orientation.Horizontal,
-            )
             .onSizeChanged { size ->
                 if (size.width > 0 && size.height > 0) {
                     controller.setViewport(size.width, size.height)
@@ -170,18 +145,11 @@ fun SweetEditor(
                 }
             },
     ) {
-        Canvas(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            drawEditorSurface(
-                renderModel = state.renderModel,
-                textMeasurer = textMeasurer,
-                gutterBackgroundColor = gutterBackgroundColor,
-                selectionColor = selectionColor,
-                currentLineColor = currentLineColor,
-                cursorColor = cursorColor,
-            )
-        }
+        drawEditorSurface(
+            renderModel = state.renderModel,
+            textMeasurer = textMeasurer,
+            theme = theme,
+        )
     }
 }
 
@@ -189,75 +157,108 @@ fun SweetEditor(
 private fun DrawScope.drawEditorSurface(
     renderModel: EditorRenderModel?,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    gutterBackgroundColor: Color,
-    selectionColor: Color,
-    currentLineColor: Color,
-    cursorColor: Color,
+    theme: EditorTheme,
 ) {
     if (renderModel == null) {
+        drawRect(
+            color = theme.backgroundColor.toComposeColor(),
+            topLeft = Offset.Zero,
+            size = size,
+        )
         return
     }
 
-    drawGutterBackground(renderModel, gutterBackgroundColor)
-    drawSplitLine(renderModel)
-    drawCurrentLine(renderModel, currentLineColor)
+    drawRect(
+        color = theme.backgroundColor.toComposeColor(),
+        topLeft = Offset.Zero,
+        size = size,
+    )
+    drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
+    drawSplitLine(renderModel, theme.splitLineColor.toComposeColor())
+    drawCurrentLine(renderModel, theme.currentLineColor.toComposeColor())
 
     renderModel.selectionRects.forEach { rect ->
-        drawSelectionRect(renderModel, rect, selectionColor)
+        drawSelectionRect(renderModel, rect, theme.selectionColor.toComposeColor())
     }
 
     renderModel.guideSegments.forEach { guide ->
-        drawGuide(renderModel, guide)
+        drawGuide(renderModel, guide, theme.guideColor.toComposeColor())
     }
 
     renderModel.diagnosticDecorations.forEach { decoration ->
         drawDiagnostic(renderModel, decoration)
     }
 
+    drawCompositionDecoration(renderModel, theme.compositionUnderlineColor.toComposeColor())
+
     renderModel.linkedEditingRects.forEach { rect ->
-        drawLinkedEditing(renderModel, rect)
+        drawLinkedEditing(
+            renderModel = renderModel,
+            rect = rect,
+            activeColor = theme.linkedEditingActiveColor.toComposeColor(),
+            inactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
+        )
     }
 
     renderModel.bracketHighlightRects.forEach { rect ->
         drawRect(
-            color = Color(0x2200C853),
+            color = theme.bracketHighlightBackgroundColor.toComposeColor(),
             topLeft = Offset(
-                x = rect.origin.x - renderModel.scrollX,
-                y = rect.origin.y - renderModel.scrollY,
+                x = rect.origin.x,
+                y = rect.origin.y,
             ),
             size = Size(rect.width, rect.height),
+        )
+        drawRect(
+            color = theme.bracketHighlightBorderColor.toComposeColor(),
+            topLeft = Offset(
+                x = rect.origin.x,
+                y = rect.origin.y,
+            ),
+            size = Size(rect.width, rect.height),
+            style = Stroke(width = 1f),
         )
     }
 
     renderModel.lines.forEach { line ->
-        drawLineNumber(renderModel, textMeasurer, line)
-        drawRuns(renderModel, textMeasurer, line)
+        drawLineNumber(renderModel, textMeasurer, line, theme)
+        drawRuns(textMeasurer, line, theme)
     }
 
     renderModel.gutterIcons.forEach { item ->
-        drawGutterIcon(renderModel, item)
+        drawGutterIcon(renderModel, item, theme)
     }
 
     renderModel.foldMarkers.forEach { marker ->
-        drawFoldMarker(renderModel, marker)
+        drawFoldMarker(renderModel, marker, theme)
     }
 
-    drawSelectionHandle(renderModel.selectionStartHandle.position, renderModel.selectionStartHandle.visible, renderModel)
-    drawSelectionHandle(renderModel.selectionEndHandle.position, renderModel.selectionEndHandle.visible, renderModel)
+    drawSelectionHandle(
+        position = renderModel.selectionStartHandle.position,
+        visible = renderModel.selectionStartHandle.visible,
+        renderModel = renderModel,
+        color = theme.cursorColor.toComposeColor(),
+    )
+    drawSelectionHandle(
+        position = renderModel.selectionEndHandle.position,
+        visible = renderModel.selectionEndHandle.visible,
+        renderModel = renderModel,
+        color = theme.cursorColor.toComposeColor(),
+    )
 
     if (renderModel.cursor.visible) {
         drawRect(
-            color = cursorColor,
+            color = theme.cursorColor.toComposeColor(),
             topLeft = Offset(
-                x = renderModel.cursor.position.x - renderModel.scrollX,
-                y = renderModel.cursor.position.y - renderModel.scrollY,
+                x = renderModel.cursor.position.x,
+                y = renderModel.cursor.position.y,
             ),
             size = Size(2f, renderModel.cursor.height.coerceAtLeast(1f)),
         )
     }
 
-    drawScrollbar(renderModel.verticalScrollbar, renderModel)
-    drawScrollbar(renderModel.horizontalScrollbar, renderModel)
+    drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
+    drawScrollbar(renderModel.horizontalScrollbar, renderModel, theme)
 }
 
 private fun DrawScope.drawGutterBackground(
@@ -276,12 +277,13 @@ private fun DrawScope.drawGutterBackground(
 
 private fun DrawScope.drawSplitLine(
     renderModel: EditorRenderModel,
+    color: Color,
 ) {
     if (!renderModel.splitLineVisible) {
         return
     }
     drawLine(
-        color = Color(0x14000000),
+        color = color,
         start = Offset(renderModel.splitX, 0f),
         end = Offset(renderModel.splitX, size.height),
         strokeWidth = 1f,
@@ -292,14 +294,15 @@ private fun DrawScope.drawCurrentLine(
     renderModel: EditorRenderModel,
     currentLineColor: Color,
 ) {
-    val top = renderModel.currentLine.y - renderModel.scrollY
+    val top = renderModel.currentLine.y
     val height = renderModel.cursor.height.takeIf { it > 0f } ?: 20f
+    val width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width
     when (renderModel.currentLineRenderMode) {
         CurrentLineRenderMode.Background -> {
             drawRect(
                 color = currentLineColor,
                 topLeft = Offset(0f, top),
-                size = Size(size.width, height),
+                size = Size(width, height),
             )
         }
 
@@ -307,7 +310,7 @@ private fun DrawScope.drawCurrentLine(
             drawRect(
                 color = currentLineColor.copy(alpha = 0.5f),
                 topLeft = Offset(0f, top),
-                size = Size(size.width, height),
+                size = Size(width, height),
                 style = Stroke(width = 1f),
             )
         }
@@ -324,8 +327,8 @@ private fun DrawScope.drawSelectionRect(
     drawRect(
         color = color,
         topLeft = Offset(
-            x = rect.origin.x - renderModel.scrollX,
-            y = rect.origin.y - renderModel.scrollY,
+            x = rect.origin.x,
+            y = rect.origin.y,
         ),
         size = Size(rect.width, rect.height),
     )
@@ -334,6 +337,7 @@ private fun DrawScope.drawSelectionRect(
 private fun DrawScope.drawGuide(
     renderModel: EditorRenderModel,
     guide: GuideSegment,
+    color: Color,
 ) {
     val pathEffect = when (guide.style) {
         GuideStyle.Solid -> null
@@ -341,14 +345,14 @@ private fun DrawScope.drawGuide(
         GuideStyle.Double -> PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
     }
     drawLine(
-        color = Color(0x33000000),
+        color = color,
         start = Offset(
-            x = guide.start.x - renderModel.scrollX,
-            y = guide.start.y - renderModel.scrollY,
+            x = guide.start.x,
+            y = guide.start.y,
         ),
         end = Offset(
-            x = guide.end.x - renderModel.scrollX,
-            y = guide.end.y - renderModel.scrollY,
+            x = guide.end.x,
+            y = guide.end.y,
         ),
         strokeWidth = if (guide.direction == GuideDirection.Horizontal) 1f else 1.5f,
         pathEffect = pathEffect,
@@ -362,22 +366,41 @@ private fun DrawScope.drawDiagnostic(
     drawRect(
         color = decoration.color.toComposeColor().copy(alpha = 0.18f),
         topLeft = Offset(
-            x = decoration.origin.x - renderModel.scrollX,
-            y = decoration.origin.y - renderModel.scrollY,
+            x = decoration.origin.x,
+            y = decoration.origin.y,
         ),
         size = Size(decoration.width, decoration.height),
+    )
+}
+
+private fun DrawScope.drawCompositionDecoration(
+    renderModel: EditorRenderModel,
+    color: Color,
+) {
+    val decoration = renderModel.compositionDecoration
+    if (!decoration.active || decoration.width <= 0f || decoration.height <= 0f) {
+        return
+    }
+    val underlineY = decoration.origin.y + decoration.height - 1f
+    drawLine(
+        color = color,
+        start = Offset(decoration.origin.x, underlineY),
+        end = Offset(decoration.origin.x + decoration.width, underlineY),
+        strokeWidth = 1.5f,
     )
 }
 
 private fun DrawScope.drawLinkedEditing(
     renderModel: EditorRenderModel,
     rect: LinkedEditingRect,
+    activeColor: Color,
+    inactiveColor: Color,
 ) {
     drawRect(
-        color = if (rect.isActive) Color(0x33007AFF) else Color(0x22007AFF),
+        color = if (rect.isActive) activeColor else inactiveColor,
         topLeft = Offset(
-            x = rect.origin.x - renderModel.scrollX,
-            y = rect.origin.y - renderModel.scrollY,
+            x = rect.origin.x,
+            y = rect.origin.y,
         ),
         size = Size(rect.width, rect.height),
         style = Stroke(width = 1f),
@@ -389,53 +412,81 @@ private fun DrawScope.drawLineNumber(
     renderModel: EditorRenderModel,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     line: VisualLine,
+    theme: EditorTheme,
 ) {
-    if (!renderModel.gutterVisible) {
+    if (!renderModel.gutterVisible || line.wrapIndex != 0 || line.isPhantomLine) {
         return
     }
-    drawText(
+    val style = TextStyle(
+        color = if (line.logicalLine == renderModel.cursor.textPosition.line) {
+            theme.currentLineNumberColor.toComposeColor()
+        } else {
+            theme.lineNumberColor.toComposeColor()
+        },
+        fontFamily = theme.fontFamily,
+        fontSize = theme.lineNumberFontSize,
+    )
+    drawBaselineText(
         textMeasurer = textMeasurer,
         text = (line.logicalLine + 1).toString(),
-        topLeft = Offset(
-            x = line.lineNumberPosition.x,
-            y = line.lineNumberPosition.y - renderModel.scrollY,
-        ),
-        style = TextStyle(color = Color(0x99000000)),
+        x = line.lineNumberPosition.x,
+        baselineY = line.lineNumberPosition.y,
+        style = style,
     )
 }
 
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawRuns(
-    renderModel: EditorRenderModel,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     line: VisualLine,
+    theme: EditorTheme,
 ) {
     line.runs.forEach { run ->
         if (!run.shouldRenderText()) {
             return@forEach
         }
-        drawText(
+        drawBaselineText(
             textMeasurer = textMeasurer,
             text = run.text,
-            topLeft = Offset(
-                x = run.x - renderModel.scrollX,
-                y = run.y - renderModel.scrollY,
-            ),
-            style = run.style.toComposeTextStyle(),
+            x = run.x,
+            baselineY = run.y,
+            style = run.style.toComposeTextStyle(theme),
         )
     }
+}
+
+@OptIn(ExperimentalTextApi::class)
+private fun DrawScope.drawBaselineText(
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    text: String,
+    x: Float,
+    baselineY: Float,
+    style: TextStyle,
+) {
+    val layoutResult = textMeasurer.measure(
+        text = text,
+        style = style,
+    )
+    drawText(
+        textLayoutResult = layoutResult,
+        topLeft = Offset(
+            x = x,
+            y = baselineY - layoutResult.firstBaseline,
+        ),
+    )
 }
 
 private fun DrawScope.drawGutterIcon(
     renderModel: EditorRenderModel,
     item: GutterIconRenderItem,
+    theme: EditorTheme,
 ) {
     drawCircle(
-        color = Color(0xFF5C6BC0),
+        color = theme.inlayHintIconColor.toComposeColor(),
         radius = min(item.width, item.height) / 2f,
         center = Offset(
             x = item.origin.x + item.width / 2f,
-            y = item.origin.y - renderModel.scrollY + item.height / 2f,
+            y = item.origin.y + item.height / 2f,
         ),
     )
 }
@@ -443,13 +494,14 @@ private fun DrawScope.drawGutterIcon(
 private fun DrawScope.drawFoldMarker(
     renderModel: EditorRenderModel,
     marker: FoldMarkerRenderItem,
+    theme: EditorTheme,
 ) {
     val left = marker.origin.x
-    val top = marker.origin.y - renderModel.scrollY
+    val top = marker.origin.y
     val width = marker.width.coerceAtLeast(8f)
     val height = marker.height.coerceAtLeast(8f)
     drawRect(
-        color = Color(0x22000000),
+        color = theme.foldPlaceholderTextColor.toComposeColor().copy(alpha = 0.35f),
         topLeft = Offset(left, top),
         size = Size(width, height),
         style = Stroke(width = 1f),
@@ -460,16 +512,17 @@ private fun DrawScope.drawSelectionHandle(
     position: PointF,
     visible: Boolean,
     renderModel: EditorRenderModel,
+    color: Color,
 ) {
     if (!visible) {
         return
     }
     drawCircle(
-        color = Color(0xFF2196F3),
+        color = color,
         radius = 6f,
         center = Offset(
-            x = position.x - renderModel.scrollX,
-            y = position.y - renderModel.scrollY,
+            x = position.x,
+            y = position.y,
         ),
     )
 }
@@ -477,23 +530,28 @@ private fun DrawScope.drawSelectionHandle(
 private fun DrawScope.drawScrollbar(
     scrollbar: ScrollbarModel,
     renderModel: EditorRenderModel,
+    theme: EditorTheme,
 ) {
     if (!scrollbar.visible) {
         return
     }
     drawRect(
-        color = Color.Black.copy(alpha = scrollbar.alpha * 0.12f),
+        color = theme.scrollbarTrackColor.toComposeColor().copy(alpha = scrollbar.alpha.coerceIn(0f, 1f)),
         topLeft = Offset(
-            x = scrollbar.track.origin.x - renderModel.scrollX,
-            y = scrollbar.track.origin.y - renderModel.scrollY,
+            x = scrollbar.track.origin.x,
+            y = scrollbar.track.origin.y,
         ),
         size = Size(scrollbar.track.width, scrollbar.track.height),
     )
     drawRect(
-        color = if (scrollbar.thumbActive) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.28f),
+        color = if (scrollbar.thumbActive) {
+            theme.scrollbarThumbActiveColor.toComposeColor()
+        } else {
+            theme.scrollbarThumbColor.toComposeColor()
+        },
         topLeft = Offset(
-            x = scrollbar.thumb.origin.x - renderModel.scrollX,
-            y = scrollbar.thumb.origin.y - renderModel.scrollY,
+            x = scrollbar.thumb.origin.x,
+            y = scrollbar.thumb.origin.y,
         ),
         size = Size(scrollbar.thumb.width, scrollbar.thumb.height),
     )
@@ -501,18 +559,20 @@ private fun DrawScope.drawScrollbar(
 
 private fun VisualRun.shouldRenderText(): Boolean = text.isNotEmpty()
 
-private fun EditorTextStyle.toComposeTextStyle(): TextStyle {
+private fun EditorTextStyle.toComposeTextStyle(theme: EditorTheme): TextStyle {
     val decorations = buildList {
         if ((fontStyle and EditorTextStyle.Strikethrough) != 0) {
             add(TextDecoration.LineThrough)
         }
     }
     return TextStyle(
-        color = color.toComposeColor(),
-        background = backgroundColor.toComposeColor(),
+        color = if (color != 0) color.toComposeColor() else theme.textColor.toComposeColor(),
+        background = if (backgroundColor != 0) backgroundColor.toComposeColor() else Color.Transparent,
         fontWeight = if ((fontStyle and EditorTextStyle.Bold) != 0) FontWeight.Bold else null,
         fontStyle = if ((fontStyle and EditorTextStyle.Italic) != 0) FontStyle.Italic else null,
         textDecoration = decorations.takeIf { it.isNotEmpty() }?.reduce(TextDecoration::plus),
+        fontFamily = theme.fontFamily,
+        fontSize = theme.fontSize,
     )
 }
 
@@ -607,10 +667,10 @@ private fun EditorRenderModel.hitTest(position: Offset): EditorHitRegion {
     if (selectionEndHandle.visible && selectionEndHandle.position.containsHandle(position)) {
         return EditorHitRegion.SelectionEndHandle
     }
-    if (foldMarkers.any { it.contains(position, scrollY) }) {
+    if (foldMarkers.any { it.contains(position) }) {
         return EditorHitRegion.FoldMarker
     }
-    if (gutterIcons.any { it.contains(position, scrollY) }) {
+    if (gutterIcons.any { it.contains(position) }) {
         return EditorHitRegion.GutterIcon
     }
     return EditorHitRegion.Content
@@ -624,13 +684,13 @@ private fun PointF.containsHandle(position: Offset, radius: Float = 16f): Boolea
     position.x in (x - radius)..(x + radius) &&
         position.y in (y - radius)..(y + radius)
 
-private fun FoldMarkerRenderItem.contains(position: Offset, scrollY: Float): Boolean =
+private fun FoldMarkerRenderItem.contains(position: Offset): Boolean =
     position.x in origin.x..(origin.x + width) &&
-        position.y in (origin.y - scrollY)..(origin.y - scrollY + height)
+        position.y in origin.y..(origin.y + height)
 
-private fun GutterIconRenderItem.contains(position: Offset, scrollY: Float): Boolean =
+private fun GutterIconRenderItem.contains(position: Offset): Boolean =
     position.x in origin.x..(origin.x + width) &&
-        position.y in (origin.y - scrollY)..(origin.y - scrollY + height)
+        position.y in origin.y..(origin.y + height)
 
 private fun EditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
     if (event.type != KeyEventType.KeyDown) {
