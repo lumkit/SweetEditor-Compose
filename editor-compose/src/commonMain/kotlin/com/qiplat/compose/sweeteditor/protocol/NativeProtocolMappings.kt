@@ -71,6 +71,18 @@ internal fun Int.toGestureType(): GestureType = when (this) {
     else -> GestureType.Undefined
 }
 
+internal fun GestureType.toNativeValue(): Int = when (this) {
+    GestureType.Undefined -> 0
+    GestureType.Tap -> 1
+    GestureType.DoubleTap -> 2
+    GestureType.LongPress -> 3
+    GestureType.Scale -> 4
+    GestureType.Scroll -> 5
+    GestureType.FastScroll -> 6
+    GestureType.DragSelect -> 7
+    GestureType.ContextMenu -> 8
+}
+
 internal fun Int.toHitTargetType(): HitTargetType = when (this) {
     1 -> HitTargetType.InlayHintText
     2 -> HitTargetType.InlayHintIcon
