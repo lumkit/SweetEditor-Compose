@@ -25,11 +25,11 @@
   <table>
     <tr>
       <td align="center"><b>Android</b><br/><img src="docs/snapshot/Screenshot_Android.jpg" alt="Android screenshot" width="360"/></td>
-      <td align="center"><b>macOS</b><br/><img src="" alt="IOS screenshot" width="360"/></td>
+      <td align="center"><b>IOS screenshot</b><br/><img src="" alt="IOS screenshot" width="360"/></td>
     </tr>
     <tr>
-      <td align="center"><b>Windows (WinForms)</b><br/><img src="" alt="Desktop screenshot" width="360"/></td>
-      <td align="center"><b>Swing</b><br/><img src="" alt="Web screenshot" width="360"/></td>
+      <td align="center"><b>Desktop screenshot</b><br/><img src="" alt="Desktop screenshot" width="360"/></td>
+      <td align="center"><b>Web screenshot</b><br/><img src="" alt="Web screenshot" width="360"/></td>
     </tr>
   </table>
 </div>
@@ -40,10 +40,10 @@ SweetEditor is licensed under the [GNU Lesser General Public License v2.1 or lat
 
 ## Star History
 
-<a href="https://www.star-history.com/#lumkit/SweetEditor-Compose&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=lumkit%2FSweetEditor-Compose&type=timeline&logscale=&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lumkit/SweetEditor-Compose&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lumkit/SweetEditor-Compose&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=lumkit/SweetEditor-Compose&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=lumkit/SweetEditor-Compose&type=timeline&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=lumkit/SweetEditor-Compose&type=timeline&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=lumkit/SweetEditor-Compose&type=timeline&legend=top-left" />
  </picture>
 </a>
