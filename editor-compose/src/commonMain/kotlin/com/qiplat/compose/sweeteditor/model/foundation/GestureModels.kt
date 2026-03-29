@@ -21,6 +21,23 @@ data class GesturePoint(
     val y: Float = 0f,
 )
 
+enum class EditorGestureEventType {
+    Undefined,
+    TouchDown,
+    TouchPointerDown,
+    TouchMove,
+    TouchPointerUp,
+    TouchUp,
+    TouchCancel,
+    MouseDown,
+    MouseMove,
+    MouseUp,
+    MouseWheel,
+    MouseRightDown,
+    DirectScale,
+    DirectScroll,
+}
+
 enum class GestureType {
     Undefined,
     Tap,

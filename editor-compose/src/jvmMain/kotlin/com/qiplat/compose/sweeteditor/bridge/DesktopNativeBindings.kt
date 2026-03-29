@@ -84,7 +84,21 @@ internal object DesktopNativeBindings {
     external fun nativeGetScrollMetrics(editorHandle: Long): ByteArray?
 
     @JvmStatic
-    external fun nativeHandleGesture(editorHandle: Long, type: Int, points: FloatArray): ByteArray?
+    external fun nativeHandleGesture(
+        editorHandle: Long,
+        type: Int,
+        points: FloatArray,
+        modifiers: Int,
+        wheelDeltaX: Float,
+        wheelDeltaY: Float,
+        directScale: Float,
+    ): ByteArray?
+
+    @JvmStatic
+    external fun nativeTickAnimations(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float)
 
     @JvmStatic
     external fun nativeHandleKeyEvent(

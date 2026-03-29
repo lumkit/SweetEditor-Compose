@@ -83,6 +83,23 @@ internal fun GestureType.toNativeValue(): Int = when (this) {
     GestureType.ContextMenu -> 8
 }
 
+internal fun EditorGestureEventType.toNativeValue(): Int = when (this) {
+    EditorGestureEventType.Undefined -> 0
+    EditorGestureEventType.TouchDown -> 1
+    EditorGestureEventType.TouchPointerDown -> 2
+    EditorGestureEventType.TouchMove -> 3
+    EditorGestureEventType.TouchPointerUp -> 4
+    EditorGestureEventType.TouchUp -> 5
+    EditorGestureEventType.TouchCancel -> 6
+    EditorGestureEventType.MouseDown -> 7
+    EditorGestureEventType.MouseMove -> 8
+    EditorGestureEventType.MouseUp -> 9
+    EditorGestureEventType.MouseWheel -> 10
+    EditorGestureEventType.MouseRightDown -> 11
+    EditorGestureEventType.DirectScale -> 12
+    EditorGestureEventType.DirectScroll -> 13
+}
+
 internal fun Int.toHitTargetType(): HitTargetType = when (this) {
     1 -> HitTargetType.InlayHintText
     2 -> HitTargetType.InlayHintIcon

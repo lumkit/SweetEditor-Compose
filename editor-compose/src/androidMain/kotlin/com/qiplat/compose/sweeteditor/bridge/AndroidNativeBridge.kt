@@ -125,8 +125,30 @@ private class AndroidNativeEditorBridge(
     override fun getScrollMetrics(): ByteArray? =
         AndroidNativeBindings.nativeGetScrollMetrics(handle)
 
-    override fun handleGesture(type: Int, points: FloatArray): ByteArray? =
-        AndroidNativeBindings.nativeHandleGesture(handle, type, points)
+    override fun handleGesture(
+        type: Int,
+        points: FloatArray,
+        modifiers: Int,
+        wheelDeltaX: Float,
+        wheelDeltaY: Float,
+        directScale: Float,
+    ): ByteArray? =
+        AndroidNativeBindings.nativeHandleGesture(
+            editorHandle = handle,
+            type = type,
+            points = points,
+            modifiers = modifiers,
+            wheelDeltaX = wheelDeltaX,
+            wheelDeltaY = wheelDeltaY,
+            directScale = directScale,
+        )
+
+    override fun tickAnimations(): ByteArray? =
+        AndroidNativeBindings.nativeTickAnimations(handle)
+
+    override fun setScroll(scrollX: Float, scrollY: Float) {
+        AndroidNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
+    }
 
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? =
         AndroidNativeBindings.nativeHandleKeyEvent(handle, keyCode, text, modifiers)

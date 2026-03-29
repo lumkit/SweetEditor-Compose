@@ -59,7 +59,18 @@ internal interface NativeEditorBridge {
 
     fun getScrollMetrics(): ByteArray?
 
-    fun handleGesture(type: Int, points: FloatArray): ByteArray?
+    fun handleGesture(
+        type: Int,
+        points: FloatArray,
+        modifiers: Int = 0,
+        wheelDeltaX: Float = 0f,
+        wheelDeltaY: Float = 0f,
+        directScale: Float = 1f,
+    ): ByteArray?
+
+    fun tickAnimations(): ByteArray?
+
+    fun setScroll(scrollX: Float, scrollY: Float)
 
     fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray?
 

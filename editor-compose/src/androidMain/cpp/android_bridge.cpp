@@ -485,7 +485,11 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeHandleGes
     jclass,
     jlong editor_handle,
     jint type,
-    jfloatArray points
+    jfloatArray points,
+    jint modifiers,
+    jfloat wheel_delta_x,
+    jfloat wheel_delta_y,
+    jfloat direct_scale
 ) {
     std::vector<float> point_values;
     if (points != nullptr) {
@@ -497,14 +501,41 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeHandleGes
     }
     size_t out_size = 0;
     ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
-    const uint8_t* data = handle_editor_gesture_event(
+    const uint8_t* data = handle_editor_gesture_event_ex(
         static_cast<intptr_t>(editor_handle),
         static_cast<uint8_t>(type),
         static_cast<uint8_t>(point_values.size() / 2),
         point_values.empty() ? nullptr : point_values.data(),
+        static_cast<uint8_t>(modifiers),
+        wheel_delta_x,
+        wheel_delta_y,
+        direct_scale,
         &out_size
     );
     return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeTickAnimations(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_tick_animations(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetScroll(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jfloat scroll_x,
+    jfloat scroll_y
+) {
+    editor_set_scroll(static_cast<intptr_t>(editor_handle), scroll_x, scroll_y);
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

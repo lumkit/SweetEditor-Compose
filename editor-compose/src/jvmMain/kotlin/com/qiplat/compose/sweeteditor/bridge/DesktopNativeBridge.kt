@@ -125,8 +125,30 @@ private class DesktopNativeEditorBridge(
     override fun getScrollMetrics(): ByteArray? =
         DesktopNativeBindings.nativeGetScrollMetrics(handle)
 
-    override fun handleGesture(type: Int, points: FloatArray): ByteArray? =
-        DesktopNativeBindings.nativeHandleGesture(handle, type, points)
+    override fun handleGesture(
+        type: Int,
+        points: FloatArray,
+        modifiers: Int,
+        wheelDeltaX: Float,
+        wheelDeltaY: Float,
+        directScale: Float,
+    ): ByteArray? =
+        DesktopNativeBindings.nativeHandleGesture(
+            editorHandle = handle,
+            type = type,
+            points = points,
+            modifiers = modifiers,
+            wheelDeltaX = wheelDeltaX,
+            wheelDeltaY = wheelDeltaY,
+            directScale = directScale,
+        )
+
+    override fun tickAnimations(): ByteArray? =
+        DesktopNativeBindings.nativeTickAnimations(handle)
+
+    override fun setScroll(scrollX: Float, scrollY: Float) {
+        DesktopNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
+    }
 
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? =
         DesktopNativeBindings.nativeHandleKeyEvent(handle, keyCode, text, modifiers)
