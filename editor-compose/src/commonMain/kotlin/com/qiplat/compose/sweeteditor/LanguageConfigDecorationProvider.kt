@@ -5,6 +5,18 @@ import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageRule
 
+/**
+ * Builds syntax highlight spans from a declarative [LanguageConfiguration].
+ *
+ * This provider is a bridge layer used by the Compose demo and common decoration pipeline. It compiles
+ * language rules once per configuration and evaluates them against document lines when decorations are
+ * requested.
+ *
+ * @property fallbackConfiguration configuration used when the context does not supply one.
+ * @property id stable provider identifier.
+ * @property overscanLines additional lines requested around the visible range.
+ * @property debounceMillis debounce interval before a provider refresh starts.
+ */
 class LanguageConfigDecorationProvider(
     private val fallbackConfiguration: LanguageConfiguration? = null,
     override val id: String = "language.config.syntax",
@@ -14,6 +26,12 @@ class LanguageConfigDecorationProvider(
     private var lastConfiguration: LanguageConfiguration? = null
     private var compiledConfiguration: CompiledLanguageConfiguration? = null
 
+    /**
+     * Produces syntax spans for the requested line range.
+     *
+     * @param context decoration request context describing document, viewport, and language state.
+     * @return replace-range update containing syntax spans, or null when no language configuration is active.
+     */
     override suspend fun provide(context: DecorationProviderContext): DecorationUpdate? {
         val configuration = context.languageConfiguration ?: fallbackConfiguration ?: return null
         val compiled = compileConfiguration(configuration)
@@ -47,6 +65,12 @@ class LanguageConfigDecorationProvider(
         )
     }
 
+    /**
+     * Compiles the active language configuration and reuses the previous compilation when possible.
+     *
+     * @param configuration language configuration to compile.
+     * @return compiled rule graph used by the tokenizer.
+     */
     private fun compileConfiguration(configuration: LanguageConfiguration): CompiledLanguageConfiguration {
         if (configuration == lastConfiguration && compiledConfiguration != null) {
             return compiledConfiguration!!
@@ -62,10 +86,21 @@ class LanguageConfigDecorationProvider(
     }
 }
 
+/**
+ * Converts declarative language rules into executable regex rules.
+ *
+ * @property configuration source language configuration.
+ * @property resolvedVariables expanded variable values used during pattern compilation.
+ */
 private class LanguageRuleCompiler(
     private val configuration: LanguageConfiguration,
     private val resolvedVariables: Map<String, String>,
 ) {
+    /**
+     * Compiles all states defined by the language configuration.
+     *
+     * @return compiled language configuration ready for tokenization.
+     */
     fun compile(): CompiledLanguageConfiguration {
         val states = configuration.states.mapValues { (stateName, rules) ->
             compileState(stateName, rules)
@@ -76,6 +111,13 @@ private class LanguageRuleCompiler(
         )
     }
 
+    /**
+     * Compiles one named state.
+     *
+     * @param stateName state name being compiled.
+     * @param rules declarative rules belonging to the state.
+     * @return compiled state definition.
+     */
     private fun compileState(
         stateName: String,
         rules: List<LanguageRule>,
@@ -88,6 +130,13 @@ private class LanguageRuleCompiler(
         )
     }
 
+    /**
+     * Expands fragment references and compiles inline rules.
+     *
+     * @param rules rules to expand.
+     * @param visitedFragments fragment set used to break include cycles.
+     * @return compiled rule list.
+     */
     private fun expandRules(
         rules: List<LanguageRule>,
         visitedFragments: MutableSet<String>,
@@ -126,6 +175,12 @@ private class LanguageRuleCompiler(
         }
     }
 
+    /**
+     * Compiles one declarative language rule into an executable regex rule.
+     *
+     * @param rule declarative rule definition.
+     * @return compiled regex rule.
+     */
     private fun compileRule(rule: LanguageRule): CompiledRule {
         val resolvedPattern = resolveTemplate(rule.pattern.orEmpty(), resolvedVariables)
         return CompiledRule(
@@ -140,17 +195,26 @@ private class LanguageRuleCompiler(
     }
 }
 
+/**
+ * Executable language configuration produced by [LanguageRuleCompiler].
+ */
 private data class CompiledLanguageConfiguration(
     val states: Map<String, CompiledState>,
     val defaultStateName: String,
 )
 
+/**
+ * Executable state definition used during line tokenization.
+ */
 private data class CompiledState(
     val name: String,
     val tokenRules: List<CompiledRule>,
     val lineEndState: String?,
 )
 
+/**
+ * Executable regex rule used during line tokenization.
+ */
 private data class CompiledRule(
     val regex: Regex,
     val styleId: Int?,
@@ -159,11 +223,22 @@ private data class CompiledRule(
     val subStates: List<Pair<Int, String>>,
 )
 
+/**
+ * Result of tokenizing one line.
+ */
 private data class LineTokenizeResult(
     val spans: List<StyleSpan>,
     val endState: String,
 )
 
+/**
+ * Tokenizes one logical line using the compiled language state machine.
+ *
+ * @param lineText raw line text.
+ * @param initialState state entering the line.
+ * @param compiled compiled language configuration.
+ * @return line tokenization result containing spans and the outgoing state.
+ */
 private fun tokenizeLine(
     lineText: String,
     initialState: String,
@@ -202,11 +277,22 @@ private fun tokenizeLine(
     )
 }
 
+/**
+ * Bundles one matched rule with the produced regex match object.
+ */
 private data class RuleMatch(
     val rule: CompiledRule,
     val match: MatchResult,
 )
 
+/**
+ * Finds the first rule that matches exactly at the supplied cursor.
+ *
+ * @param state compiled state definition.
+ * @param lineText source line text.
+ * @param cursor current scan cursor.
+ * @return matched rule and match result, or null when no rule matches at the cursor.
+ */
 private fun matchRule(
     state: CompiledState,
     lineText: String,
@@ -221,6 +307,14 @@ private fun matchRule(
     return null
 }
 
+/**
+ * Converts one regex match into editor style spans.
+ *
+ * @param rule compiled rule that owns the match.
+ * @param match regex match object.
+ * @param offset column offset applied to produced spans.
+ * @param output mutable span list receiving generated spans.
+ */
 private fun appendStyles(
     rule: CompiledRule,
     match: MatchResult,
@@ -245,6 +339,14 @@ private fun appendStyles(
     }
 }
 
+/**
+ * Expands `${variable}` placeholders inside one regex fragment.
+ *
+ * @param pattern source pattern that may contain placeholders.
+ * @param variables available variable values keyed by variable name.
+ * @param visited recursion guard used to avoid cyclic substitutions.
+ * @return expanded regex fragment.
+ */
 private fun resolveTemplate(
     pattern: String,
     variables: Map<String, String>,
@@ -264,6 +366,13 @@ private fun resolveTemplate(
     }
 }
 
+/**
+ * Resolves a named style to a concrete style id.
+ *
+ * @param configuration active language configuration.
+ * @param styleName style name defined by a language rule.
+ * @return resolved style id, or null when the style cannot be resolved.
+ */
 private fun resolveStyleId(
     configuration: LanguageConfiguration,
     styleName: String,

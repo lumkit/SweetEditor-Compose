@@ -18,12 +18,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
@@ -31,11 +28,30 @@ import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorState
 import com.qiplat.compose.sweeteditor.runtime.InstallDecorationProviders
 import com.qiplat.compose.sweeteditor.theme.EditorTheme
+import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.min
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
+/**
+ * Renders the Compose editor surface backed by [EditorController] and [EditorState].
+ *
+ * This composable is responsible only for UI integration: input dispatch, IME installation,
+ * render-model drawing, and side-effect orchestration. All editing logic stays inside the native
+ * editor kernel and the controller layer.
+ *
+ * @param state editor state observed by the UI.
+ * @param controller controller used to send commands and bridge events to the native kernel.
+ * @param modifier Compose modifier applied to the editor canvas.
+ * @param theme theme used for colors, fonts, and text styles.
+ * @param settings high-level editor settings applied through the controller.
+ * @param decorationProviders provider list used to compute additional editor decorations.
+ * @param onGestureResult callback invoked after a gesture result is produced.
+ * @param onHitTarget callback invoked when the gesture result reports a concrete hit target.
+ * @param onContextMenuRequest callback invoked when a context menu gesture is detected.
+ * @param onSelectionHandleDragStateChange callback invoked when selection handle drag state changes.
+ */
 fun SweetEditor(
     state: EditorState,
     controller: EditorController,
@@ -50,14 +66,14 @@ fun SweetEditor(
 ) {
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
-    val textMeasurer = rememberTextMeasurer()
-    val platformScale = state.lastGestureResult.viewScale
-        .takeIf { it > 0f }
-        ?: state.scrollMetrics.scale.takeIf { it > 0f }
-        ?: 1f
-    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: platformScale
+    val textMeasurer = rememberTextMeasurer(cacheSize = 256)
+    val renderModel = state.renderModel
+    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: 1f
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
+    }
+    val drawCache = remember(scaledTheme) {
+        EditorDrawCache(scaledTheme)
     }
     var isFocused by remember { mutableStateOf(false) }
 
@@ -70,82 +86,17 @@ fun SweetEditor(
         }
     }
 
-    LaunchedEffect(controller, state.document) {
-        if (state.document != null) {
-            controller.syncPlatformScale(platformScale)
-        }
-    }
-
-    LaunchedEffect(controller, platformScale) {
-        if (state.document != null) {
-            controller.syncPlatformScale(platformScale)
-        }
-    }
-
-    LaunchedEffect(controller, state.document, theme) {
-        if (state.document != null) {
-            controller.applyTheme(theme)
-        }
-    }
-
-    LaunchedEffect(controller, state.document, settings) {
-        if (state.document != null) {
-            controller.applySettings(settings)
-        }
-    }
-
-    InstallDecorationProviders(
-        controller = controller,
+    SweetEditorEffects(
         state = state,
-        providers = decorationProviders,
+        controller = controller,
+        theme = theme,
+        settings = settings,
+        decorationProviders = decorationProviders,
+        onGestureResult = onGestureResult,
+        onHitTarget = onHitTarget,
+        onContextMenuRequest = onContextMenuRequest,
+        onSelectionHandleDragStateChange = onSelectionHandleDragStateChange,
     )
-
-    LaunchedEffect(controller, theme.fontFamily, theme.fontSize, theme.lineNumberFontSize, theme.inlayHintFontSize, platformScale) {
-        if (state.document != null) {
-            controller.syncPlatformScale(platformScale)
-        }
-    }
-
-    LaunchedEffect(controller, state.lastGestureResult.needsAnimation) {
-        while (state.lastGestureResult.needsAnimation) {
-            withFrameNanos {
-                controller.tickAnimations()
-            }
-        }
-    }
-
-    LaunchedEffect(state.lastGestureResult) {
-        val result = state.lastGestureResult
-        if (result.type != GestureType.Undefined) {
-            onGestureResult(result)
-        }
-        if (result.hitTarget.type != HitTargetType.None) {
-            onHitTarget(result.hitTarget)
-        }
-        if (result.type == GestureType.ContextMenu) {
-            onContextMenuRequest(
-                EditorContextMenuRequest(
-                    gestureResult = result,
-                ),
-            )
-        }
-    }
-
-    LaunchedEffect(
-        state.lastGestureResult.isHandleDrag,
-        state.renderModel?.selectionStartHandle,
-        state.renderModel?.selectionEndHandle,
-    ) {
-        val renderModel = state.renderModel ?: return@LaunchedEffect
-        onSelectionHandleDragStateChange(
-            EditorSelectionHandleDragState(
-                active = state.lastGestureResult.isHandleDrag,
-                gestureResult = state.lastGestureResult,
-                startHandle = renderModel.selectionStartHandle,
-                endHandle = renderModel.selectionEndHandle,
-            ),
-        )
-    }
 
     val platformImeModifier = InstallPlatformImeSession(
         controller = controller,
@@ -265,17 +216,156 @@ fun SweetEditor(
             },
     ) {
         drawEditorSurface(
-            renderModel = state.renderModel,
+            renderModel = renderModel,
             textMeasurer = textMeasurer,
+            drawCache = drawCache,
             theme = scaledTheme,
         )
     }
 }
 
+@Composable
+/**
+ * Hosts side effects that should not force the main canvas composition to observe every editor signal.
+ *
+ * @param state editor state observed by effect handlers.
+ * @param controller controller used to execute deferred refresh and bridge operations.
+ * @param theme theme snapshot used when theme-dependent bridge state changes.
+ * @param settings settings snapshot applied to the controller.
+ * @param decorationProviders provider list installed into the decoration manager.
+ * @param onGestureResult latest gesture callback.
+ * @param onHitTarget latest hit-target callback.
+ * @param onContextMenuRequest latest context-menu callback.
+ * @param onSelectionHandleDragStateChange latest selection-handle callback.
+ */
+private fun SweetEditorEffects(
+    state: EditorState,
+    controller: EditorController,
+    theme: EditorTheme,
+    settings: EditorSettings,
+    decorationProviders: List<DecorationProvider>,
+    onGestureResult: (GestureResult) -> Unit,
+    onHitTarget: (HitTarget) -> Unit,
+    onContextMenuRequest: (EditorContextMenuRequest) -> Unit,
+    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit,
+) {
+    val currentOnGestureResult by rememberUpdatedState(onGestureResult)
+    val currentOnHitTarget by rememberUpdatedState(onHitTarget)
+    val currentOnContextMenuRequest by rememberUpdatedState(onContextMenuRequest)
+    val currentOnSelectionHandleDragStateChange by rememberUpdatedState(onSelectionHandleDragStateChange)
+
+    val document = state.document
+    val lastGestureResult = state.lastGestureResult
+    val renderModel = state.renderModel
+    val scrollMetrics = state.scrollMetrics
+    val platformScale = lastGestureResult.viewScale
+        .takeIf { it > 0f }
+        ?: scrollMetrics.scale.takeIf { it > 0f }
+        ?: 1f
+
+    LaunchedEffect(controller, state) {
+        snapshotFlow {
+            Triple(
+                state.renderModelRequestVersion,
+                state.scrollMetricsRequestVersion,
+                state.isRenderModelDirty || state.isScrollMetricsDirty,
+            )
+        }.collectLatest { (_, _, dirty) ->
+            if (!dirty) {
+                return@collectLatest
+            }
+            withFrameNanos {
+                controller.refreshNow()
+            }
+        }
+    }
+
+    LaunchedEffect(
+        controller,
+        document,
+        theme.fontFamily,
+        theme.fontSize,
+        theme.lineNumberFontSize,
+        theme.inlayHintFontSize,
+        platformScale,
+    ) {
+        if (document != null) {
+            controller.syncPlatformScale(platformScale)
+        }
+    }
+
+    LaunchedEffect(controller, document, theme) {
+        if (document != null) {
+            controller.applyTheme(theme)
+        }
+    }
+
+    LaunchedEffect(controller, document, settings) {
+        if (document != null) {
+            controller.applySettings(settings)
+        }
+    }
+
+    InstallDecorationProviders(
+        controller = controller,
+        state = state,
+        providers = decorationProviders,
+    )
+
+    LaunchedEffect(controller, lastGestureResult.needsAnimation) {
+        while (state.lastGestureResult.needsAnimation) {
+            withFrameNanos {
+                controller.tickAnimations()
+            }
+        }
+    }
+
+    LaunchedEffect(lastGestureResult) {
+        if (lastGestureResult.type != GestureType.Undefined) {
+            currentOnGestureResult(lastGestureResult)
+        }
+        if (lastGestureResult.hitTarget.type != HitTargetType.None) {
+            currentOnHitTarget(lastGestureResult.hitTarget)
+        }
+        if (lastGestureResult.type == GestureType.ContextMenu) {
+            currentOnContextMenuRequest(
+                EditorContextMenuRequest(
+                    gestureResult = lastGestureResult,
+                ),
+            )
+        }
+    }
+
+    LaunchedEffect(
+        lastGestureResult.isHandleDrag,
+        renderModel?.selectionStartHandle,
+        renderModel?.selectionEndHandle,
+    ) {
+        val currentRenderModel = renderModel ?: return@LaunchedEffect
+        currentOnSelectionHandleDragStateChange(
+            EditorSelectionHandleDragState(
+                active = lastGestureResult.isHandleDrag,
+                gestureResult = lastGestureResult,
+                startHandle = currentRenderModel.selectionStartHandle,
+                endHandle = currentRenderModel.selectionEndHandle,
+            ),
+        )
+    }
+}
+
 @OptIn(ExperimentalTextApi::class)
+/**
+ * Draws the full editor frame from the native render model.
+ *
+ * @param renderModel render model returned by the native kernel, or null before the first refresh.
+ * @param textMeasurer Compose text measurer used for drawing runs and line numbers.
+ * @param drawCache cache used to reuse text styles, path effects, and layout results.
+ * @param theme fully scaled editor theme used for the current frame.
+ */
 private fun DrawScope.drawEditorSurface(
     renderModel: EditorRenderModel?,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    drawCache: EditorDrawCache,
     theme: EditorTheme,
 ) {
     if (renderModel == null) {
@@ -300,7 +390,7 @@ private fun DrawScope.drawEditorSurface(
     }
 
     renderModel.guideSegments.forEach { guide ->
-        drawGuide(renderModel, guide, theme.guideColor.toComposeColor())
+        drawGuide(renderModel, guide, theme.guideColor.toComposeColor(), drawCache)
     }
 
     renderModel.diagnosticDecorations.forEach { decoration ->
@@ -339,7 +429,7 @@ private fun DrawScope.drawEditorSurface(
     }
 
     renderModel.lines.forEach { line ->
-        drawRuns(textMeasurer, line, theme)
+        drawRuns(textMeasurer, line, theme, drawCache)
     }
 
     drawSelectionHandle(
@@ -368,7 +458,7 @@ private fun DrawScope.drawEditorSurface(
 
     drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
     renderModel.lines.forEach { line ->
-        drawLineNumber(renderModel, textMeasurer, line, theme)
+        drawLineNumber(renderModel, textMeasurer, line, drawCache)
     }
 
     renderModel.gutterIcons.forEach { item ->
@@ -460,11 +550,12 @@ private fun DrawScope.drawGuide(
     renderModel: EditorRenderModel,
     guide: GuideSegment,
     color: Color,
+    drawCache: EditorDrawCache,
 ) {
     val pathEffect = when (guide.style) {
         GuideStyle.Solid -> null
-        GuideStyle.Dashed -> PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
-        GuideStyle.Double -> PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
+        GuideStyle.Dashed -> drawCache.dashedGuidePathEffect
+        GuideStyle.Double -> drawCache.doubleGuidePathEffect
     }
     drawLine(
         color = color,
@@ -534,26 +625,20 @@ private fun DrawScope.drawLineNumber(
     renderModel: EditorRenderModel,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     line: VisualLine,
-    theme: EditorTheme,
+    drawCache: EditorDrawCache,
 ) {
     if (!renderModel.gutterVisible || line.wrapIndex != 0 || line.isPhantomLine) {
         return
     }
-    val style = TextStyle(
-        color = if (line.logicalLine == renderModel.cursor.textPosition.line) {
-            theme.currentLineNumberColor.toComposeColor()
-        } else {
-            theme.lineNumberColor.toComposeColor()
-        },
-        fontFamily = theme.fontFamily,
-        fontSize = theme.lineNumberFontSize,
-    )
     drawBaselineText(
         textMeasurer = textMeasurer,
+        drawCache = drawCache,
         text = (line.logicalLine + 1).toString(),
         x = line.lineNumberPosition.x,
         baselineY = line.lineNumberPosition.y,
-        style = style,
+        style = drawCache.lineNumberStyle(
+            active = line.logicalLine == renderModel.cursor.textPosition.line,
+        ),
     )
 }
 
@@ -562,6 +647,7 @@ private fun DrawScope.drawRuns(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     line: VisualLine,
     theme: EditorTheme,
+    drawCache: EditorDrawCache,
 ) {
     line.runs.forEach { run ->
         if (!run.shouldRenderText()) {
@@ -569,10 +655,11 @@ private fun DrawScope.drawRuns(
         }
         drawBaselineText(
             textMeasurer = textMeasurer,
+            drawCache = drawCache,
             text = run.text,
             x = run.x,
             baselineY = run.y,
-            style = run.style.toComposeTextStyle(theme),
+            style = drawCache.runTextStyle(run.style),
         )
     }
 }
@@ -580,15 +667,13 @@ private fun DrawScope.drawRuns(
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawBaselineText(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    drawCache: EditorDrawCache,
     text: String,
     x: Float,
     baselineY: Float,
     style: TextStyle,
 ) {
-    val layoutResult = textMeasurer.measure(
-        text = text,
-        style = style,
-    )
+    val layoutResult = drawCache.measureText(textMeasurer, text, style)
     drawText(
         textLayoutResult = layoutResult,
         topLeft = Offset(
@@ -680,6 +765,91 @@ private fun DrawScope.drawScrollbar(
 }
 
 private fun VisualRun.shouldRenderText(): Boolean = text.isNotEmpty()
+
+/**
+ * Caches drawing artifacts that are expensive to rebuild on every frame.
+ *
+ * @property theme scaled theme snapshot used to create Compose text styles.
+ */
+private class EditorDrawCache(
+    private val theme: EditorTheme,
+) {
+    private val runTextStyles = mutableMapOf<EditorTextStyle, TextStyle>()
+    private val lineNumberTextStyles = mutableMapOf<Boolean, TextStyle>()
+    private val textLayouts = object : LinkedHashMap<TextLayoutCacheKey, TextLayoutResult>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextLayoutCacheKey, TextLayoutResult>?): Boolean =
+            size > 256
+    }
+
+    val dashedGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+    val doubleGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
+
+    /**
+     * Returns a cached Compose text style for one editor text style.
+     *
+     * @param style editor text style produced by the native render model.
+     * @return cached Compose text style.
+     */
+    fun runTextStyle(style: EditorTextStyle): TextStyle =
+        runTextStyles.getOrPut(style) {
+            style.toComposeTextStyle(theme)
+        }
+
+    /**
+     * Returns a cached line number style.
+     *
+     * @param active true when the line number belongs to the current logical line.
+     * @return cached Compose text style for the line number.
+     */
+    fun lineNumberStyle(active: Boolean): TextStyle =
+        lineNumberTextStyles.getOrPut(active) {
+            TextStyle(
+                color = if (active) {
+                    theme.currentLineNumberColor.toComposeColor()
+                } else {
+                    theme.lineNumberColor.toComposeColor()
+                },
+                fontFamily = theme.fontFamily,
+                fontSize = theme.lineNumberFontSize,
+            )
+        }
+
+    /**
+     * Measures text with a bounded cache to avoid repeated layout work.
+     *
+     * @param textMeasurer Compose text measurer.
+     * @param text raw text to measure.
+     * @param style Compose text style used for measurement.
+     * @return measured text layout result.
+     */
+    fun measureText(
+        textMeasurer: androidx.compose.ui.text.TextMeasurer,
+        text: String,
+        style: TextStyle,
+    ): TextLayoutResult {
+        if (text.length > 256) {
+            return textMeasurer.measure(
+                text = text,
+                style = style,
+            )
+        }
+        val key = TextLayoutCacheKey(text = text, style = style)
+        return textLayouts.getOrPut(key) {
+            textMeasurer.measure(
+                text = text,
+                style = style,
+            )
+        }
+    }
+}
+
+/**
+ * Cache key used by [EditorDrawCache] for measured text layouts.
+ */
+private data class TextLayoutCacheKey(
+    val text: String,
+    val style: TextStyle,
+)
 
 private fun EditorTextStyle.toComposeTextStyle(theme: EditorTheme): TextStyle {
     val decorations = buildList {

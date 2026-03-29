@@ -6,7 +6,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.model.decoration.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun InstallDecorationProviders(
@@ -20,6 +22,7 @@ internal fun InstallDecorationProviders(
     val scrollMetrics = state.scrollMetrics
     val lastEditResult = state.lastEditResult
     val languageConfiguration = state.languageConfiguration
+    val decorationRequestVersion = state.decorationRequestVersion
     val providerIds = providers.map { it.id }
     val visibleLineRange = remember(renderModel, document) {
         document?.let { computeVisibleLineRange(renderModel, it) }
@@ -44,6 +47,7 @@ internal fun InstallDecorationProviders(
             controller,
             document,
             provider.id,
+            decorationRequestVersion,
             visibleLineRange,
             scrollMetrics.scrollX,
             scrollMetrics.scrollY,
@@ -66,18 +70,20 @@ internal fun InstallDecorationProviders(
             if (provider.debounceMillis > 0) {
                 delay(provider.debounceMillis)
             }
-            val update = provider.provide(
-                DecorationProviderContext(
-                    document = currentDocument,
-                    visibleLineRange = currentVisibleRange,
-                    requestedLineRange = requestedLineRange,
-                    renderModel = renderModel,
-                    scrollMetrics = scrollMetrics,
-                    lastEditResult = lastEditResult,
-                    languageConfiguration = languageConfiguration,
-                ),
+            val context = DecorationProviderContext(
+                document = currentDocument,
+                visibleLineRange = currentVisibleRange,
+                requestedLineRange = requestedLineRange,
+                renderModel = renderModel,
+                scrollMetrics = scrollMetrics,
+                lastEditResult = lastEditResult,
+                languageConfiguration = languageConfiguration,
             )
+            val update = withContext(Dispatchers.Default) {
+                provider.provide(context)
+            }
             manager.commit(provider.id, generation, update)?.let(controller::applyDecorationBatch)
+            state.isDecorationDirty = false
         }
     }
 }

@@ -70,7 +70,7 @@ fun App() {
         val decorationProviders = remember {
             listOf(
                 LanguageConfigDecorationProvider(),
-                ExampleDiagnosticsDecorationProvider(),
+//                ExampleDiagnosticsDecorationProvider(),
             )
         }
         val editorSettings = remember(wrapEnabled, readOnly, compositionEnabled) {
@@ -109,7 +109,6 @@ fun App() {
                 }
                 LoadedExampleSample(
                     spec = spec,
-                    content = Res.readBytes(spec.samplePath).decodeToString(),
                     configuration = configuration,
                 )
             }
@@ -117,8 +116,9 @@ fun App() {
 
         LaunchedEffect(editorController, activeSample) {
             val sample = activeSample ?: return@LaunchedEffect
+            val sampleText = Res.readBytes(sample.spec.samplePath).decodeToString()
             editorController.setLanguageConfiguration(sample.configuration)
-            editorController.loadText(sample.content)
+            editorController.loadText(sampleText)
             editorController.setShowSplitLine(true)
             editorController.onFontMetricsChanged()
         }
@@ -209,7 +209,8 @@ fun App() {
                                     .fillMaxWidth()
                                     .background(IntelliJSurface)
                                     .border(width = 1.dp, color = IntelliJBorder)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -312,8 +313,6 @@ fun App() {
     }
 }
 
-private fun Int.toComposeColor() = Color(this)
-
 private fun Float.toReadableScale(): String =
     ((this * 100).roundToInt() / 100f).toString()
 
@@ -403,7 +402,6 @@ private data class ExampleSampleSpec(
 
 private data class LoadedExampleSample(
     val spec: ExampleSampleSpec,
-    val content: String,
     val configuration: LanguageConfiguration,
 )
 
