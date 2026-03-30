@@ -54,6 +54,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        consumerProguardFiles("proguard-rules.pro")
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -71,7 +72,8 @@ android {
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
+            proguardFiles("proguard-rules.pro")
         }
     }
     compileOptions {
