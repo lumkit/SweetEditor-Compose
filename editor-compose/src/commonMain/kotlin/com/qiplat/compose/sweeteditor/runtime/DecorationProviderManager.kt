@@ -49,8 +49,6 @@ internal fun InstallDecorationProviders(
             provider.id,
             decorationRequestVersion,
             visibleLineRange,
-            scrollMetrics.scrollX,
-            scrollMetrics.scrollY,
             scrollMetrics.viewportWidth,
             scrollMetrics.viewportHeight,
             lastEditResult,

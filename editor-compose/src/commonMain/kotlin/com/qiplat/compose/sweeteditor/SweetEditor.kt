@@ -316,6 +316,7 @@ private fun SweetEditorEffects(
         while (state.lastGestureResult.needsAnimation) {
             withFrameNanos {
                 controller.tickAnimations()
+                controller.refreshNow()
             }
         }
     }
@@ -376,6 +377,11 @@ private fun DrawScope.drawEditorSurface(
         )
         return
     }
+    val viewportBounds = ViewportBounds(
+        width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width,
+        height = renderModel.viewportHeight.takeIf { it > 0f } ?: size.height,
+    )
+    val estimatedLineHeight = renderModel.cursor.height.takeIf { it > 0f } ?: 20f
 
     drawRect(
         color = theme.backgroundColor.toComposeColor(),
@@ -386,50 +392,71 @@ private fun DrawScope.drawEditorSurface(
     drawCurrentLine(renderModel, theme.currentLineColor.toComposeColor())
 
     renderModel.selectionRects.forEach { rect ->
-        drawSelectionRect(renderModel, rect, theme.selectionColor.toComposeColor())
+        if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
+            drawSelectionRect(renderModel, rect, theme.selectionColor.toComposeColor())
+        }
     }
 
     renderModel.guideSegments.forEach { guide ->
-        drawGuide(renderModel, guide, theme.guideColor.toComposeColor(), drawCache)
+        if (viewportBounds.intersectsGuide(guide)) {
+            drawGuide(renderModel, guide, theme.guideColor.toComposeColor(), drawCache)
+        }
     }
 
     renderModel.diagnosticDecorations.forEach { decoration ->
-        drawDiagnostic(renderModel, decoration)
+        if (viewportBounds.intersects(decoration.origin.x, decoration.origin.y, decoration.width, decoration.height)) {
+            drawDiagnostic(renderModel, decoration)
+        }
     }
 
-    drawCompositionDecoration(renderModel, theme.compositionUnderlineColor.toComposeColor())
+    if (
+        viewportBounds.intersects(
+            renderModel.compositionDecoration.origin.x,
+            renderModel.compositionDecoration.origin.y,
+            renderModel.compositionDecoration.width,
+            renderModel.compositionDecoration.height,
+        )
+    ) {
+        drawCompositionDecoration(renderModel, theme.compositionUnderlineColor.toComposeColor())
+    }
 
     renderModel.linkedEditingRects.forEach { rect ->
-        drawLinkedEditing(
-            renderModel = renderModel,
-            rect = rect,
-            activeColor = theme.linkedEditingActiveColor.toComposeColor(),
-            inactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
-        )
+        if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
+            drawLinkedEditing(
+                renderModel = renderModel,
+                rect = rect,
+                activeColor = theme.linkedEditingActiveColor.toComposeColor(),
+                inactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
+            )
+        }
     }
 
     renderModel.bracketHighlightRects.forEach { rect ->
-        drawRect(
-            color = theme.bracketHighlightBackgroundColor.toComposeColor(),
-            topLeft = Offset(
-                x = rect.origin.x,
-                y = rect.origin.y,
-            ),
-            size = Size(rect.width, rect.height),
-        )
-        drawRect(
-            color = theme.bracketHighlightBorderColor.toComposeColor(),
-            topLeft = Offset(
-                x = rect.origin.x,
-                y = rect.origin.y,
-            ),
-            size = Size(rect.width, rect.height),
-            style = Stroke(width = 1f),
-        )
+        if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
+            drawRect(
+                color = theme.bracketHighlightBackgroundColor.toComposeColor(),
+                topLeft = Offset(
+                    x = rect.origin.x,
+                    y = rect.origin.y,
+                ),
+                size = Size(rect.width, rect.height),
+            )
+            drawRect(
+                color = theme.bracketHighlightBorderColor.toComposeColor(),
+                topLeft = Offset(
+                    x = rect.origin.x,
+                    y = rect.origin.y,
+                ),
+                size = Size(rect.width, rect.height),
+                style = Stroke(width = 1f),
+            )
+        }
     }
 
     renderModel.lines.forEach { line ->
-        drawRuns(textMeasurer, line, theme, drawCache)
+        if (viewportBounds.intersectsLine(line, estimatedLineHeight)) {
+            drawRuns(textMeasurer, line, theme, drawCache, viewportBounds, estimatedLineHeight)
+        }
     }
 
     drawSelectionHandle(
@@ -458,15 +485,21 @@ private fun DrawScope.drawEditorSurface(
 
     drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
     renderModel.lines.forEach { line ->
-        drawLineNumber(renderModel, textMeasurer, line, drawCache)
+        if (viewportBounds.intersectsLine(line, estimatedLineHeight)) {
+            drawLineNumber(renderModel, textMeasurer, line, drawCache, viewportBounds, estimatedLineHeight)
+        }
     }
 
     renderModel.gutterIcons.forEach { item ->
-        drawGutterIcon(renderModel, item, theme)
+        if (viewportBounds.intersects(item.origin.x, item.origin.y, item.width, item.height)) {
+            drawGutterIcon(renderModel, item, theme)
+        }
     }
 
     renderModel.foldMarkers.forEach { marker ->
-        drawFoldMarker(renderModel, marker, theme)
+        if (viewportBounds.intersects(marker.origin.x, marker.origin.y, marker.width, marker.height)) {
+            drawFoldMarker(renderModel, marker, theme)
+        }
     }
 
     drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
@@ -626,8 +659,13 @@ private fun DrawScope.drawLineNumber(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     line: VisualLine,
     drawCache: EditorDrawCache,
+    viewportBounds: ViewportBounds,
+    estimatedLineHeight: Float,
 ) {
     if (!renderModel.gutterVisible || line.wrapIndex != 0 || line.isPhantomLine) {
+        return
+    }
+    if (!viewportBounds.intersectsLine(line, estimatedLineHeight)) {
         return
     }
     drawBaselineText(
@@ -648,9 +686,14 @@ private fun DrawScope.drawRuns(
     line: VisualLine,
     theme: EditorTheme,
     drawCache: EditorDrawCache,
+    viewportBounds: ViewportBounds,
+    estimatedLineHeight: Float,
 ) {
     line.runs.forEach { run ->
         if (!run.shouldRenderText()) {
+            return@forEach
+        }
+        if (!viewportBounds.intersectsRun(run, estimatedLineHeight)) {
             return@forEach
         }
         drawBaselineText(
@@ -766,6 +809,52 @@ private fun DrawScope.drawScrollbar(
 
 private fun VisualRun.shouldRenderText(): Boolean = text.isNotEmpty()
 
+private data class ViewportBounds(
+    val width: Float,
+    val height: Float,
+) {
+    fun intersects(
+        x: Float,
+        y: Float,
+        itemWidth: Float,
+        itemHeight: Float,
+    ): Boolean {
+        if (itemWidth <= 0f || itemHeight <= 0f) {
+            return false
+        }
+        val right = x + itemWidth
+        val bottom = y + itemHeight
+        return right >= 0f && bottom >= 0f && x <= width && y <= height
+    }
+
+    fun intersectsGuide(guide: GuideSegment): Boolean {
+        val left = minOf(guide.start.x, guide.end.x)
+        val top = minOf(guide.start.y, guide.end.y)
+        val rectWidth = kotlin.math.abs(guide.end.x - guide.start.x).coerceAtLeast(1f)
+        val rectHeight = kotlin.math.abs(guide.end.y - guide.start.y).coerceAtLeast(1f)
+        return intersects(left, top, rectWidth, rectHeight)
+    }
+
+    fun intersectsLine(line: VisualLine, estimatedLineHeight: Float): Boolean {
+        val baseline = line.firstBaseline()
+        val top = baseline - estimatedLineHeight
+        return top <= height && baseline + estimatedLineHeight * 0.5f >= 0f
+    }
+
+    fun intersectsRun(run: VisualRun, estimatedLineHeight: Float): Boolean {
+        val runWidth = run.width.takeIf { it > 0f } ?: (run.text.length * estimatedLineHeight * 0.5f)
+        return intersects(
+            x = run.x,
+            y = run.y - estimatedLineHeight,
+            itemWidth = runWidth,
+            itemHeight = estimatedLineHeight * 1.5f,
+        )
+    }
+}
+
+private fun VisualLine.firstBaseline(): Float =
+    runs.firstOrNull()?.y ?: lineNumberPosition.y
+
 /**
  * Caches drawing artifacts that are expensive to rebuild on every frame.
  *
@@ -776,10 +865,7 @@ private class EditorDrawCache(
 ) {
     private val runTextStyles = mutableMapOf<EditorTextStyle, TextStyle>()
     private val lineNumberTextStyles = mutableMapOf<Boolean, TextStyle>()
-    private val textLayouts = object : LinkedHashMap<TextLayoutCacheKey, TextLayoutResult>(128, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextLayoutCacheKey, TextLayoutResult>?): Boolean =
-            size > 256
-    }
+    private val textLayouts = SimpleLruCache<TextLayoutCacheKey, TextLayoutResult>(maxSize = 256)
 
     val dashedGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
     val doubleGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
@@ -834,11 +920,38 @@ private class EditorDrawCache(
             )
         }
         val key = TextLayoutCacheKey(text = text, style = style)
-        return textLayouts.getOrPut(key) {
-            textMeasurer.measure(
-                text = text,
-                style = style,
-            )
+        textLayouts[key]?.let { return it }
+        return textMeasurer.measure(
+            text = text,
+            style = style,
+        ).also { layoutResult ->
+            textLayouts[key] = layoutResult
+        }
+    }
+}
+
+private class SimpleLruCache<K, V>(
+    private val maxSize: Int,
+) {
+    private val values = mutableMapOf<K, V>()
+    private val accessOrder = ArrayDeque<K>()
+
+    operator fun get(key: K): V? {
+        val value = values[key] ?: return null
+        accessOrder.remove(key)
+        accessOrder.addLast(key)
+        return value
+    }
+
+    operator fun set(key: K, value: V) {
+        if (values.containsKey(key)) {
+            accessOrder.remove(key)
+        }
+        values[key] = value
+        accessOrder.addLast(key)
+        while (values.size > maxSize) {
+            val eldestKey = accessOrder.removeFirstOrNull() ?: break
+            values.remove(eldestKey)
         }
     }
 }
@@ -939,7 +1052,7 @@ private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculate
     }
 }
 
-private fun androidx.compose.ui.input.pointer.PointerEvent.toNativeModifiers(): Int {
+private fun PointerEvent.toNativeModifiers(): Int {
     var value = 0
     if (keyboardModifiers.isShiftPressed) {
         value = value or 1
