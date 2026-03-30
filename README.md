@@ -40,7 +40,7 @@ SweetEditor is licensed under the [GNU Lesser General Public License v2.1 or lat
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=lumkit%2FSweetEditor-Compose&type=timeline&logscale=&legend=top-left">
+<a href="https://www.star-history.com/?repos=lumkit%2FSweetEditor-Compose&type=timeline&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=lumkit/SweetEditor-Compose&type=timeline&theme=dark&legend=top-left" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=lumkit/SweetEditor-Compose&type=timeline&legend=top-left" />
