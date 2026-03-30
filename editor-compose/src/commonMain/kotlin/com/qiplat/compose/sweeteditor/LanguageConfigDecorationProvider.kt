@@ -1,6 +1,8 @@
 package com.qiplat.compose.sweeteditor
 
 import com.qiplat.compose.sweeteditor.model.decoration.StyleSpan
+import com.qiplat.compose.sweeteditor.model.foundation.TextEditResult
+import com.qiplat.compose.sweeteditor.runtime.EditorDocument
 import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageRule
@@ -25,6 +27,7 @@ class LanguageConfigDecorationProvider(
 ) : DecorationProvider {
     private var lastConfiguration: LanguageConfiguration? = null
     private var compiledConfiguration: CompiledLanguageConfiguration? = null
+    private var session: LanguageAnalysisSession? = null
 
     /**
      * Produces syntax spans for the requested line range.
@@ -38,23 +41,96 @@ class LanguageConfigDecorationProvider(
         if (compiled.states.isEmpty()) {
             return null
         }
-        val endLine = context.requestedLineRange.last.coerceAtMost(context.document.getLineCount() - 1)
-        if (endLine < 0) {
+        val lineCount = context.document.getLineCount()
+        if (lineCount <= 0) {
             return null
         }
+        val startLine = context.requestedLineRange.first.coerceAtLeast(0).coerceAtMost(lineCount - 1)
+        val endLine = context.requestedLineRange.last.coerceAtLeast(startLine).coerceAtMost(lineCount - 1)
+        val activeSession = getOrCreateSession(
+            documentIdentity = context.document.hashCode(),
+            configuration = configuration,
+            compiled = compiled,
+            lineCount = lineCount,
+        )
+        activeSession.markInvalidated(context.lastEditResult)
+        val invalidatedStartLine = activeSession.invalidatedStartLine
+        val analysisStartLine = when {
+            invalidatedStartLine == null -> (startLine - STATE_LOOKBACK_LINES).coerceAtLeast(0)
+            invalidatedStartLine <= startLine -> invalidatedStartLine.coerceAtLeast(0)
+            else -> (startLine - STATE_LOOKBACK_LINES).coerceAtLeast(0)
+        }
+        val seedState = when {
+            analysisStartLine == 0 -> compiled.defaultStateName
+            else -> activeSession.lineResults.getOrNull(analysisStartLine - 1)?.takeIf {
+                it.textHash == context.document.getLineText(analysisStartLine - 1).hashCode()
+            }?.outputState ?: compiled.defaultStateName
+        }
         val syntaxSpans = linkedMapOf<Int, List<StyleSpan>>()
-        var currentState = compiled.defaultStateName
-        for (line in 0..endLine) {
+        var currentState = seedState
+        var line = analysisStartLine
+        while (line <= endLine) {
             val lineText = context.document.getLineText(line)
-            val result = tokenizeLine(
-                lineText = lineText,
-                initialState = currentState,
-                compiled = compiled,
-            )
-            currentState = result.endState
-            if (line in context.requestedLineRange && result.spans.isNotEmpty()) {
-                syntaxSpans[line] = result.spans
+            val textHash = lineText.hashCode()
+            val cached = activeSession.lineResults.getOrNull(line)
+            val inputState = currentState
+            val result = if (
+                cached != null &&
+                cached.textHash == textHash &&
+                cached.inputState == inputState
+            ) {
+                LineTokenizeResult(
+                    spans = cached.spans,
+                    endState = cached.outputState,
+                )
+            } else {
+                tokenizeLine(
+                    lineText = lineText,
+                    initialState = currentState,
+                    compiled = compiled,
+                ).also { analysis ->
+                    activeSession.lineResults[line] = CachedLineAnalysis(
+                        inputState = inputState,
+                        outputState = analysis.endState,
+                        textHash = textHash,
+                        spans = analysis.spans,
+                    )
+                }
             }
+            currentState = result.endState
+            if (line in startLine..endLine) {
+                if (result.spans.isNotEmpty()) {
+                    syntaxSpans[line] = result.spans
+                } else {
+                    syntaxSpans.remove(line)
+                }
+            }
+            if (
+                invalidatedStartLine != null &&
+                line >= invalidatedStartLine &&
+                cached != null &&
+                cached.textHash == textHash &&
+                cached.inputState == inputState &&
+                cached.outputState == result.endState &&
+                cached.spans == result.spans
+            ) {
+                activeSession.invalidatedStartLine = null
+                val reuseResult = activeSession.tryReuseCachedRange(
+                    document = context.document,
+                    startLine = line + 1,
+                    endLine = endLine,
+                    requestedRange = startLine..endLine,
+                    initialState = currentState,
+                    syntaxSpans = syntaxSpans,
+                )
+                currentState = reuseResult.finalState
+                if (reuseResult.nextLine > endLine) {
+                    break
+                }
+                line = reuseResult.nextLine
+                continue
+            }
+            line++
         }
         return DecorationUpdate(
             decorations = DecorationSet(
@@ -63,6 +139,31 @@ class LanguageConfigDecorationProvider(
             applyMode = DecorationApplyMode.ReplaceRange,
             lineRange = context.requestedLineRange,
         )
+    }
+
+    private fun getOrCreateSession(
+        documentIdentity: Int,
+        configuration: LanguageConfiguration,
+        compiled: CompiledLanguageConfiguration,
+        lineCount: Int,
+    ): LanguageAnalysisSession {
+        val current = session
+        if (
+            current != null &&
+            current.documentIdentity == documentIdentity &&
+            current.configuration == configuration &&
+            current.lineResults.size == lineCount
+        ) {
+            return current
+        }
+        return LanguageAnalysisSession(
+            documentIdentity = documentIdentity,
+            configuration = configuration,
+            lineResults = MutableList(lineCount) { null },
+        ).also {
+            it.invalidatedStartLine = 0
+            session = it
+        }
     }
 
     /**
@@ -223,6 +324,69 @@ private data class CompiledRule(
     val subStates: List<Pair<Int, String>>,
 )
 
+private data class LanguageAnalysisSession(
+    val documentIdentity: Int,
+    val configuration: LanguageConfiguration,
+    val lineResults: MutableList<CachedLineAnalysis?>,
+) {
+    var invalidatedStartLine: Int? = 0
+
+    fun markInvalidated(editResult: TextEditResult) {
+        if (!editResult.changed) {
+            return
+        }
+        val earliestChangedLine = editResult.changes.minOfOrNull { it.range.start.line } ?: return
+        invalidatedStartLine = invalidatedStartLine
+            ?.let { minOf(it, earliestChangedLine) }
+            ?: earliestChangedLine
+    }
+
+    fun tryReuseCachedRange(
+        document: EditorDocument,
+        startLine: Int,
+        endLine: Int,
+        requestedRange: IntRange,
+        initialState: String,
+        syntaxSpans: MutableMap<Int, List<StyleSpan>>,
+    ): CacheReuseResult {
+        var line = startLine
+        var currentState = initialState
+        while (line <= endLine) {
+            val cached = lineResults.getOrNull(line) ?: break
+            val lineText = document.getLineText(line)
+            val textHash = lineText.hashCode()
+            if (cached.textHash != textHash || cached.inputState != currentState) {
+                break
+            }
+            currentState = cached.outputState
+            if (line in requestedRange) {
+                if (cached.spans.isNotEmpty()) {
+                    syntaxSpans[line] = cached.spans
+                } else {
+                    syntaxSpans.remove(line)
+                }
+            }
+            line++
+        }
+        return CacheReuseResult(
+            nextLine = line,
+            finalState = currentState,
+        )
+    }
+}
+
+private data class CachedLineAnalysis(
+    val inputState: String,
+    val outputState: String,
+    val textHash: Int,
+    val spans: List<StyleSpan>,
+)
+
+private data class CacheReuseResult(
+    val nextLine: Int,
+    val finalState: String,
+)
+
 /**
  * Result of tokenizing one line.
  */
@@ -245,36 +409,60 @@ private fun tokenizeLine(
     compiled: CompiledLanguageConfiguration,
 ): LineTokenizeResult {
     val spans = mutableListOf<StyleSpan>()
-    var currentState = initialState.ifBlank { compiled.defaultStateName }
-    var cursor = 0
-    while (cursor < lineText.length) {
+    val effectiveInitialState = initialState.ifBlank { compiled.defaultStateName }
+    val endState = tokenizeRange(
+        lineText = lineText,
+        start = 0,
+        endExclusive = lineText.length,
+        initialState = effectiveInitialState,
+        compiled = compiled,
+        output = spans,
+        offset = 0,
+    )
+    return LineTokenizeResult(
+        spans = spans.sortedWith(compareBy(StyleSpan::column, StyleSpan::length)),
+        endState = compiled.states[endState]?.lineEndState ?: endState,
+    )
+}
+
+private fun tokenizeRange(
+    lineText: String,
+    start: Int,
+    endExclusive: Int,
+    initialState: String,
+    compiled: CompiledLanguageConfiguration,
+    output: MutableList<StyleSpan>,
+    offset: Int,
+): String {
+    var currentState = initialState
+    var cursor = start
+    while (cursor < endExclusive) {
         val state = compiled.states[currentState] ?: compiled.states[compiled.defaultStateName] ?: break
-        val matchResult = matchRule(state, lineText, cursor)
+        val matchResult = matchRule(state, lineText, cursor, endExclusive)
         if (matchResult == null) {
             cursor++
             continue
         }
         val matchLength = (matchResult.match.range.last - matchResult.match.range.first + 1).coerceAtLeast(0)
-        appendStyles(matchResult.rule, matchResult.match, 0, spans)
+        appendStyles(matchResult.rule, matchResult.match, lineText, offset, output)
         matchResult.rule.subStates.forEach { (group, nextState) ->
-            val groupRange = matchResult.match.groups[group]?.range ?: return@forEach
-            val nestedText = lineText.substring(groupRange.first, groupRange.last + 1)
-            val nestedResult = tokenizeLine(nestedText, nextState, compiled)
-            nestedResult.spans.forEach { nestedSpan ->
-                spans += nestedSpan.copy(column = nestedSpan.column + groupRange.first)
-            }
+            val groupRange = findGroupRange(matchResult.match, lineText, group) ?: return@forEach
+            tokenizeRange(
+                lineText = lineText,
+                start = groupRange.first,
+                endExclusive = groupRange.last + 1,
+                initialState = nextState,
+                compiled = compiled,
+                output = output,
+                offset = offset,
+            )
         }
         if (matchResult.rule.nextState != null) {
             currentState = matchResult.rule.nextState
         }
         cursor += if (matchLength == 0) 1 else matchLength
     }
-    val effectiveState = compiled.states[currentState]?.lineEndState ?: currentState
-    return LineTokenizeResult(
-        spans = spans
-            .sortedWith(compareBy(StyleSpan::column, StyleSpan::length)),
-        endState = effectiveState,
-    )
+    return currentState
 }
 
 /**
@@ -297,10 +485,11 @@ private fun matchRule(
     state: CompiledState,
     lineText: String,
     cursor: Int,
+    endExclusive: Int,
 ): RuleMatch? {
     state.tokenRules.forEach { rule ->
         val match = rule.regex.find(lineText, cursor) ?: return@forEach
-        if (match.range.first == cursor) {
+        if (match.range.first == cursor && match.range.last < endExclusive) {
             return RuleMatch(rule = rule, match = match)
         }
     }
@@ -318,6 +507,7 @@ private fun matchRule(
 private fun appendStyles(
     rule: CompiledRule,
     match: MatchResult,
+    lineText: String,
     offset: Int,
     output: MutableList<StyleSpan>,
 ) {
@@ -330,13 +520,36 @@ private fun appendStyles(
         )
     }
     rule.styleTargets.forEach { (group, styleId) ->
-        val groupRange = match.groups[group]?.range ?: return@forEach
+        val groupRange = findGroupRange(match, lineText, group) ?: return@forEach
         output += StyleSpan(
             column = groupRange.first + offset,
             length = groupRange.last - groupRange.first + 1,
             styleId = styleId,
         )
     }
+}
+
+private fun findGroupRange(
+    match: MatchResult,
+    lineText: String,
+    groupIndex: Int,
+): IntRange? {
+    val groupValue = match.groups[groupIndex]?.value ?: return null
+    if (groupValue.isEmpty()) {
+        return null
+    }
+    val start = lineText.indexOf(
+        string = groupValue,
+        startIndex = match.range.first,
+    )
+    if (start < match.range.first) {
+        return null
+    }
+    val end = start + groupValue.length - 1
+    if (end > match.range.last) {
+        return null
+    }
+    return start..end
 }
 
 /**
@@ -379,3 +592,4 @@ private fun resolveStyleId(
 ): Int? = configuration.highlightStyleIds[styleName] ?: EditorThemeStyleIds.resolve(styleName)
 
 private const val DEFAULT_LANGUAGE_STATE = "default"
+private const val STATE_LOOKBACK_LINES = 128
