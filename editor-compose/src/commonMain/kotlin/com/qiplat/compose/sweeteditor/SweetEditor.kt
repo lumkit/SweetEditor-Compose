@@ -1,17 +1,25 @@
 package com.qiplat.compose.sweeteditor
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -26,14 +34,14 @@ import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.runtime.EditorTextMeasurer
 import com.qiplat.compose.sweeteditor.runtime.InstallDecorationProviders
 import com.qiplat.compose.sweeteditor.theme.EditorTheme
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.PI
 import kotlin.math.min
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
 
-@OptIn(ExperimentalTextApi::class)
-@Composable
 /**
  * Renders the Compose editor surface backed by [EditorController] and [EditorState].
  *
@@ -52,6 +60,8 @@ import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextSt
  * @param onContextMenuRequest callback invoked when a context menu gesture is detected.
  * @param onSelectionHandleDragStateChange callback invoked when selection handle drag state changes.
  */
+@OptIn(ExperimentalTextApi::class)
+@Composable
 fun SweetEditor(
     state: EditorState,
     controller: EditorController,
@@ -74,6 +84,49 @@ fun SweetEditor(
     }
     val drawCache = remember(scaledTheme) {
         EditorDrawCache(scaledTheme)
+    }
+    val iconPainter = remember(controller) {
+        EditorGutterIconPainter(controller)
+    }
+    val cursorTarget = renderModel?.cursor
+    var lastCursorTextPosition by remember { mutableStateOf<TextPosition?>(null) }
+    val shouldAnimateCursorMove = cursorTarget?.textPosition != null &&
+        lastCursorTextPosition != null &&
+        cursorTarget.textPosition != lastCursorTextPosition
+    val animatedCursorX by animateFloatAsState(
+        targetValue = cursorTarget?.position?.x ?: 0f,
+        animationSpec = if (shouldAnimateCursorMove) {
+            tween(
+                durationMillis = 90,
+                easing = FastOutSlowInEasing,
+            )
+        } else {
+            snap()
+        },
+        label = "sweet_editor_cursor_x",
+    )
+    val animatedCursorY by animateFloatAsState(
+        targetValue = cursorTarget?.position?.y ?: 0f,
+        animationSpec = if (shouldAnimateCursorMove) {
+            tween(
+                durationMillis = 90,
+                easing = FastOutSlowInEasing,
+            )
+        } else {
+            snap()
+        },
+        label = "sweet_editor_cursor_y",
+    )
+    val animatedCursor = remember(cursorTarget, animatedCursorX, animatedCursorY) {
+        AnimatedCursorRenderState(
+            x = animatedCursorX,
+            y = animatedCursorY,
+            height = cursorTarget?.height ?: 0f,
+            visible = cursorTarget?.visible == true,
+        )
+    }
+    SideEffect {
+        lastCursorTextPosition = cursorTarget?.textPosition
     }
     var isFocused by remember { mutableStateOf(false) }
 
@@ -219,12 +272,13 @@ fun SweetEditor(
             renderModel = renderModel,
             textMeasurer = textMeasurer,
             drawCache = drawCache,
+            iconPainter = iconPainter,
+            animatedCursor = animatedCursor,
             theme = scaledTheme,
         )
     }
 }
 
-@Composable
 /**
  * Hosts side effects that should not force the main canvas composition to observe every editor signal.
  *
@@ -238,6 +292,7 @@ fun SweetEditor(
  * @param onContextMenuRequest latest context-menu callback.
  * @param onSelectionHandleDragStateChange latest selection-handle callback.
  */
+@Composable
 private fun SweetEditorEffects(
     state: EditorState,
     controller: EditorController,
@@ -355,18 +410,12 @@ private fun SweetEditorEffects(
 }
 
 @OptIn(ExperimentalTextApi::class)
-/**
- * Draws the full editor frame from the native render model.
- *
- * @param renderModel render model returned by the native kernel, or null before the first refresh.
- * @param textMeasurer Compose text measurer used for drawing runs and line numbers.
- * @param drawCache cache used to reuse text styles, path effects, and layout results.
- * @param theme fully scaled editor theme used for the current frame.
- */
 private fun DrawScope.drawEditorSurface(
     renderModel: EditorRenderModel?,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textMeasurer: TextMeasurer,
     drawCache: EditorDrawCache,
+    iconPainter: EditorGutterIconPainter,
+    animatedCursor: AnimatedCursorRenderState,
     theme: EditorTheme,
 ) {
     if (renderModel == null) {
@@ -383,29 +432,37 @@ private fun DrawScope.drawEditorSurface(
     )
     val estimatedLineHeight = renderModel.cursor.height.takeIf { it > 0f } ?: 20f
 
+    val cornerRadius: Float = density * theme.cornerRadius + .5f
+
     drawRect(
         color = theme.backgroundColor.toComposeColor(),
         topLeft = Offset.Zero,
         size = size,
     )
-    drawSplitLine(renderModel, theme.splitLineColor.toComposeColor())
-    drawCurrentLine(renderModel, theme.currentLineColor.toComposeColor())
+    drawCurrentLine(
+        renderModel = renderModel,
+        fillColor = theme.currentLineColor.toComposeColor(),
+        borderColor = currentLineBorderColor(theme),
+        left = 0f,
+        width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width,
+    )
 
-    renderModel.selectionRects.forEach { rect ->
-        if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
-            drawSelectionRect(renderModel, rect, theme.selectionColor.toComposeColor())
-        }
+    val visibleSelectionRects = renderModel.selectionRects.filter { rect ->
+        viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)
+    }
+    if (visibleSelectionRects.isNotEmpty()) {
+        drawSelectionRects(visibleSelectionRects, theme.selectionColor.toComposeColor(), cornerRadius)
     }
 
     renderModel.guideSegments.forEach { guide ->
         if (viewportBounds.intersectsGuide(guide)) {
-            drawGuide(renderModel, guide, theme.guideColor.toComposeColor(), drawCache)
+            drawGuide(guide, theme, drawCache)
         }
     }
 
     renderModel.diagnosticDecorations.forEach { decoration ->
         if (viewportBounds.intersects(decoration.origin.x, decoration.origin.y, decoration.width, decoration.height)) {
-            drawDiagnostic(renderModel, decoration)
+            drawDiagnostic(decoration)
         }
     }
 
@@ -423,7 +480,6 @@ private fun DrawScope.drawEditorSurface(
     renderModel.linkedEditingRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
             drawLinkedEditing(
-                renderModel = renderModel,
                 rect = rect,
                 activeColor = theme.linkedEditingActiveColor.toComposeColor(),
                 inactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
@@ -433,15 +489,16 @@ private fun DrawScope.drawEditorSurface(
 
     renderModel.bracketHighlightRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
-            drawRect(
+            drawRoundRect(
                 color = theme.bracketHighlightBackgroundColor.toComposeColor(),
                 topLeft = Offset(
                     x = rect.origin.x,
                     y = rect.origin.y,
                 ),
                 size = Size(rect.width, rect.height),
+                cornerRadius = CornerRadius(cornerRadius),
             )
-            drawRect(
+            drawRoundRect(
                 color = theme.bracketHighlightBorderColor.toComposeColor(),
                 topLeft = Offset(
                     x = rect.origin.x,
@@ -449,6 +506,7 @@ private fun DrawScope.drawEditorSurface(
                 ),
                 size = Size(rect.width, rect.height),
                 style = Stroke(width = 1f),
+                cornerRadius = CornerRadius(cornerRadius),
             )
         }
     }
@@ -459,76 +517,93 @@ private fun DrawScope.drawEditorSurface(
         }
     }
 
-    drawSelectionHandle(
-        position = renderModel.selectionStartHandle.position,
-        visible = renderModel.selectionStartHandle.visible,
+    drawCursor(
+        theme = theme,
+        cornerRadius = cornerRadius,
+        animatedCursor = animatedCursor,
         renderModel = renderModel,
-        color = theme.cursorColor.toComposeColor(),
-    )
-    drawSelectionHandle(
-        position = renderModel.selectionEndHandle.position,
-        visible = renderModel.selectionEndHandle.visible,
-        renderModel = renderModel,
-        color = theme.cursorColor.toComposeColor(),
     )
 
-    if (renderModel.cursor.visible) {
-        drawRect(
-            color = theme.cursorColor.toComposeColor(),
-            topLeft = Offset(
-                x = renderModel.cursor.position.x,
-                y = renderModel.cursor.position.y,
-            ),
-            size = Size(2f, renderModel.cursor.height.coerceAtLeast(1f)),
-        )
-    }
-
-    drawGutterBackground(renderModel, theme.gutterBackgroundColor.toComposeColor())
+    drawGutterBackground(
+        renderModel = renderModel,
+        gutterBackgroundColor = theme.gutterBackgroundColor.toComposeColor(),
+        currentLineColor = theme.currentLineColor.toComposeColor(),
+        currentLineBorderColor = currentLineBorderColor(theme),
+        splitLineColor = theme.splitLineColor.toComposeColor(),
+    )
     renderModel.lines.forEach { line ->
         if (viewportBounds.intersectsLine(line, estimatedLineHeight)) {
             drawLineNumber(renderModel, textMeasurer, line, drawCache, viewportBounds, estimatedLineHeight)
         }
     }
 
+    val activeLineColor = currentLineAccentColor(theme)
     renderModel.gutterIcons.forEach { item ->
         if (viewportBounds.intersects(item.origin.x, item.origin.y, item.width, item.height)) {
-            drawGutterIcon(renderModel, item, theme)
+            drawGutterIcon(
+                item = item,
+                painter = iconPainter,
+                tint = if (item.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else theme.inlayHintIconColor.toComposeColor(),
+            )
         }
     }
 
     renderModel.foldMarkers.forEach { marker ->
         if (viewportBounds.intersects(marker.origin.x, marker.origin.y, marker.width, marker.height)) {
-            drawFoldMarker(renderModel, marker, theme)
+            drawFoldMarker(
+                marker = marker,
+                color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else theme.lineNumberColor.toComposeColor(),
+            )
         }
     }
 
     drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
     drawScrollbar(renderModel.horizontalScrollbar, renderModel, theme)
+
+    drawSelectionHandle(
+        alignment = Alignment.Start,
+        position = renderModel.selectionStartHandle.position,
+        handleHeight = renderModel.selectionStartHandle.height,
+        visible = renderModel.selectionStartHandle.visible,
+        color = theme.cursorColor.toComposeColor(),
+    )
+    drawSelectionHandle(
+        alignment = Alignment.End,
+        position = renderModel.selectionEndHandle.position,
+        handleHeight = renderModel.selectionEndHandle.height,
+        visible = renderModel.selectionEndHandle.visible,
+        color = theme.cursorColor.toComposeColor(),
+    )
 }
 
 private fun DrawScope.drawGutterBackground(
     renderModel: EditorRenderModel,
     gutterBackgroundColor: Color,
+    currentLineColor: Color,
+    currentLineBorderColor: Color,
+    splitLineColor: Color,
 ) {
     if (!renderModel.gutterVisible) {
         return
     }
+    val gutterWidth = renderModel.splitX.coerceAtLeast(0f)
     drawRect(
         color = gutterBackgroundColor,
         topLeft = Offset.Zero,
-        size = Size(renderModel.splitX.coerceAtLeast(0f), size.height),
+        size = Size(gutterWidth, size.height),
     )
-}
-
-private fun DrawScope.drawSplitLine(
-    renderModel: EditorRenderModel,
-    color: Color,
-) {
+    drawCurrentLine(
+        renderModel = renderModel,
+        fillColor = currentLineColor,
+        borderColor = currentLineBorderColor,
+        left = 0f,
+        width = gutterWidth,
+    )
     if (!renderModel.splitLineVisible) {
         return
     }
     drawLine(
-        color = color,
+        color = splitLineColor,
         start = Offset(renderModel.splitX, 0f),
         end = Offset(renderModel.splitX, size.height),
         strokeWidth = 1f,
@@ -537,24 +612,26 @@ private fun DrawScope.drawSplitLine(
 
 private fun DrawScope.drawCurrentLine(
     renderModel: EditorRenderModel,
-    currentLineColor: Color,
+    fillColor: Color,
+    borderColor: Color,
+    left: Float,
+    width: Float,
 ) {
     val top = renderModel.currentLine.y
     val height = renderModel.cursor.height.takeIf { it > 0f } ?: 20f
-    val width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width
     when (renderModel.currentLineRenderMode) {
         CurrentLineRenderMode.Background -> {
             drawRect(
-                color = currentLineColor,
-                topLeft = Offset(0f, top),
+                color = fillColor,
+                topLeft = Offset(left, top),
                 size = Size(width, height),
             )
         }
 
         CurrentLineRenderMode.Border -> {
             drawRect(
-                color = currentLineColor.copy(alpha = 0.5f),
-                topLeft = Offset(0f, top),
+                color = borderColor,
+                topLeft = Offset(left, top),
                 size = Size(width, height),
                 style = Stroke(width = 1f),
             )
@@ -564,59 +641,119 @@ private fun DrawScope.drawCurrentLine(
     }
 }
 
-private fun DrawScope.drawSelectionRect(
-    renderModel: EditorRenderModel,
-    rect: SelectionRect,
+private fun DrawScope.drawSelectionRects(
+    rects: List<SelectionRect>,
     color: Color,
+    cornerRadius: Float,
 ) {
-    drawRect(
-        color = color,
-        topLeft = Offset(
-            x = rect.origin.x,
-            y = rect.origin.y,
-        ),
-        size = Size(rect.width, rect.height),
-    )
+    val bands = mergeSelectionBands(rects)
+    val clusters = buildSelectionClusters(bands)
+    clusters.forEach { cluster ->
+        if (cluster.size == 1) {
+            val band = cluster.first()
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(band.left, band.top),
+                size = Size(band.right - band.left, band.bottom - band.top),
+                cornerRadius = CornerRadius(cornerRadius),
+            )
+        } else {
+            drawPath(
+                path = buildRoundedSelectionPath(cluster, cornerRadius),
+                color = color,
+            )
+        }
+    }
 }
 
 private fun DrawScope.drawGuide(
-    renderModel: EditorRenderModel,
     guide: GuideSegment,
-    color: Color,
+    theme: EditorTheme,
     drawCache: EditorDrawCache,
 ) {
+    val color = if (guide.type == GuideType.Separator) {
+        theme.separatorLineColor.toComposeColor()
+    } else {
+        theme.guideColor.toComposeColor()
+    }
     val pathEffect = when (guide.style) {
         GuideStyle.Solid -> null
         GuideStyle.Dashed -> drawCache.dashedGuidePathEffect
         GuideStyle.Double -> drawCache.doubleGuidePathEffect
     }
+    val strokeWidth = if (guide.type == GuideType.Indent) 1f else 1.2f
+    val start = Offset(guide.start.x, guide.start.y)
+    val end = Offset(guide.end.x, guide.end.y)
+    if (guide.arrowEnd) {
+        val arrowTrim = 8f
+        val dx = end.x - start.x
+        val dy = end.y - start.y
+        val length = kotlin.math.sqrt(dx * dx + dy * dy)
+        val lineEnd = if (length > arrowTrim) {
+            val ratio = (length - arrowTrim) / length
+            Offset(start.x + dx * ratio, start.y + dy * ratio)
+        } else {
+            end
+        }
+        drawLine(
+            color = color,
+            start = start,
+            end = lineEnd,
+            strokeWidth = strokeWidth,
+            pathEffect = pathEffect,
+        )
+        drawArrowHead(color = color, from = start, to = end, arrowLength = 9f)
+        return
+    }
     drawLine(
         color = color,
-        start = Offset(
-            x = guide.start.x,
-            y = guide.start.y,
-        ),
-        end = Offset(
-            x = guide.end.x,
-            y = guide.end.y,
-        ),
-        strokeWidth = if (guide.direction == GuideDirection.Horizontal) 1f else 1.5f,
+        start = start,
+        end = end,
+        strokeWidth = strokeWidth,
         pathEffect = pathEffect,
     )
 }
 
 private fun DrawScope.drawDiagnostic(
-    renderModel: EditorRenderModel,
     decoration: DiagnosticDecoration,
 ) {
-    drawRect(
-        color = decoration.color.toComposeColor().copy(alpha = 0.18f),
-        topLeft = Offset(
-            x = decoration.origin.x,
-            y = decoration.origin.y,
-        ),
-        size = Size(decoration.width, decoration.height),
-    )
+    val color = decoration.color.toComposeColor()
+    val startX = decoration.origin.x
+    val endX = startX + decoration.width
+    val baseY = decoration.origin.y + decoration.height - 1f
+    if (decoration.severity == 3) {
+        drawLine(
+            color = color,
+            start = Offset(startX, baseY),
+            end = Offset(endX, baseY),
+            strokeWidth = 2f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 2f)),
+        )
+        return
+    }
+    val halfWave = 7f
+    val amplitude = 3.5f
+    var x = startX
+    var step = 0
+    while (x < endX) {
+        val nextX = minOf(x + halfWave, endX)
+        val midX = (x + nextX) / 2f
+        val peakY = if (step % 2 == 0) baseY - amplitude else baseY + amplitude
+        drawLine(
+            color = color,
+            start = Offset(x, baseY),
+            end = Offset(midX, peakY),
+            strokeWidth = 2f,
+        )
+        drawLine(
+            color = color,
+            start = Offset(midX, peakY),
+            end = Offset(nextX, baseY),
+            strokeWidth = 2f,
+        )
+        x = nextX
+        step++
+    }
 }
 
 private fun DrawScope.drawCompositionDecoration(
@@ -637,11 +774,17 @@ private fun DrawScope.drawCompositionDecoration(
 }
 
 private fun DrawScope.drawLinkedEditing(
-    renderModel: EditorRenderModel,
     rect: LinkedEditingRect,
     activeColor: Color,
     inactiveColor: Color,
 ) {
+    if (rect.isActive) {
+        drawRect(
+            color = activeColor.copy(alpha = 32f / 255f),
+            topLeft = Offset(rect.origin.x, rect.origin.y),
+            size = Size(rect.width, rect.height),
+        )
+    }
     drawRect(
         color = if (rect.isActive) activeColor else inactiveColor,
         topLeft = Offset(
@@ -649,14 +792,14 @@ private fun DrawScope.drawLinkedEditing(
             y = rect.origin.y,
         ),
         size = Size(rect.width, rect.height),
-        style = Stroke(width = 1f),
+        style = Stroke(width = if (rect.isActive) 2f else 1f),
     )
 }
 
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawLineNumber(
     renderModel: EditorRenderModel,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textMeasurer: TextMeasurer,
     line: VisualLine,
     drawCache: EditorDrawCache,
     viewportBounds: ViewportBounds,
@@ -676,13 +819,15 @@ private fun DrawScope.drawLineNumber(
         baselineY = line.lineNumberPosition.y,
         style = drawCache.lineNumberStyle(
             active = line.logicalLine == renderModel.cursor.textPosition.line,
+            baselineY = line.lineNumberPosition.y,
+            estimatedLineHeight = estimatedLineHeight,
         ),
     )
 }
 
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawRuns(
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textMeasurer: TextMeasurer,
     line: VisualLine,
     theme: EditorTheme,
     drawCache: EditorDrawCache,
@@ -696,20 +841,67 @@ private fun DrawScope.drawRuns(
         if (!viewportBounds.intersectsRun(run, estimatedLineHeight)) {
             return@forEach
         }
+        drawRunBackground(run, theme, estimatedLineHeight)
         drawBaselineText(
             textMeasurer = textMeasurer,
             drawCache = drawCache,
             text = run.text,
-            x = run.x,
+            x = runTextX(run),
             baselineY = run.y,
-            style = drawCache.runTextStyle(run.style),
+            style = drawCache.runTextStyle(run.style, run.type, theme),
         )
+    }
+}
+
+private fun DrawScope.drawRunBackground(
+    run: VisualRun,
+    theme: EditorTheme,
+    estimatedLineHeight: Float,
+) {
+    val top = run.y - estimatedLineHeight * 0.8f
+    val height = estimatedLineHeight
+    when (run.type) {
+        VisualRunType.FoldPlaceholder -> {
+            val margin = run.margin
+            val left = run.x + margin
+            val width = (run.width - margin * 2f).coerceAtLeast(0f)
+            val radius = height * 0.2f
+            drawRoundRect(
+                color = theme.foldPlaceholderBackgroundColor.toComposeColor(),
+                topLeft = Offset(left, top),
+                size = Size(width, height),
+                cornerRadius = CornerRadius(radius, radius),
+            )
+        }
+
+        VisualRunType.InlayHint -> {
+            if (run.colorValue != 0) {
+                drawRect(
+                    color = run.colorValue.toComposeColor(),
+                    topLeft = Offset(run.x + run.margin, top),
+                    size = Size(height, height),
+                )
+            } else {
+                val margin = run.margin
+                val left = run.x + margin
+                val width = (run.width - margin * 2f).coerceAtLeast(0f)
+                val radius = height * 0.2f
+                drawRoundRect(
+                    color = theme.inlayHintBackgroundColor.toComposeColor(),
+                    topLeft = Offset(left, top),
+                    size = Size(width, height),
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+            }
+        }
+
+        else -> Unit
     }
 }
 
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawBaselineText(
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textMeasurer: TextMeasurer,
     drawCache: EditorDrawCache,
     text: String,
     x: Float,
@@ -727,54 +919,181 @@ private fun DrawScope.drawBaselineText(
 }
 
 private fun DrawScope.drawGutterIcon(
-    renderModel: EditorRenderModel,
     item: GutterIconRenderItem,
-    theme: EditorTheme,
+    painter: EditorGutterIconPainter,
+    tint: Color,
 ) {
-    drawCircle(
-        color = theme.inlayHintIconColor.toComposeColor(),
-        radius = min(item.width, item.height) / 2f,
-        center = Offset(
-            x = item.origin.x + item.width / 2f,
-            y = item.origin.y + item.height / 2f,
-        ),
+    painter.paint(
+        drawScope = this,
+        iconId = item.iconId,
+        origin = item.origin,
+        width = item.width,
+        height = item.height,
+        tint = tint,
     )
 }
 
 private fun DrawScope.drawFoldMarker(
-    renderModel: EditorRenderModel,
     marker: FoldMarkerRenderItem,
-    theme: EditorTheme,
+    color: Color,
 ) {
-    val left = marker.origin.x
-    val top = marker.origin.y
-    val width = marker.width.coerceAtLeast(8f)
-    val height = marker.height.coerceAtLeast(8f)
-    drawRect(
-        color = theme.foldPlaceholderTextColor.toComposeColor().copy(alpha = 0.35f),
-        topLeft = Offset(left, top),
-        size = Size(width, height),
-        style = Stroke(width = 1f),
-    )
+    if (marker.foldState == FoldState.None) {
+        return
+    }
+    val centerX = marker.origin.x + marker.width * 0.5f
+    val centerY = marker.origin.y + marker.height * 0.5f
+    val halfSize = min(marker.width, marker.height).coerceAtLeast(8f) * 0.28f
+    val strokeWidth = (marker.height * 0.1f).coerceAtLeast(1f)
+    if (marker.foldState == FoldState.Collapsed) {
+        drawLine(
+            color = color,
+            start = Offset(centerX - halfSize * 0.5f, centerY - halfSize),
+            end = Offset(centerX + halfSize * 0.5f, centerY),
+            strokeWidth = strokeWidth,
+        )
+        drawLine(
+            color = color,
+            start = Offset(centerX + halfSize * 0.5f, centerY),
+            end = Offset(centerX - halfSize * 0.5f, centerY + halfSize),
+            strokeWidth = strokeWidth,
+        )
+    } else {
+        drawLine(
+            color = color,
+            start = Offset(centerX - halfSize, centerY - halfSize * 0.5f),
+            end = Offset(centerX, centerY + halfSize * 0.5f),
+            strokeWidth = strokeWidth,
+        )
+        drawLine(
+            color = color,
+            start = Offset(centerX, centerY + halfSize * 0.5f),
+            end = Offset(centerX + halfSize, centerY - halfSize * 0.5f),
+            strokeWidth = strokeWidth,
+        )
+    }
+}
+
+private fun DrawScope.drawCursor(
+    theme: EditorTheme,
+    cornerRadius: Float,
+    animatedCursor: AnimatedCursorRenderState,
+    renderModel: EditorRenderModel,
+) {
+    val cursor = renderModel.cursor
+
+    if (animatedCursor.visible) {
+        drawRoundRect(
+            color = theme.cursorColor.toComposeColor(),
+            topLeft = Offset(
+                x = animatedCursor.x,
+                y = animatedCursor.y + cornerRadius,
+            ),
+            size = Size(
+                1.2f * density + .5f,
+                (animatedCursor.height.coerceAtLeast(1f) - cornerRadius * 2f).coerceAtLeast(1f),
+            ),
+            cornerRadius = CornerRadius(cornerRadius),
+        )
+    }
+
+    if (cursor.showDragger) {
+        val handleHeight = renderModel.selectionEndHandle.height
+
+        val path = Path().apply {
+            moveTo(0f, 0f)
+            cubicTo(
+                -0.2f * handleHeight, 0.2f * handleHeight,
+                -0.5f * handleHeight, 0.4f * handleHeight,
+                -0.5f * handleHeight, 0.7f * handleHeight
+            )
+            cubicTo(
+                -0.5f * handleHeight, 0.9f * handleHeight,
+                -0.24f * handleHeight, 1f * handleHeight,
+                0f, 1f * handleHeight
+            )
+            cubicTo(
+                0.24f * handleHeight, 1f * handleHeight,
+                0.5f * handleHeight, 0.9f * handleHeight,
+                0.5f * handleHeight, 0.7f * handleHeight
+            )
+            cubicTo(
+                0.5f * handleHeight, 0.4f * handleHeight,
+                0.2f * handleHeight, 0.2f * handleHeight,
+                0f, 0f
+            )
+
+            close()
+        }
+        drawPath(
+            path = path,
+            color = theme.cursorColor.toComposeColor(),
+        )
+    }
 }
 
 private fun DrawScope.drawSelectionHandle(
+    alignment: Alignment.Horizontal,
     position: PointF,
+    handleHeight: Float,
     visible: Boolean,
-    renderModel: EditorRenderModel,
     color: Color,
 ) {
-    if (!visible) {
+    if (!visible && alignment in listOf(Alignment.Start, Alignment.End)) {
         return
     }
-    drawCircle(
+    val stemHeight = handleHeight.coerceAtLeast(10f)
+
+    drawPath(
+         path =selectionHandlePath(alignment, position, stemHeight),
         color = color,
-        radius = 6f,
-        center = Offset(
-            x = position.x,
-            y = position.y,
-        ),
     )
+}
+
+private fun selectionHandlePath(
+    alignment: Alignment.Horizontal,
+    position: PointF,
+    handleHeight: Float,
+): Path {
+    val path = Path()
+    when (alignment) {
+        Alignment.Start -> {
+            path.apply {
+                moveTo(position.x, position.y + handleHeight)
+                lineTo(position.x - handleHeight, position.y + handleHeight)
+                arcTo(
+                    rect = Rect(
+                        left = position.x - handleHeight,
+                        top = position.y + handleHeight,
+                        right = position.x,
+                        bottom = position.y + handleHeight * 2
+                    ),
+                    startAngleDegrees = -90f,
+                    sweepAngleDegrees = -270f,
+                    forceMoveTo = false
+                )
+                close()
+            }
+        }
+        Alignment.End -> {
+            path.apply {
+                moveTo(position.x, position.y + handleHeight)
+                lineTo(position.x + handleHeight, position.y + handleHeight)
+                arcTo(
+                    rect = Rect(
+                        left = position.x,
+                        top = position.y + handleHeight,
+                        right = position.x + handleHeight,
+                        bottom = position.y + handleHeight * 2
+                    ),
+                    startAngleDegrees = -90f,
+                    sweepAngleDegrees = 270f,
+                    forceMoveTo = false
+                )
+                close()
+            }
+        }
+    }
+    return path
 }
 
 private fun DrawScope.drawScrollbar(
@@ -808,6 +1127,352 @@ private fun DrawScope.drawScrollbar(
 }
 
 private fun VisualRun.shouldRenderText(): Boolean = text.isNotEmpty()
+
+private data class SelectionBand(
+    val top: Float,
+    val bottom: Float,
+    val left: Float,
+    val right: Float,
+)
+
+private data class AnimatedCursorRenderState(
+    val x: Float,
+    val y: Float,
+    val height: Float,
+    val visible: Boolean,
+)
+
+private fun mergeSelectionBands(rects: List<SelectionRect>): List<SelectionBand> {
+    val sortedRects = rects.sortedWith(compareBy<SelectionRect> { it.origin.y }.thenBy { it.origin.x })
+    val merged = mutableListOf<SelectionBand>()
+    sortedRects.forEach { rect ->
+        if (rect.width <= 0f || rect.height <= 0f) {
+            return@forEach
+        }
+        val top = rect.origin.y
+        val bottom = rect.origin.y + rect.height
+        val left = rect.origin.x
+        val right = rect.origin.x + rect.width
+        val last = merged.lastOrNull()
+        if (
+            last != null &&
+            approximatelyEqual(last.top, top) &&
+            approximatelyEqual(last.bottom, bottom) &&
+            left <= last.right + SELECTION_BAND_EPSILON
+        ) {
+            merged[merged.lastIndex] = last.copy(
+                left = minOf(last.left, left),
+                right = maxOf(last.right, right),
+            )
+        } else {
+            merged += SelectionBand(
+                top = top,
+                bottom = bottom,
+                left = left,
+                right = right,
+            )
+        }
+    }
+    return merged
+}
+
+private fun buildSelectionClusters(bands: List<SelectionBand>): List<List<SelectionBand>> {
+    if (bands.isEmpty()) {
+        return emptyList()
+    }
+    val clusters = mutableListOf<MutableList<SelectionBand>>()
+    var currentCluster = mutableListOf(bands.first())
+    for (index in 1 until bands.size) {
+        val previous = bands[index - 1]
+        val current = bands[index]
+        val isConnected = approximatelyEqual(previous.bottom, current.top) &&
+            current.left <= previous.right + SELECTION_BAND_EPSILON &&
+            current.right >= previous.left - SELECTION_BAND_EPSILON
+        if (isConnected) {
+            currentCluster += current
+        } else {
+            clusters += currentCluster
+            currentCluster = mutableListOf(current)
+        }
+    }
+    clusters += currentCluster
+    return clusters
+}
+
+private fun buildRoundedSelectionPath(
+    bands: List<SelectionBand>,
+    cornerRadius: Float,
+): Path {
+    val points = buildSelectionPolygonPoints(bands)
+    val path = Path()
+    if (points.isEmpty()) {
+        return path
+    }
+    val effectiveRadius = cornerRadius.coerceAtLeast(0f)
+    if (points.size < 3 || effectiveRadius <= 0f) {
+        path.moveTo(points.first().x, points.first().y)
+        points.drop(1).forEach { point ->
+            path.lineTo(point.x, point.y)
+        }
+        path.close()
+        return path
+    }
+    val startCorner = roundedCorner(points.last(), points.first(), points[1], effectiveRadius)
+    path.moveTo(startCorner.entry.x, startCorner.entry.y)
+    points.indices.forEach { index ->
+        val previous = points[(index - 1 + points.size) % points.size]
+        val current = points[index]
+        val next = points[(index + 1) % points.size]
+        val corner = roundedCorner(previous, current, next, effectiveRadius)
+        path.lineTo(corner.entry.x, corner.entry.y)
+        path.quadraticTo(current.x, current.y, corner.exit.x, corner.exit.y)
+    }
+    path.close()
+    return path
+}
+
+private data class RoundedCorner(
+    val entry: Offset,
+    val exit: Offset,
+)
+
+private fun roundedCorner(
+    previous: Offset,
+    current: Offset,
+    next: Offset,
+    radius: Float,
+): RoundedCorner {
+    val previousVector = Offset(previous.x - current.x, previous.y - current.y)
+    val nextVector = Offset(next.x - current.x, next.y - current.y)
+    val previousLength = distance(previousVector)
+    val nextLength = distance(nextVector)
+    if (previousLength <= SELECTION_BAND_EPSILON || nextLength <= SELECTION_BAND_EPSILON) {
+        return RoundedCorner(current, current)
+    }
+    val cut = minOf(radius, previousLength / 2f, nextLength / 2f)
+    val previousDirection = Offset(previousVector.x / previousLength, previousVector.y / previousLength)
+    val nextDirection = Offset(nextVector.x / nextLength, nextVector.y / nextLength)
+    return RoundedCorner(
+        entry = Offset(
+            x = current.x + previousDirection.x * cut,
+            y = current.y + previousDirection.y * cut,
+        ),
+        exit = Offset(
+            x = current.x + nextDirection.x * cut,
+            y = current.y + nextDirection.y * cut,
+        ),
+    )
+}
+
+private fun buildSelectionPolygonPoints(bands: List<SelectionBand>): List<Offset> {
+    if (bands.isEmpty()) {
+        return emptyList()
+    }
+    val points = mutableListOf<Offset>()
+    val first = bands.first()
+    points += Offset(first.left, first.top)
+    points += Offset(first.right, first.top)
+
+    var currentRight = first.right
+    var currentBottom = first.bottom
+    points += Offset(currentRight, currentBottom)
+    for (index in 1 until bands.size) {
+        val band = bands[index]
+        if (!approximatelyEqual(currentBottom, band.top)) {
+            points += Offset(currentRight, band.top)
+        }
+        if (!approximatelyEqual(currentRight, band.right)) {
+            points += Offset(currentRight, band.top)
+            points += Offset(band.right, band.top)
+        }
+        currentRight = band.right
+        currentBottom = band.bottom
+        points += Offset(currentRight, currentBottom)
+    }
+
+    val last = bands.last()
+    points += Offset(last.left, last.bottom)
+
+    var currentLeft = last.left
+    var currentTop = last.top
+    points += Offset(currentLeft, currentTop)
+    for (index in bands.lastIndex - 1 downTo 0) {
+        val band = bands[index]
+        if (!approximatelyEqual(currentTop, band.bottom)) {
+            points += Offset(currentLeft, band.bottom)
+        }
+        if (!approximatelyEqual(currentLeft, band.left)) {
+            points += Offset(currentLeft, band.bottom)
+            points += Offset(band.left, band.bottom)
+        }
+        currentLeft = band.left
+        currentTop = band.top
+        points += Offset(currentLeft, currentTop)
+    }
+    return simplifyPolygonPoints(points)
+}
+
+private fun simplifyPolygonPoints(points: List<Offset>): List<Offset> {
+    if (points.size < 3) {
+        return points
+    }
+    val simplified = mutableListOf<Offset>()
+    points.forEach { point ->
+        if (simplified.lastOrNull()?.approximatelyEquals(point) != true) {
+            simplified += point
+        }
+    }
+    if (simplified.size < 3) {
+        return simplified
+    }
+    var index = 0
+    while (index < simplified.size) {
+        val previous = simplified[(index - 1 + simplified.size) % simplified.size]
+        val current = simplified[index]
+        val next = simplified[(index + 1) % simplified.size]
+        if (isCollinear(previous, current, next)) {
+            simplified.removeAt(index)
+            if (simplified.size < 3) {
+                break
+            }
+        } else {
+            index++
+        }
+    }
+    return simplified
+}
+
+private fun isCollinear(
+    a: Offset,
+    b: Offset,
+    c: Offset,
+): Boolean = approximatelyEqual((b.x - a.x) * (c.y - b.y), (b.y - a.y) * (c.x - b.x))
+
+private fun Offset.approximatelyEquals(other: Offset): Boolean =
+    approximatelyEqual(x, other.x) && approximatelyEqual(y, other.y)
+
+private fun distance(offset: Offset): Float =
+    kotlin.math.sqrt(offset.x * offset.x + offset.y * offset.y)
+
+private fun approximatelyEqual(
+    first: Float,
+    second: Float,
+): Boolean = kotlin.math.abs(first - second) <= SELECTION_BAND_EPSILON
+
+private const val SELECTION_BAND_EPSILON = 0.5f
+
+private fun DrawScope.drawArrowHead(
+    color: Color,
+    from: Offset,
+    to: Offset,
+    arrowLength: Float,
+) {
+    val dx = to.x - from.x
+    val dy = to.y - from.y
+    val length = kotlin.math.sqrt(dx * dx + dy * dy)
+    if (length < 1f) {
+        return
+    }
+    val ux = dx / length
+    val uy = dy / length
+    val arrowAngle = (PI * 28.0 / 180.0).toFloat()
+    val cosA = kotlin.math.cos(arrowAngle)
+    val sinA = kotlin.math.sin(arrowAngle)
+    val ax1 = to.x - arrowLength * (ux * cosA - uy * sinA)
+    val ay1 = to.y - arrowLength * (uy * cosA + ux * sinA)
+    val ax2 = to.x - arrowLength * (ux * cosA + uy * sinA)
+    val ay2 = to.y - arrowLength * (uy * cosA - ux * sinA)
+    drawLine(color = color, start = to, end = Offset(ax1, ay1), strokeWidth = 1.2f)
+    drawLine(color = color, start = to, end = Offset(ax2, ay2), strokeWidth = 1.2f)
+}
+
+private fun currentLineBorderColor(theme: EditorTheme): Color {
+    val color = theme.currentLineColor.toComposeColor()
+    return if (color.alpha < 0.63f) {
+        color.copy(alpha = 0.63f)
+    } else {
+        color
+    }
+}
+
+private fun currentLineAccentColor(theme: EditorTheme): Color {
+    val accent = theme.currentLineNumberColor.toComposeColor()
+    return accent.copy(alpha = 1f)
+}
+
+private fun runTextX(run: VisualRun): Float = when (run.type) {
+    VisualRunType.FoldPlaceholder,
+    VisualRunType.InlayHint,
+    -> run.x + run.margin + run.padding
+
+    else -> run.x
+}
+
+private class EditorGutterIconPainter(
+    controller: EditorController,
+) {
+    private val textMeasurer: EditorTextMeasurer = controller.textMeasurer()
+
+    fun paint(
+        drawScope: DrawScope,
+        iconId: Int,
+        origin: PointF,
+        width: Float,
+        height: Float,
+        tint: Color,
+    ) {
+        val iconSize = min(width, height)
+        val center = Offset(
+            x = origin.x + width / 2f,
+            y = origin.y + height / 2f,
+        )
+        when (iconId) {
+            1 -> {
+                drawScope.drawRoundRect(
+                    color = tint.copy(alpha = 0.14f),
+                    topLeft = Offset(center.x - iconSize / 2f, center.y - iconSize / 2f),
+                    size = Size(iconSize, iconSize),
+                    cornerRadius = CornerRadius(iconSize * 0.22f, iconSize * 0.22f),
+                )
+                val strokeWidth = (iconSize * 0.12f).coerceAtLeast(1f)
+                drawScope.drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(center.x - iconSize * 0.34f, center.y - iconSize * 0.36f),
+                    size = Size(iconSize * 0.68f, iconSize * 0.72f),
+                    cornerRadius = CornerRadius(iconSize * 0.14f, iconSize * 0.14f),
+                    style = Stroke(width = strokeWidth),
+                )
+                drawScope.drawLine(
+                    color = tint,
+                    start = Offset(center.x - iconSize * 0.2f, center.y - iconSize * 0.05f),
+                    end = Offset(center.x + iconSize * 0.2f, center.y - iconSize * 0.05f),
+                    strokeWidth = strokeWidth,
+                )
+                drawScope.drawLine(
+                    color = tint,
+                    start = Offset(center.x - iconSize * 0.2f, center.y + iconSize * 0.14f),
+                    end = Offset(center.x + iconSize * 0.12f, center.y + iconSize * 0.14f),
+                    strokeWidth = strokeWidth,
+                )
+            }
+
+            else -> {
+                val radius = iconSize / 2f
+                drawScope.drawCircle(
+                    color = tint.copy(alpha = 0.16f),
+                    radius = radius,
+                    center = center,
+                )
+                drawScope.drawCircle(
+                    color = tint,
+                    radius = radius * 0.58f,
+                    center = center,
+                    style = Stroke(width = (textMeasurer.measureIconWidth(iconId) * 0.08f).coerceAtLeast(1f)),
+                )
+            }
+        }
+    }
+}
 
 private data class ViewportBounds(
     val width: Float,
@@ -863,7 +1528,7 @@ private fun VisualLine.firstBaseline(): Float =
 private class EditorDrawCache(
     private val theme: EditorTheme,
 ) {
-    private val runTextStyles = mutableMapOf<EditorTextStyle, TextStyle>()
+    private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
     private val lineNumberTextStyles = mutableMapOf<Boolean, TextStyle>()
     private val textLayouts = SimpleLruCache<TextLayoutCacheKey, TextLayoutResult>(maxSize = 256)
 
@@ -876,9 +1541,13 @@ private class EditorDrawCache(
      * @param style editor text style produced by the native render model.
      * @return cached Compose text style.
      */
-    fun runTextStyle(style: EditorTextStyle): TextStyle =
-        runTextStyles.getOrPut(style) {
-            style.toComposeTextStyle(theme)
+    fun runTextStyle(
+        style: EditorTextStyle,
+        type: VisualRunType,
+        theme: EditorTheme,
+    ): TextStyle =
+        runTextStyles.getOrPut(RunTextStyleKey(style, type)) {
+            style.toComposeTextStyle(theme, type)
         }
 
     /**
@@ -887,7 +1556,11 @@ private class EditorDrawCache(
      * @param active true when the line number belongs to the current logical line.
      * @return cached Compose text style for the line number.
      */
-    fun lineNumberStyle(active: Boolean): TextStyle =
+    fun lineNumberStyle(
+        active: Boolean,
+        baselineY: Float,
+        estimatedLineHeight: Float,
+    ): TextStyle =
         lineNumberTextStyles.getOrPut(active) {
             TextStyle(
                 color = if (active) {
@@ -897,6 +1570,9 @@ private class EditorDrawCache(
                 },
                 fontFamily = theme.fontFamily,
                 fontSize = theme.lineNumberFontSize,
+                baselineShift = androidx.compose.ui.text.style.BaselineShift(
+                    ((baselineY % estimatedLineHeight) / estimatedLineHeight - 0.5f) * 0.03f,
+                ),
             )
         }
 
@@ -909,7 +1585,7 @@ private class EditorDrawCache(
      * @return measured text layout result.
      */
     fun measureText(
-        textMeasurer: androidx.compose.ui.text.TextMeasurer,
+        textMeasurer: TextMeasurer,
         text: String,
         style: TextStyle,
     ): TextLayoutResult {
@@ -964,20 +1640,37 @@ private data class TextLayoutCacheKey(
     val style: TextStyle,
 )
 
-private fun EditorTextStyle.toComposeTextStyle(theme: EditorTheme): TextStyle {
+private data class RunTextStyleKey(
+    val style: EditorTextStyle,
+    val type: VisualRunType,
+)
+
+private fun EditorTextStyle.toComposeTextStyle(
+    theme: EditorTheme,
+    type: VisualRunType,
+): TextStyle {
     val decorations = buildList {
         if ((fontStyle and EditorTextStyle.Strikethrough) != 0) {
             add(TextDecoration.LineThrough)
         }
     }
     return TextStyle(
-        color = if (color != 0) color.toComposeColor() else theme.textColor.toComposeColor(),
-        background = if (backgroundColor != 0) backgroundColor.toComposeColor() else Color.Transparent,
+        color = when {
+            type == VisualRunType.FoldPlaceholder -> theme.foldPlaceholderTextColor.toComposeColor()
+            type == VisualRunType.PhantomText -> theme.phantomTextColor.toComposeColor()
+            color != 0 -> color.toComposeColor()
+            else -> theme.textColor.toComposeColor()
+        },
+        background = when {
+            type == VisualRunType.FoldPlaceholder || type == VisualRunType.InlayHint -> Color.Transparent
+            backgroundColor != 0 -> backgroundColor.toComposeColor()
+            else -> Color.Transparent
+        },
         fontWeight = if ((fontStyle and EditorTextStyle.Bold) != 0) FontWeight.Bold else null,
         fontStyle = if ((fontStyle and EditorTextStyle.Italic) != 0) FontStyle.Italic else null,
         textDecoration = decorations.takeIf { it.isNotEmpty() }?.reduce(TextDecoration::plus),
         fontFamily = theme.fontFamily,
-        fontSize = theme.fontSize,
+        fontSize = if (type == VisualRunType.InlayHint) theme.inlayHintFontSize else theme.fontSize,
     )
 }
 
@@ -987,6 +1680,7 @@ private fun EditorTheme.scaled(scale: Float): EditorTheme {
         fontSize = fontSize * normalizedScale,
         lineNumberFontSize = lineNumberFontSize * normalizedScale,
         inlayHintFontSize = inlayHintFontSize * normalizedScale,
+        cornerRadius = cornerRadius * normalizedScale,
     )
 }
 

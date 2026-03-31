@@ -31,6 +31,8 @@ class EditorController(
             textMeasurer = editorTextMeasurer.asNativeTextMeasurer(),
         )
 
+    internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
+
     /**
      * Attaches a document to the controller.
      *

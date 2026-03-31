@@ -52,6 +52,7 @@ data class Cursor(
     val position: PointF = PointF(),
     val height: Float = 0f,
     val visible: Boolean = true,
+    @Deprecated("showDragger status is deprecated, please change it to renderModel.selectionRects.")
     val showDragger: Boolean = false,
 )
 

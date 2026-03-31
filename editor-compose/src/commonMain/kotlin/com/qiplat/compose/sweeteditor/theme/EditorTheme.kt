@@ -96,6 +96,7 @@ data class EditorTheme(
     val lineNumberFontSize: TextUnit = 13.sp,
     val inlayHintFontSize: TextUnit = 12.sp,
     val textStyles: Map<Int, TextStyle>,
+    val cornerRadius: Float,
 ) {
     companion object {
         fun dark(
@@ -134,6 +135,7 @@ data class EditorTheme(
             fontFamily = fontFamily,
             fontSize = fontSize,
             textStyles = defaultDarkTextStyles(),
+            cornerRadius = 1.5f,
         )
 
         fun light(
@@ -172,6 +174,7 @@ data class EditorTheme(
             fontFamily = fontFamily,
             fontSize = fontSize,
             textStyles = defaultLightTextStyles(),
+            cornerRadius = 1.5f,
         )
 
         private fun defaultDarkTextStyles(): Map<Int, TextStyle> = mapOf(
