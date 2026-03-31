@@ -60,11 +60,11 @@ fun App() {
         var compositionEnabled by remember { mutableStateOf(true) }
         val sampleSpecs = remember {
             listOf(
-                ExampleSampleSpec("example.kt", "files/example.kt", "files/kotlin.json"),
-                ExampleSampleSpec("example.java", "files/example.java", "files/java.json"),
-                ExampleSampleSpec("View.java", "files/View.java", "files/java.json"),
-                ExampleSampleSpec("example.lua", "files/example.lua", "files/lua.json"),
-                ExampleSampleSpec("nlohmann-json.hpp", "files/nlohmann-json.hpp", "files/cpp.json"),
+                ExampleSampleSpec("example.kt", "files/example_kt", "files/kotlin_json"),
+                ExampleSampleSpec("example.java", "files/example_java", "files/java_json"),
+                ExampleSampleSpec("View.java", "files/View.java", "files/java_json"),
+                ExampleSampleSpec("example.lua", "files/example_lua", "files/lua_json"),
+                ExampleSampleSpec("nlohmann-json.hpp", "files/nlohmann-json_hpp", "files/cpp_json"),
             )
         }
         val decorationProviders = remember {
