@@ -236,6 +236,19 @@ class SweetEditorController(
         dismissCompletion()
         val textEdit = item.textEdit
         return when {
+            item.insertTextFormat == CompletionItem.SNIPPET -> {
+                val snippetTemplate = textEdit?.newText ?: item.insertText ?: item.label
+                val replacementRange = textEdit?.range ?: buildCompletionContext(
+                    triggerKind = CompletionTriggerKind.Invoked,
+                    triggerCharacter = null,
+                )?.wordRange
+                if (replacementRange != null) {
+                    editorController.setSelection(replacementRange)
+                    publishCursorAndSelectionEvents()
+                }
+                insertSnippet(snippetTemplate)
+            }
+
             textEdit != null -> replaceText(textEdit.range, textEdit.newText)
             else -> {
                 val context = buildCompletionContext(
@@ -291,6 +304,46 @@ class SweetEditorController(
         publishCursorAndSelectionEvents()
     }
 
+    internal fun handleEnterAction(): Boolean {
+        if (hasVisibleCompletion()) {
+            applySelectedCompletionItem()
+            return true
+        }
+        if (isInLinkedEditing()) {
+            cancelLinkedEditing()
+        }
+        performNewLineAction()
+        return true
+    }
+
+    internal fun handleTabAction(reverse: Boolean): Boolean {
+        if (isInLinkedEditing()) {
+            if (reverse) {
+                linkedEditingPrev()
+            } else {
+                linkedEditingNext()
+            }
+            return true
+        }
+        if (hasVisibleCompletion()) {
+            applySelectedCompletionItem()
+            return true
+        }
+        return false
+    }
+
+    internal fun handleEscapeAction(): Boolean {
+        if (isInLinkedEditing()) {
+            cancelLinkedEditing()
+            return true
+        }
+        if (hasVisibleCompletion()) {
+            dismissCompletion()
+            return true
+        }
+        return false
+    }
+
     fun setCompletionItemRenderer(renderer: CompletionItemRenderer?) {
         state.completionItemRenderer = renderer
     }
@@ -326,7 +379,7 @@ class SweetEditorController(
             if (isComposing()) {
                 compositionEnd(null)
             }
-            performNewLineAction()
+            handleEnterAction()
             return synchronizeImeProxyValue(TextFieldValue())
         }
         val normalizedValue = editorController.handleImeEditCommands(commands, previousValue, newValue)
@@ -342,7 +395,7 @@ class SweetEditorController(
             if (isComposing()) {
                 compositionEnd(null)
             }
-            performNewLineAction()
+            handleEnterAction()
             return synchronizeImeProxyValue(TextFieldValue())
         }
         return editorController.handleImeAction(action, currentValue)

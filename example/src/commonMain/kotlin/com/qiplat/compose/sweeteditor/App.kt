@@ -45,7 +45,7 @@ fun App() {
             darkMode = true,
         )
         val editorState = rememberEditorState()
-        val editorController = rememberEditorController(
+        val editorController = rememberSweetEditorController(
             textMeasurer = editorAppearance.textMeasurer,
             state = editorState,
         )
@@ -55,9 +55,15 @@ fun App() {
         var hitTargetSummary by remember { mutableStateOf("No hit target") }
         var contextMenuSummary by remember { mutableStateOf("No context menu") }
         var handleDragSummary by remember { mutableStateOf("HandleDrag=false") }
+        var linkedEditingSummary by remember { mutableStateOf("LinkedEditing=false") }
         var wrapEnabled by remember { mutableStateOf(false) }
         var readOnly by remember { mutableStateOf(false) }
         var compositionEnabled by remember { mutableStateOf(true) }
+        val updateLinkedEditingSummary = remember(editorController) {
+            {
+                linkedEditingSummary = "LinkedEditing=${editorController.isInLinkedEditing()}"
+            }
+        }
         val sampleSpecs = remember {
             listOf(
                 ExampleSampleSpec("example.kt", "files/example_kt", "files/kotlin_json"),
@@ -121,6 +127,7 @@ fun App() {
             editorController.loadText(sampleText)
             editorController.setShowSplitLine(true)
             editorController.onFontMetricsChanged()
+            updateLinkedEditingSummary()
         }
 
         Surface(
@@ -155,6 +162,7 @@ fun App() {
                                 )
 
                                 Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     IdeToggleChip(
@@ -172,6 +180,47 @@ fun App() {
                                         selected = compositionEnabled,
                                         onClick = { compositionEnabled = !compositionEnabled },
                                     )
+                                    OutlinedButton(
+                                        onClick = {
+                                            editorController.insertSnippet(
+                                                "val ${'$'}{1:name} = ${'$'}{2:value}${'$'}0",
+                                            )
+                                            updateLinkedEditingSummary()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text("Insert Snippet")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            editorController.linkedEditingPrev()
+                                            updateLinkedEditingSummary()
+                                        },
+                                        enabled = editorController.isInLinkedEditing(),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text("Prev TabStop")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            editorController.linkedEditingNext()
+                                            updateLinkedEditingSummary()
+                                        },
+                                        enabled = editorController.isInLinkedEditing(),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text("Next TabStop")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            editorController.cancelLinkedEditing()
+                                            updateLinkedEditingSummary()
+                                        },
+                                        enabled = editorController.isInLinkedEditing(),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    ) {
+                                        Text("Cancel Linked")
+                                    }
                                 }
                             }
                         }
@@ -234,7 +283,6 @@ fun App() {
                                     .border(width = 1.dp, color = IntelliJBorder),
                             ) {
                                 SweetEditor(
-                                    state = editorState,
                                     controller = editorController,
                                     modifier = Modifier.fillMaxSize(),
                                     theme = editorAppearance.theme,
@@ -298,6 +346,7 @@ fun App() {
                                 StatusLabel("Hit", hitTargetSummary)
                                 StatusLabel("Menu", contextMenuSummary)
                                 StatusLabel("Selection", handleDragSummary)
+                                StatusLabel("Snippet", linkedEditingSummary)
                             }
                         }
                     }

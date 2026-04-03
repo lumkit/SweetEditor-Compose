@@ -759,13 +759,15 @@
   - 接入 linked editing 与 completion 的基础互斥
   - 让 Tab / Shift+Tab 优先走 linked editing next/prev
   - 让 Escape 可取消 linked editing
+  - 让 completion item 可按 `insertTextFormat = SNIPPET` 走 `insertSnippet(...)` 路径
+  - 让 Enter 在 linked editing 中先退出会话，再走 NewLineAction / newline 插入路径
 - 本阶段剩余工作：
-  - 补 linked editing 在 Enter / Tab 路径中的更完整交互
   - 在 example 中补 snippet / linked editing 演示
+  - 继续补 completion/snippet/linked editing 的更完整端到端交互演示
 
 ## Phase 16：Example 与集成验证（进行中）
 
-- 状态：`example` 已脱离空壳，具备文本加载、语言元数据展示、设置开关与 json 驱动 syntax/diagnostics provider 演示，Completion 等更完整交互演示仍待补齐
+- 状态：`example` 已脱离空壳，具备文本加载、语言元数据展示、设置开关、json 驱动 syntax/diagnostics provider 演示，以及基础 snippet / linked editing 操作入口；Completion 等更完整交互演示仍待补齐
 - 已落地文件：
   - `example/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/App.kt`
 - 本阶段已完成：
@@ -776,13 +778,14 @@
   - 展示语言配置摘要信息
   - 完成 `LanguageConfigDecorationProvider` 驱动的 syntax highlight 演示
   - 完成 diagnostics provider 演示
+  - 完成 snippet 插入、next/prev tab stop、cancel linked editing 的基础演示入口
   - 优先保证 Android 与 Desktop 构建闭环可运行
 - 本阶段剩余工作：
   - 主题切换
   - undo / redo
   - fold
   - completion
-  - linked editing
+  - 更完整的 completion / linked editing 联动演示
 
 ## Phase 17：测试（进行中）
 

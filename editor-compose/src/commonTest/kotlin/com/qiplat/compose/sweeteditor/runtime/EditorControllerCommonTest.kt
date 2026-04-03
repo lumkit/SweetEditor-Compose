@@ -256,6 +256,53 @@ class EditorControllerCommonTest {
     }
 
     @Test
+    fun snippetCompletionItemUsesSnippetInsertionAndReplacementRange() {
+        val editorBridge = FakeNativeEditorBridge().apply {
+            insertSnippetPayload = buildTextEditResultPayload()
+            fakeCursorPosition = TextPosition(0, 3)
+            wordRange = TextRange(
+                start = TextPosition(0, 0),
+                end = TextPosition(0, 3),
+            )
+        }
+        val controller = SweetEditorController(
+            textMeasurer = FakeEditorTextMeasurer(),
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+        )
+        controller.loadDocument(
+            EditorDocument(
+                FakeNativeDocumentBridge(
+                    handle = 1L,
+                    lines = listOf("pri"),
+                ),
+            ),
+        )
+
+        controller.showCompletionItems(
+            listOf(
+                CompletionItem(
+                    label = "println",
+                    insertText = "println(${ '$' }1)",
+                    insertTextFormat = CompletionItem.SNIPPET,
+                ),
+            ),
+        )
+
+        controller.applySelectedCompletionItem()
+
+        assertEquals("println(${ '$' }1)", editorBridge.lastInsertedSnippetTemplate)
+        assertEquals(
+            TextRange(
+                start = TextPosition(0, 0),
+                end = TextPosition(0, 3),
+            ),
+            editorBridge.selectionRange,
+        )
+    }
+
+    @Test
     fun snippetAndLinkedEditingApisDelegateToNativeBridge() {
         val editorBridge = FakeNativeEditorBridge().apply {
             insertSnippetPayload = buildTextEditResultPayload()
@@ -345,6 +392,39 @@ class EditorControllerCommonTest {
         controller.linkedEditingNext()
 
         assertEquals(null, controller.getCompletionResult())
+    }
+
+    @Test
+    fun linkedEditingEnterCancelsSessionBeforeNewLineInsertion() {
+        val editorBridge = FakeNativeEditorBridge().apply {
+            linkedEditingActive = true
+            insertTextPayload = buildTextEditResultPayload()
+        }
+        val controller = SweetEditorController(
+            textMeasurer = FakeEditorTextMeasurer(),
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+        )
+        controller.loadDocument(
+            EditorDocument(
+                FakeNativeDocumentBridge(
+                    handle = 1L,
+                    lines = listOf("value"),
+                ),
+            ),
+        )
+        controller.addNewLineActionProvider(
+            NewLineActionProvider {
+                NewLineAction("\n  ")
+            },
+        )
+
+        controller.handleEnterAction()
+
+        assertEquals(false, controller.isInLinkedEditing())
+        assertEquals(1, editorBridge.linkedEditingCancelCount)
+        assertEquals("\n  ", editorBridge.lastInsertedText)
     }
 }
 

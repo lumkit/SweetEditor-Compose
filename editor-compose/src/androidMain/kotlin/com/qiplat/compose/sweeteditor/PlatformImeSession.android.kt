@@ -406,36 +406,20 @@ private class AndroidPlatformImeNode :
                 }
             }
             KeyEvent.KEYCODE_TAB -> {
-                if (controller.isInLinkedEditing()) {
-                    if (event.isShiftPressed) {
-                        controller.linkedEditingPrev()
-                    } else {
-                        controller.linkedEditingNext()
-                    }
-                } else if (controller.hasVisibleCompletion()) {
-                    controller.applySelectedCompletionItem()
-                } else {
+                if (!controller.handleTabAction(reverse = event.isShiftPressed)) {
                     dispatchAndroidKeyCode(controller, event.keyCode, "\t", event.toNativeModifiers())
                 }
             }
             KeyEvent.KEYCODE_ESCAPE -> {
-                if (controller.isInLinkedEditing()) {
-                    controller.cancelLinkedEditing()
-                } else if (controller.hasVisibleCompletion()) {
-                    controller.dismissCompletion()
-                }
+                controller.handleEscapeAction()
             }
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER,
             -> {
-                if (controller.hasVisibleCompletion()) {
-                    controller.applySelectedCompletionItem()
-                } else {
-                    if (controller.isComposing()) {
-                        controller.compositionEnd(null)
-                    }
-                    controller.performNewLineAction()
+                if (controller.isComposing()) {
+                    controller.compositionEnd(null)
                 }
+                controller.handleEnterAction()
             }
             KeyEvent.KEYCODE_DEL -> {
                 if (!deleteSelectionIfAny(controller)) {
@@ -466,11 +450,7 @@ private class AndroidPlatformImeNode :
             if (controller.isComposing()) {
                 controller.compositionEnd(null)
             }
-            if (controller.hasVisibleCompletion()) {
-                controller.applySelectedCompletionItem()
-            } else {
-                controller.performNewLineAction()
-            }
+            controller.handleEnterAction()
         } else if (controller.isComposing()) {
             controller.compositionEnd(null)
         }

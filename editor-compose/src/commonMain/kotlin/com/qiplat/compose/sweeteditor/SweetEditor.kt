@@ -137,6 +137,8 @@ fun SweetEditor(
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
     onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
 ) {
+    val platformType = LocalPlatformType.current
+    val mobilePlatformTypes = remember { listOf(PlatformType.Android, PlatformType.IOS) }
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer(cacheSize = 256)
@@ -342,6 +344,8 @@ fun SweetEditor(
             iconPainter = iconPainter,
             animatedCursor = animatedCursor,
             theme = scaledTheme,
+            platformType = platformType,
+            mobilePlatformTypes = mobilePlatformTypes
         )
     }
 }
@@ -484,6 +488,8 @@ private fun DrawScope.drawEditorSurface(
     iconPainter: EditorGutterIconPainter,
     animatedCursor: AnimatedCursorRenderState,
     theme: EditorTheme,
+    platformType: PlatformType,
+    mobilePlatformTypes: List<PlatformType>,
 ) {
     if (renderModel == null) {
         drawRect(
@@ -627,20 +633,22 @@ private fun DrawScope.drawEditorSurface(
     drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
     drawScrollbar(renderModel.horizontalScrollbar, renderModel, theme)
 
-    drawSelectionHandle(
-        alignment = Alignment.Start,
-        position = renderModel.selectionStartHandle.position,
-        handleHeight = renderModel.selectionStartHandle.height,
-        visible = renderModel.selectionStartHandle.visible,
-        color = theme.cursorColor.toComposeColor(),
-    )
-    drawSelectionHandle(
-        alignment = Alignment.End,
-        position = renderModel.selectionEndHandle.position,
-        handleHeight = renderModel.selectionEndHandle.height,
-        visible = renderModel.selectionEndHandle.visible,
-        color = theme.cursorColor.toComposeColor(),
-    )
+    if (platformType in mobilePlatformTypes) {
+        drawSelectionHandle(
+            alignment = Alignment.Start,
+            position = renderModel.selectionStartHandle.position,
+            handleHeight = renderModel.selectionStartHandle.height,
+            visible = renderModel.selectionStartHandle.visible,
+            color = theme.cursorColor.toComposeColor(),
+        )
+        drawSelectionHandle(
+            alignment = Alignment.End,
+            position = renderModel.selectionEndHandle.position,
+            handleHeight = renderModel.selectionEndHandle.height,
+            visible = renderModel.selectionEndHandle.visible,
+            color = theme.cursorColor.toComposeColor(),
+        )
+    }
 }
 
 private fun DrawScope.drawGutterBackground(
@@ -1933,36 +1941,18 @@ private fun SweetEditorController.handleComposeKeyEvent(event: KeyEvent): Boolea
         Key.Enter,
         Key.NumPadEnter,
         -> {
-            if (hasVisibleCompletion()) {
-                applySelectedCompletionItem()
-            } else {
-                performNewLineAction()
-            }
+            handleEnterAction()
             return true
         }
 
         Key.Tab -> {
-            if (isInLinkedEditing()) {
-                if (event.isShiftPressed) {
-                    linkedEditingPrev()
-                } else {
-                    linkedEditingNext()
-                }
-                return true
-            }
-            if (hasVisibleCompletion()) {
-                applySelectedCompletionItem()
+            if (handleTabAction(reverse = event.isShiftPressed)) {
                 return true
             }
         }
 
         Key.Escape -> {
-            if (isInLinkedEditing()) {
-                cancelLinkedEditing()
-                return true
-            }
-            if (hasVisibleCompletion()) {
-                dismissCompletion()
+            if (handleEscapeAction()) {
                 return true
             }
         }
