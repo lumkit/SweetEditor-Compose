@@ -28,7 +28,7 @@
       <td align="center"><b>IOS screenshot</b><br/><img src="" alt="IOS screenshot" width="360"/></td>
     </tr>
     <tr>
-      <td align="center"><b>Desktop screenshot</b><br/><img src="" alt="Desktop screenshot" width="360"/></td>
+      <td align="center"><b>Desktop screenshot</b><br/><img src="docs/snapshot/Screenshot_Desktop.png" alt="Desktop screenshot" width="360"/></td>
       <td align="center"><b>Web screenshot</b><br/><img src="" alt="Web screenshot" width="360"/></td>
     </tr>
   </table>

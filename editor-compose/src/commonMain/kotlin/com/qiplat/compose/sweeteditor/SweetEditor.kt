@@ -4,9 +4,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,10 +26,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
@@ -41,6 +44,65 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.PI
 import kotlin.math.min
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
+
+@OptIn(ExperimentalTextApi::class)
+@Composable
+fun SweetEditor(
+    controller: SweetEditorController,
+    modifier: Modifier = Modifier,
+    theme: EditorTheme = controller.getTheme(),
+    settings: EditorSettings = controller.getSettings(),
+    decorationProviders: List<DecorationProvider> = emptyList(),
+    onGestureResult: (GestureResult) -> Unit = {},
+    onHitTarget: (HitTarget) -> Unit = {},
+    onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
+    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
+) {
+    val mergedDecorationProviders = buildList {
+        val providerIds = mutableSetOf<String>()
+        decorationProviders.forEach { provider ->
+            if (providerIds.add(provider.id)) {
+                add(provider)
+            }
+        }
+        controller.attachedDecorationProviders.forEach { provider ->
+            if (providerIds.add(provider.id)) {
+                add(provider)
+            }
+        }
+    }
+    DisposableEffect(controller) {
+        controller.bind()
+        onDispose {
+            if (controller.isComposing()) {
+                controller.compositionCancel()
+            }
+            controller.unbind()
+        }
+    }
+    Box(modifier = modifier) {
+        SweetEditor(
+            state = controller.state,
+            controller = controller.editorController,
+            publicController = controller,
+            modifier = Modifier.matchParentSize(),
+            theme = theme,
+            settings = settings,
+            decorationProviders = mergedDecorationProviders,
+            onGestureResult = { result ->
+                controller.publishGestureEventFromComposable(result)
+                onGestureResult(result)
+            },
+            onHitTarget = onHitTarget,
+            onContextMenuRequest = onContextMenuRequest,
+            onSelectionHandleDragStateChange = onSelectionHandleDragStateChange,
+        )
+        CompletionPopup(
+            controller = controller,
+            theme = theme,
+        )
+    }
+}
 
 /**
  * Renders the Compose editor surface backed by [EditorController] and [EditorState].
@@ -65,6 +127,7 @@ import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextSt
 fun SweetEditor(
     state: EditorState,
     controller: EditorController,
+    publicController: SweetEditorController? = null,
     modifier: Modifier = Modifier,
     theme: EditorTheme = EditorTheme.dark(),
     settings: EditorSettings = EditorSettings(),
@@ -82,11 +145,14 @@ fun SweetEditor(
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
     }
-    val drawCache = remember(scaledTheme) {
+    val drawCache = remember(scaledTheme, LocalDensity.current) {
         EditorDrawCache(scaledTheme)
     }
-    val iconPainter = remember(controller) {
-        EditorGutterIconPainter(controller)
+    val iconPainter = remember(controller, state.editorIconProvider) {
+        EditorGutterIconPainter(
+            controller = controller,
+            provider = state.editorIconProvider,
+        )
     }
     val cursorTarget = renderModel?.cursor
     var lastCursorTextPosition by remember { mutableStateOf<TextPosition?>(null) }
@@ -135,7 +201,6 @@ fun SweetEditor(
             if (controller.isComposing()) {
                 controller.compositionCancel()
             }
-            controller.close()
         }
     }
 
@@ -151,12 +216,14 @@ fun SweetEditor(
         onSelectionHandleDragStateChange = onSelectionHandleDragStateChange,
     )
 
-    val platformImeModifier = InstallPlatformImeSession(
-        controller = controller,
-        state = state,
-        isFocused = isFocused,
-        isReadOnly = settings.readOnly,
-    )
+    val platformImeModifier = publicController?.let {
+        InstallPlatformImeSession(
+            controller = it,
+            state = state,
+            isFocused = isFocused,
+            isReadOnly = settings.readOnly,
+        )
+    } ?: Modifier
 
     Canvas(
         modifier = modifier
@@ -173,7 +240,7 @@ fun SweetEditor(
                 }
             }
             .onPreviewKeyEvent { event ->
-                controller.handleComposeKeyEvent(event)
+                publicController?.handleComposeKeyEvent(event) ?: controller.handleComposeKeyEvent(event)
             }
             .pointerInput(controller) {
                 awaitPointerEventScope {
@@ -1410,6 +1477,7 @@ private fun runTextX(run: VisualRun): Float = when (run.type) {
 
 private class EditorGutterIconPainter(
     controller: EditorController,
+    private val provider: EditorIconProvider?,
 ) {
     private val textMeasurer: EditorTextMeasurer = controller.textMeasurer()
 
@@ -1421,6 +1489,17 @@ private class EditorGutterIconPainter(
         height: Float,
         tint: Color,
     ) {
+        if (
+            provider?.paint(
+                drawScope = drawScope,
+                iconId = iconId,
+                origin = origin,
+                size = Size(width, height),
+                tint = tint,
+            ) == true
+        ) {
+            return
+        }
         val iconSize = min(width, height)
         val center = Offset(
             x = origin.x + width / 2f,
@@ -1705,7 +1784,7 @@ private fun PointerType.toUpEventType(): EditorGestureEventType = when (this) {
 
 private fun Offset.toGesturePoint(): GesturePoint = GesturePoint(x = x, y = y)
 
-private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculateCentroidPoint(): GesturePoint {
+private fun List<PointerInputChange>.calculateCentroidPoint(): GesturePoint {
     if (isEmpty()) {
         return GesturePoint()
     }
@@ -1714,7 +1793,7 @@ private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculate
     return GesturePoint(centerX, centerY)
 }
 
-private fun List<androidx.compose.ui.input.pointer.PointerInputChange>.calculateScaleDelta(): Float {
+private fun List<PointerInputChange>.calculateScaleDelta(): Float {
     if (size < 2) {
         return 1f
     }
@@ -1766,6 +1845,127 @@ private fun PointerEvent.toNativeModifiers(): Int {
 private fun EditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
     if (event.type != KeyEventType.KeyDown) {
         return false
+    }
+    val text = event.toInsertedText()
+    val result = handleKeyEvent(
+        keyCode = event.key.keyCode.toInt(),
+        text = text,
+        modifiers = event.toNativeModifiers(),
+    )
+    return result.handled || text != null
+}
+
+@Composable
+private fun CompletionPopup(
+    controller: SweetEditorController,
+    theme: EditorTheme,
+) {
+    val result = controller.state.completionResult ?: return
+    if (result.items.isEmpty()) {
+        return
+    }
+    val cursor = controller.state.renderModel?.cursor ?: return
+    val selectedIndex = controller.state.completionSelectedIndex
+    val renderer = controller.state.completionItemRenderer
+    val backgroundColor = theme.gutterBackgroundColor.toComposeColor()
+    val borderColor = theme.scrollbarThumbColor.toComposeColor()
+    val selectedColor = theme.selectionColor.toComposeColor()
+    val textColor = theme.textColor.toComposeColor()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(0.dp),
+        contentAlignment = Alignment.TopStart,
+    ) {
+        Column(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        x = cursor.position.x.toInt(),
+                        y = (cursor.position.y + cursor.height).toInt(),
+                    )
+                }
+                .background(backgroundColor)
+                .border(1.dp, borderColor)
+                .padding(vertical = 4.dp),
+        ) {
+            result.items.take(8).forEachIndexed { index, item ->
+                val isSelected = index == selectedIndex
+                androidx.compose.foundation.text.BasicText(
+                    text = renderer?.render(item) ?: item.detail?.let { "${item.label}  $it" } ?: item.label,
+                    modifier = Modifier
+                        .background(if (isSelected) selectedColor else Color.Transparent)
+                        .clickable {
+                            controller.selectCompletionItem(index)
+                            controller.applySelectedCompletionItem()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = TextStyle(
+                        color = textColor,
+                        fontFamily = theme.fontFamily,
+                        fontSize = theme.fontSize,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun SweetEditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
+    if (event.type != KeyEventType.KeyDown) {
+        return false
+    }
+    when (event.key) {
+        Key.DirectionDown -> {
+            if (hasVisibleCompletion()) {
+                selectNextCompletionItem()
+                return true
+            }
+        }
+
+        Key.DirectionUp -> {
+            if (hasVisibleCompletion()) {
+                selectPreviousCompletionItem()
+                return true
+            }
+        }
+
+        Key.Enter,
+        Key.NumPadEnter,
+        -> {
+            if (hasVisibleCompletion()) {
+                applySelectedCompletionItem()
+            } else {
+                performNewLineAction()
+            }
+            return true
+        }
+
+        Key.Tab -> {
+            if (isInLinkedEditing()) {
+                if (event.isShiftPressed) {
+                    linkedEditingPrev()
+                } else {
+                    linkedEditingNext()
+                }
+                return true
+            }
+            if (hasVisibleCompletion()) {
+                applySelectedCompletionItem()
+                return true
+            }
+        }
+
+        Key.Escape -> {
+            if (isInLinkedEditing()) {
+                cancelLinkedEditing()
+                return true
+            }
+            if (hasVisibleCompletion()) {
+                dismissCompletion()
+                return true
+            }
+        }
     }
     val text = event.toInsertedText()
     val result = handleKeyEvent(

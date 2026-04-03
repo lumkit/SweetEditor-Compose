@@ -18,6 +18,11 @@ internal fun AutoIndentMode.toNativeValue(): Int = when (this) {
     AutoIndentMode.KeepIndent -> 1
 }
 
+internal fun Int.toAutoIndentMode(): AutoIndentMode = when (this) {
+    1 -> AutoIndentMode.KeepIndent
+    else -> AutoIndentMode.None
+}
+
 internal fun WrapMode.toNativeValue(): Int = when (this) {
     WrapMode.None -> 0
     WrapMode.CharBreak -> 1

@@ -66,7 +66,19 @@ internal object AndroidNativeBindings {
     external fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean)
 
     @JvmStatic
+    external fun nativeIsReadOnly(editorHandle: Long): Boolean
+
+    @JvmStatic
     external fun nativeSetCompositionEnabled(editorHandle: Long, enabled: Boolean)
+
+    @JvmStatic
+    external fun nativeIsCompositionEnabled(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeSetAutoIndentMode(editorHandle: Long, mode: Int)
+
+    @JvmStatic
+    external fun nativeGetAutoIndentMode(editorHandle: Long): Int
 
     @JvmStatic
     external fun nativeSetCursorPosition(editorHandle: Long, line: Int, column: Int)
@@ -158,6 +170,102 @@ internal object AndroidNativeBindings {
     external fun nativeDeleteForward(editorHandle: Long): ByteArray?
 
     @JvmStatic
+    external fun nativeInsertSnippet(editorHandle: Long, template: String): ByteArray?
+
+    @JvmStatic
+    external fun nativeStartLinkedEditing(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeIsInLinkedEditing(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeLinkedEditingNext(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeLinkedEditingPrev(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeCancelLinkedEditing(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeMoveLineUp(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeMoveLineDown(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeCopyLineUp(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeCopyLineDown(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeDeleteLine(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeInsertLineAbove(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeInsertLineBelow(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeUndo(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeRedo(editorHandle: Long): ByteArray?
+
+    @JvmStatic
+    external fun nativeCanUndo(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeCanRedo(editorHandle: Long): Boolean
+
+    @JvmStatic
+    external fun nativeSelectAll(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeGetSelectedText(editorHandle: Long): String?
+
+    @JvmStatic
+    external fun nativeGetWordRangeAtCursor(editorHandle: Long): IntArray
+
+    @JvmStatic
+    external fun nativeGetWordAtCursor(editorHandle: Long): String?
+
+    @JvmStatic
+    external fun nativeMoveCursorLeft(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeMoveCursorRight(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeMoveCursorUp(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeMoveCursorDown(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeMoveCursorToLineStart(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeMoveCursorToLineEnd(editorHandle: Long, extendSelection: Boolean)
+
+    @JvmStatic
+    external fun nativeScrollToLine(editorHandle: Long, line: Int, behavior: Int)
+
+    @JvmStatic
+    external fun nativeGotoPosition(editorHandle: Long, line: Int, column: Int)
+
+    @JvmStatic
+    external fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float)
+
+    @JvmStatic
+    external fun nativeGetPositionRect(editorHandle: Long, line: Int, column: Int): FloatArray
+
+    @JvmStatic
+    external fun nativeGetCursorRect(editorHandle: Long): FloatArray
+
+    @JvmStatic
     external fun nativeRegisterBatchTextStyles(editorHandle: Long, data: ByteArray)
 
     @JvmStatic
@@ -176,7 +284,37 @@ internal object AndroidNativeBindings {
     external fun nativeSetBatchLineDiagnostics(editorHandle: Long, data: ByteArray)
 
     @JvmStatic
+    external fun nativeClearInlayHints(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeClearPhantomTexts(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeClearGutterIcons(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeClearDiagnostics(editorHandle: Long)
+
+    @JvmStatic
+    external fun nativeSetIndentGuides(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeSetBracketGuides(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeSetFlowGuides(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeSetSeparatorGuides(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeClearGuides(editorHandle: Long)
+
+    @JvmStatic
     external fun nativeSetFoldRegions(editorHandle: Long, data: ByteArray)
+
+    @JvmStatic
+    external fun nativeClearAllDecorations(editorHandle: Long)
 
     @JvmStatic
     external fun nativeSetMaxGutterIcons(editorHandle: Long, count: Int)

@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.establishTextInputSession
 import androidx.compose.ui.text.input.TextFieldValue
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.EditorRenderModel
-import com.qiplat.compose.sweeteditor.runtime.EditorController
 import com.qiplat.compose.sweeteditor.runtime.EditorDocument
 import com.qiplat.compose.sweeteditor.runtime.EditorState
 import kotlinx.coroutines.Job
@@ -29,7 +28,7 @@ import androidx.compose.ui.text.TextRange as ComposeTextRange
 
 @Composable
 internal actual fun InstallPlatformImeSession(
-    controller: EditorController,
+    controller: SweetEditorController,
     state: EditorState,
     isFocused: Boolean,
     isReadOnly: Boolean,
@@ -44,7 +43,7 @@ internal actual fun InstallPlatformImeSession(
 )
 
 private data class AndroidPlatformImeElement(
-    val controller: EditorController,
+    val controller: SweetEditorController,
     val state: EditorState,
     val isFocused: Boolean,
     val isReadOnly: Boolean,
@@ -69,7 +68,7 @@ private class AndroidPlatformImeNode :
     Modifier.Node(),
     FocusEventModifierNode,
     PlatformTextInputModifierNode {
-    internal var controller: EditorController? = null
+    internal var controller: SweetEditorController? = null
     internal var state: EditorState? = null
     private var externalFocused: Boolean = false
     private var composeFocused: Boolean = false
@@ -85,7 +84,7 @@ private class AndroidPlatformImeNode :
     private var cursorUpdateMode: Int = 0
 
     fun update(
-        controller: EditorController,
+        controller: SweetEditorController,
         state: EditorState,
         isFocused: Boolean,
         isReadOnly: Boolean,
@@ -290,7 +289,11 @@ private class AndroidPlatformImeNode :
             if (controller.isComposing()) {
                 controller.compositionEnd(null)
             }
-            dispatchAndroidKeyCode(controller, KeyEvent.KEYCODE_ENTER, "\n", 0)
+            if (controller.hasVisibleCompletion()) {
+                controller.applySelectedCompletionItem()
+            } else {
+                controller.performNewLineAction()
+            }
         } else if (controller.isComposing()) {
             controller.compositionEnd(committedText.ifEmpty { null })
         } else if (committedText.isEmpty()) {
@@ -388,6 +391,52 @@ private class AndroidPlatformImeNode :
             return
         }
         when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (controller.hasVisibleCompletion()) {
+                    controller.selectNextCompletionItem()
+                } else {
+                    dispatchAndroidKeyCode(controller, event.keyCode, null, event.toNativeModifiers())
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (controller.hasVisibleCompletion()) {
+                    controller.selectPreviousCompletionItem()
+                } else {
+                    dispatchAndroidKeyCode(controller, event.keyCode, null, event.toNativeModifiers())
+                }
+            }
+            KeyEvent.KEYCODE_TAB -> {
+                if (controller.isInLinkedEditing()) {
+                    if (event.isShiftPressed) {
+                        controller.linkedEditingPrev()
+                    } else {
+                        controller.linkedEditingNext()
+                    }
+                } else if (controller.hasVisibleCompletion()) {
+                    controller.applySelectedCompletionItem()
+                } else {
+                    dispatchAndroidKeyCode(controller, event.keyCode, "\t", event.toNativeModifiers())
+                }
+            }
+            KeyEvent.KEYCODE_ESCAPE -> {
+                if (controller.isInLinkedEditing()) {
+                    controller.cancelLinkedEditing()
+                } else if (controller.hasVisibleCompletion()) {
+                    controller.dismissCompletion()
+                }
+            }
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+            -> {
+                if (controller.hasVisibleCompletion()) {
+                    controller.applySelectedCompletionItem()
+                } else {
+                    if (controller.isComposing()) {
+                        controller.compositionEnd(null)
+                    }
+                    controller.performNewLineAction()
+                }
+            }
             KeyEvent.KEYCODE_DEL -> {
                 if (!deleteSelectionIfAny(controller)) {
                     controller.backspace()
@@ -417,7 +466,11 @@ private class AndroidPlatformImeNode :
             if (controller.isComposing()) {
                 controller.compositionEnd(null)
             }
-            dispatchAndroidKeyCode(controller, KeyEvent.KEYCODE_ENTER, "\n", 0)
+            if (controller.hasVisibleCompletion()) {
+                controller.applySelectedCompletionItem()
+            } else {
+                controller.performNewLineAction()
+            }
         } else if (controller.isComposing()) {
             controller.compositionEnd(null)
         }
@@ -425,7 +478,7 @@ private class AndroidPlatformImeNode :
     }
 
     private fun dispatchAndroidKeyCode(
-        controller: EditorController,
+        controller: SweetEditorController,
         androidKeyCode: Int,
         text: String?,
         modifiers: Int,
@@ -446,7 +499,7 @@ private class AndroidPlatformImeNode :
         }
     }
 
-    private fun deleteSelectionIfAny(controller: EditorController): Boolean {
+    private fun deleteSelectionIfAny(controller: SweetEditorController): Boolean {
         val proxySelection = lastProxyContext.value.selection.normalized(lastProxyContext.value.text.length)
         if (proxySelection.collapsed) {
             return false
@@ -475,7 +528,7 @@ private class AndroidPlatformImeNode :
         }
     }
 
-    private fun buildProxyContext(controller: EditorController): AndroidImeProxyContext {
+    private fun buildProxyContext(controller: SweetEditorController): AndroidImeProxyContext {
         val document = state?.document
         if (document == null) {
             val fallbackValue = controller.synchronizeImeProxyValue(lastProxyContext.value)

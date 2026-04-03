@@ -445,6 +445,15 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetReadOn
     editor_set_read_only(static_cast<intptr_t>(editor_handle), read_only ? 1 : 0);
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeIsReadOnly(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_is_read_only(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetCompositionEnabled(
     JNIEnv*,
@@ -453,6 +462,34 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetCompos
     jboolean enabled
 ) {
     editor_set_composition_enabled(static_cast<intptr_t>(editor_handle), enabled ? 1 : 0);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeIsCompositionEnabled(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_is_composition_enabled(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetAutoIndentMode(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jint mode
+) {
+    editor_set_auto_indent_mode(static_cast<intptr_t>(editor_handle), mode);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetAutoIndentMode(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return static_cast<jint>(editor_get_auto_indent_mode(static_cast<intptr_t>(editor_handle)));
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -788,6 +825,403 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeDeleteFor
     return copy_binary_payload(env, data, out_size);
 }
 
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeInsertSnippet(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jstring template_text
+) {
+    if (template_text == nullptr) {
+        return nullptr;
+    }
+    const char* chars = env->GetStringUTFChars(template_text, nullptr);
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_insert_snippet(static_cast<intptr_t>(editor_handle), chars, &out_size);
+    env->ReleaseStringUTFChars(template_text, chars);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeStartLinkedEditing(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jbyteArray data
+) {
+    const std::vector<uint8_t> bytes = read_byte_array(env, data);
+    if (bytes.empty()) {
+        return;
+    }
+    editor_start_linked_editing(
+        static_cast<intptr_t>(editor_handle),
+        bytes.data(),
+        bytes.size()
+    );
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeIsInLinkedEditing(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_is_in_linked_editing(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeLinkedEditingNext(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_linked_editing_next(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeLinkedEditingPrev(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_linked_editing_prev(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeCancelLinkedEditing(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_cancel_linked_editing(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveLineUp(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_move_line_up(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveLineDown(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_move_line_down(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeCopyLineUp(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_copy_line_up(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeCopyLineDown(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_copy_line_down(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeDeleteLine(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_delete_line(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeInsertLineAbove(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_insert_line_above(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeInsertLineBelow(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_insert_line_below(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeUndo(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_undo(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeRedo(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t out_size = 0;
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    const uint8_t* data = editor_redo(static_cast<intptr_t>(editor_handle), &out_size);
+    return copy_binary_payload(env, data, out_size);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeCanUndo(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_can_undo(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeCanRedo(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    return editor_can_redo(static_cast<intptr_t>(editor_handle)) != 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSelectAll(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_select_all(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetSelectedText(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    const char* text = editor_get_selected_text(static_cast<intptr_t>(editor_handle));
+    return text == nullptr ? nullptr : env->NewStringUTF(text);
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetWordRangeAtCursor(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    size_t start_line = 0;
+    size_t start_column = 0;
+    size_t end_line = 0;
+    size_t end_column = 0;
+    editor_get_word_range_at_cursor(
+        static_cast<intptr_t>(editor_handle),
+        &start_line,
+        &start_column,
+        &end_line,
+        &end_column
+    );
+    jintArray result = env->NewIntArray(4);
+    const jint values[4] = {
+        static_cast<jint>(start_line),
+        static_cast<jint>(start_column),
+        static_cast<jint>(end_line),
+        static_cast<jint>(end_column)
+    };
+    env->SetIntArrayRegion(result, 0, 4, values);
+    return result;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetWordAtCursor(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    const char* text = editor_get_word_at_cursor(static_cast<intptr_t>(editor_handle));
+    return text == nullptr ? nullptr : env->NewStringUTF(text);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorLeft(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_left(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorRight(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_right(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorUp(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_up(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorDown(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_down(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorToLineStart(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_to_line_start(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeMoveCursorToLineEnd(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jboolean extend_selection
+) {
+    editor_move_cursor_to_line_end(static_cast<intptr_t>(editor_handle), extend_selection ? 1 : 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeScrollToLine(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jint line,
+    jint behavior
+) {
+    editor_scroll_to_line(
+        static_cast<intptr_t>(editor_handle),
+        static_cast<size_t>(line),
+        static_cast<uint8_t>(behavior)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGotoPosition(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jint line,
+    jint column
+) {
+    editor_goto_position(
+        static_cast<intptr_t>(editor_handle),
+        static_cast<size_t>(line),
+        static_cast<size_t>(column)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetScroll(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jfloat scroll_x,
+    jfloat scroll_y
+) {
+    editor_set_scroll(static_cast<intptr_t>(editor_handle), scroll_x, scroll_y);
+}
+
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetPositionRect(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jint line,
+    jint column
+) {
+    float x = 0.0f;
+    float y = 0.0f;
+    float height = 0.0f;
+    editor_get_position_rect(
+        static_cast<intptr_t>(editor_handle),
+        static_cast<size_t>(line),
+        static_cast<size_t>(column),
+        &x,
+        &y,
+        &height
+    );
+    jfloatArray result = env->NewFloatArray(3);
+    const jfloat values[3] = {x, y, height};
+    env->SetFloatArrayRegion(result, 0, 3, values);
+    return result;
+}
+
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetCursorRect(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle
+) {
+    float x = 0.0f;
+    float y = 0.0f;
+    float height = 0.0f;
+    editor_get_cursor_rect(static_cast<intptr_t>(editor_handle), &x, &y, &height);
+    jfloatArray result = env->NewFloatArray(3);
+    const jfloat values[3] = {x, y, height};
+    env->SetFloatArrayRegion(result, 0, 3, values);
+    return result;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeRegisterBatchTextStyles(
     JNIEnv* env,
@@ -855,6 +1289,95 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetBatchL
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearInlayHints(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_inlay_hints(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearPhantomTexts(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_phantom_texts(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearGutterIcons(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_gutter_icons(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearDiagnostics(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_diagnostics(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetIndentGuides(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jbyteArray data
+) {
+    const std::vector<uint8_t> bytes = read_byte_array(env, data);
+    editor_set_indent_guides(static_cast<intptr_t>(editor_handle), bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetBracketGuides(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jbyteArray data
+) {
+    const std::vector<uint8_t> bytes = read_byte_array(env, data);
+    editor_set_bracket_guides(static_cast<intptr_t>(editor_handle), bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetFlowGuides(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jbyteArray data
+) {
+    const std::vector<uint8_t> bytes = read_byte_array(env, data);
+    editor_set_flow_guides(static_cast<intptr_t>(editor_handle), bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetSeparatorGuides(
+    JNIEnv* env,
+    jclass,
+    jlong editor_handle,
+    jbyteArray data
+) {
+    const std::vector<uint8_t> bytes = read_byte_array(env, data);
+    editor_set_separator_guides(static_cast<intptr_t>(editor_handle), bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearGuides(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_guides(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetFoldRegions(
     JNIEnv* env,
     jclass,
@@ -863,6 +1386,15 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeSetFoldRe
 ) {
     const std::vector<uint8_t> bytes = read_byte_array(env, data);
     editor_set_fold_regions(static_cast<intptr_t>(editor_handle), bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeClearAllDecorations(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    editor_clear_all_decorations(static_cast<intptr_t>(editor_handle));
 }
 
 extern "C" JNIEXPORT void JNICALL

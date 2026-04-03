@@ -285,7 +285,7 @@ private class LanguageRuleCompiler(
     private fun compileRule(rule: LanguageRule): CompiledRule {
         val resolvedPattern = resolveTemplate(rule.pattern.orEmpty(), resolvedVariables)
         return CompiledRule(
-            regex = Regex(resolvedPattern),
+            regex = compileLanguageRegex(resolvedPattern),
             styleId = rule.style?.let { resolveStyleId(configuration, it) },
             styleTargets = rule.styles.mapNotNull { target ->
                 resolveStyleId(configuration, target.style)?.let { target.group to it }
@@ -579,6 +579,33 @@ private fun resolveTemplate(
     }
 }
 
+private fun compileLanguageRegex(pattern: String): Regex = try {
+    Regex(pattern)
+} catch (error: IllegalArgumentException) {
+    val normalizedPattern = normalizeRegexUnicodeProperties(pattern)
+    if (normalizedPattern == pattern) {
+        throw error
+    }
+    Regex(normalizedPattern)
+}
+
+private fun normalizeRegexUnicodeProperties(pattern: String): String {
+    val propertyPattern = Regex("""\\([pP])\{([A-Za-z][A-Za-z0-9_-]*)\}""")
+    return propertyPattern.replace(pattern) { match ->
+        val propertyType = match.groupValues[1]
+        val propertyName = match.groupValues[2]
+        val normalizedName = when {
+            propertyName.length <= 2 -> propertyName
+            propertyName.startsWith("Is") -> propertyName
+            propertyName.startsWith("In") -> propertyName
+            propertyName.startsWith("java") -> propertyName
+            propertyName in regexUnicodePropertyAliasesToKeep -> propertyName
+            else -> "Is$propertyName"
+        }
+        "\\$propertyType{$normalizedName}"
+    }
+}
+
 /**
  * Resolves a named style to a concrete style id.
  *
@@ -593,3 +620,19 @@ private fun resolveStyleId(
 
 private const val DEFAULT_LANGUAGE_STATE = "default"
 private const val STATE_LOOKBACK_LINES = 128
+
+private val regexUnicodePropertyAliasesToKeep = setOf(
+    "ASCII",
+    "Alpha",
+    "Alnum",
+    "Digit",
+    "Lower",
+    "Upper",
+    "Space",
+    "Punct",
+    "Graph",
+    "Print",
+    "Blank",
+    "Cntrl",
+    "XDigit",
+)

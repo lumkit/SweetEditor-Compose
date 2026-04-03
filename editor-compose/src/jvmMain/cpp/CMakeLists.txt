@@ -17,12 +17,25 @@ if(NOT DEFINED JAVA_HOME)
     message(FATAL_ERROR "JAVA_HOME is required")
 endif()
 
+if(APPLE)
+    set(SWEETEDITOR_PLATFORM_DIR "osx")
+    set(SWEETEDITOR_CORE_LIBRARY_NAME "libsweeteditor.dylib")
+elseif(UNIX)
+    set(SWEETEDITOR_PLATFORM_DIR "linux")
+    set(SWEETEDITOR_CORE_LIBRARY_NAME "libsweeteditor.so")
+elseif(WIN32)
+    set(SWEETEDITOR_PLATFORM_DIR "windows")
+    set(SWEETEDITOR_CORE_LIBRARY_NAME "sweeteditor.dll")
+else()
+    message(FATAL_ERROR "Unsupported desktop platform")
+endif()
+
 add_library(sweeteditor SHARED IMPORTED)
 set_target_properties(
     sweeteditor
     PROPERTIES
     IMPORTED_LOCATION
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../editor-core/include/mac_os/${SWEETEDITOR_ARCH_DIR}/lib/libsweeteditor.dylib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../resources/native/${SWEETEDITOR_PLATFORM_DIR}/${SWEETEDITOR_ARCH_DIR}/${SWEETEDITOR_CORE_LIBRARY_NAME}
 )
 
 add_library(

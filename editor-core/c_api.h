@@ -4,7 +4,14 @@
 
 #ifndef SWEETEDITOR_C_API_H
 #define SWEETEDITOR_C_API_H
+
+#ifdef __cplusplus
+#include <cstddef>
 #include <cstdint>
+#else
+#include <stddef.h>
+#include <stdint.h>
+#endif
 
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
   #ifdef SWEETEDITOR_EXPORT
@@ -12,11 +19,21 @@
   #else
     #define EDITOR_API __declspec(dllimport)
   #endif
+  #define EDITOR_CALL __stdcall
+  #ifndef __cplusplus
+    typedef uint16_t U16Char;
+  #endif
 #else
   #define EDITOR_API __attribute__((visibility("default")))
+  #define EDITOR_CALL
+  #ifndef __cplusplus
+    typedef uint16_t U16Char;
+  #endif
 #endif
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 
 /// @note General C API conventions in this file:
 ///   - editor_handle:   EditorCore handle (intptr_t) returned by create_editor
@@ -28,13 +45,18 @@ extern "C" {
 
 /// Text measurement callback set, passed when creating EditorCore
 typedef struct {
-    float (__stdcall* measure_text_width)(const U16Char* text, int32_t font_style);
-    float (__stdcall* measure_inlay_hint_width)(const U16Char* text);
-    float (__stdcall* measure_icon_width)(int32_t icon_id);
-    void  (__stdcall* get_font_metrics)(float* arr, size_t length);
+    float (EDITOR_CALL* measure_text_width)(const U16Char* text, int32_t font_style);
+    float (EDITOR_CALL* measure_inlay_hint_width)(const U16Char* text);
+    float (EDITOR_CALL* measure_icon_width)(int32_t icon_id);
+    void  (EDITOR_CALL* get_font_metrics)(float* arr, size_t length);
 } text_measurer_t;
 
 #pragma region [Core Lifecycle, View & Events]
+
+/// Create a Document and return its handle
+/// @param text UTF8 text content
+/// @return Document handle
+EDITOR_API intptr_t create_document_from_utf8(const char* text);
 
 /// Create a Document and return its handle
 /// @param text UTF16 text content
@@ -132,8 +154,8 @@ EDITOR_API void editor_set_gutter_sticky(intptr_t editor_handle, int sticky);
 EDITOR_API void editor_set_gutter_visible(intptr_t editor_handle, int visible);
 
 /// Set selection handle hit-test configuration using offset rects
-/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom
-/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom
+/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom anchor (handle tip)
+/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom anchor (handle tip)
 EDITOR_API void editor_set_handle_config(intptr_t editor_handle,
     float start_left, float start_top, float start_right, float start_bottom,
     float end_left, float end_top, float end_right, float end_bottom);
@@ -607,6 +629,9 @@ EDITOR_API void editor_scroll_to_line(intptr_t editor_handle, size_t line, uint8
 /// @param column Column number (0-based)
 EDITOR_API void editor_goto_position(intptr_t editor_handle, size_t line, size_t column);
 
+/// Adjust scroll offset just enough to keep current cursor visible in viewport
+EDITOR_API void editor_ensure_cursor_visible(intptr_t editor_handle);
+
 /// Manually set scroll position (automatically clamped to valid range)
 /// @param scroll_x Horizontal scroll offset
 /// @param scroll_y Vertical scroll offset
@@ -898,6 +923,8 @@ EDITOR_API void free_binary_data(intptr_t data_ptr);
 EDITOR_API void init_unhandled_exception_handler();
 #endif
 
+#ifdef __cplusplus
 }
+#endif
 
 #endif //SWEETEDITOR_C_API_H

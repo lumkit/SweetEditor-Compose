@@ -51,3 +51,4 @@ captures
 node_modules/
 
 platform-demo/*
+*.lock

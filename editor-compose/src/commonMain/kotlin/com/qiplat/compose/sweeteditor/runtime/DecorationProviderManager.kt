@@ -6,9 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.model.decoration.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 
 @Composable
 internal fun InstallDecorationProviders(
@@ -22,6 +20,7 @@ internal fun InstallDecorationProviders(
     val scrollMetrics = state.scrollMetrics
     val lastEditResult = state.lastEditResult
     val languageConfiguration = state.languageConfiguration
+    val metadata = state.metadata
     val decorationRequestVersion = state.decorationRequestVersion
     val providerIds = providers.map { it.id }
     val visibleLineRange = remember(renderModel, document) {
@@ -31,15 +30,22 @@ internal fun InstallDecorationProviders(
     LaunchedEffect(controller, document, providerIds) {
         if (document == null) {
             manager.clearAll()?.let(controller::applyDecorationBatch)
+            state.isDecorationDirty = false
             return@LaunchedEffect
         }
         manager.retainOnly(providerIds)?.let(controller::applyDecorationBatch)
+        if (providerIds.isEmpty() && !manager.hasPendingRequests()) {
+            state.isDecorationDirty = false
+        }
     }
 
     providers.forEach { provider ->
         DisposableEffect(provider.id) {
             onDispose {
                 manager.removeProvider(provider.id)?.let(controller::applyDecorationBatch)
+                if (!manager.hasPendingRequests()) {
+                    state.isDecorationDirty = false
+                }
             }
         }
 
@@ -53,11 +59,16 @@ internal fun InstallDecorationProviders(
             scrollMetrics.viewportHeight,
             lastEditResult,
             languageConfiguration,
+            metadata,
         ) {
+            val effectScope = this
             val currentDocument = document
             val currentVisibleRange = visibleLineRange
             if (currentDocument == null || currentVisibleRange == null) {
                 manager.removeProvider(provider.id)?.let(controller::applyDecorationBatch)
+                if (!manager.hasPendingRequests()) {
+                    state.isDecorationDirty = false
+                }
                 return@LaunchedEffect
             }
             val requestedLineRange = currentVisibleRange.expand(
@@ -68,6 +79,9 @@ internal fun InstallDecorationProviders(
             if (provider.debounceMillis > 0) {
                 delay(provider.debounceMillis)
             }
+            if (!manager.isCurrentGeneration(provider.id, generation)) {
+                return@LaunchedEffect
+            }
             val context = DecorationProviderContext(
                 document = currentDocument,
                 visibleLineRange = currentVisibleRange,
@@ -76,12 +90,37 @@ internal fun InstallDecorationProviders(
                 scrollMetrics = scrollMetrics,
                 lastEditResult = lastEditResult,
                 languageConfiguration = languageConfiguration,
+                editorMetadata = metadata,
             )
-            val update = withContext(Dispatchers.Default) {
-                provider.provide(context)
+            val receiver = object : DecorationReceiver {
+                override fun accept(result: DecorationResult): Boolean {
+                    if (!manager.isCurrentGeneration(provider.id, generation)) {
+                        return false
+                    }
+                    effectScope.launch {
+                        manager.commitResult(
+                            providerId = provider.id,
+                            generation = generation,
+                            result = result,
+                            defaultLineRange = requestedLineRange,
+                        )?.let(controller::applyDecorationBatch)
+                    }
+                    return true
+                }
+
+                override fun isCancelled(): Boolean = !manager.isCurrentGeneration(provider.id, generation)
             }
-            manager.commit(provider.id, generation, update)?.let(controller::applyDecorationBatch)
-            state.isDecorationDirty = false
+            try {
+                withContext(Dispatchers.Default) {
+                    runDecorationProviderSafely {
+                        provider.provideDecorations(context, receiver)
+                    }
+                }
+            } finally {
+                if (manager.finishGeneration(provider.id, generation)) {
+                    state.isDecorationDirty = false
+                }
+            }
         }
     }
 }
@@ -90,29 +129,85 @@ internal class DecorationProviderManager {
     private data class ProviderEntry(
         val generation: Int = 0,
         val batch: DecorationBatch = DecorationBatch(),
+        val pendingGeneration: Int? = null,
     )
 
     private val providerEntries = linkedMapOf<String, ProviderEntry>()
 
     fun beginGeneration(providerId: String): Int {
         val nextGeneration = (providerEntries[providerId]?.generation ?: 0) + 1
-        providerEntries[providerId] = providerEntries[providerId].orEmpty().copy(generation = nextGeneration)
+        providerEntries[providerId] = providerEntries[providerId].orEmpty().copy(
+            generation = nextGeneration,
+            pendingGeneration = nextGeneration,
+        )
         return nextGeneration
     }
+
+    fun isCurrentGeneration(
+        providerId: String,
+        generation: Int,
+    ): Boolean = providerEntries[providerId]?.generation == generation
 
     fun commit(
         providerId: String,
         generation: Int,
         update: DecorationUpdate?,
     ): DecorationBatch? {
+        val result = update?.toDecorationResult() ?: DecorationResult(
+            textStyles = emptyMap(),
+            textStylesMode = DecorationApplyMode.ReplaceAll,
+            syntaxSpans = emptyMap(),
+            syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            semanticSpans = emptyMap(),
+            semanticSpansMode = DecorationApplyMode.ReplaceAll,
+            inlayHints = emptyMap(),
+            inlayHintsMode = DecorationApplyMode.ReplaceAll,
+            diagnostics = emptyMap(),
+            diagnosticsMode = DecorationApplyMode.ReplaceAll,
+            indentGuides = emptyList(),
+            indentGuidesMode = DecorationApplyMode.ReplaceAll,
+            bracketGuides = emptyList(),
+            bracketGuidesMode = DecorationApplyMode.ReplaceAll,
+            flowGuides = emptyList(),
+            flowGuidesMode = DecorationApplyMode.ReplaceAll,
+            separatorGuides = emptyList(),
+            separatorGuidesMode = DecorationApplyMode.ReplaceAll,
+            foldRegions = emptyList(),
+            foldRegionsMode = DecorationApplyMode.ReplaceAll,
+            gutterIcons = emptyMap(),
+            gutterIconsMode = DecorationApplyMode.ReplaceAll,
+            phantomTexts = emptyMap(),
+            phantomTextsMode = DecorationApplyMode.ReplaceAll,
+        )
+        return commitResult(providerId, generation, result, update?.lineRange ?: IntRange.EMPTY)
+    }
+
+    fun commitResult(
+        providerId: String,
+        generation: Int,
+        result: DecorationResult,
+        defaultLineRange: IntRange,
+    ): DecorationBatch? {
         val current = providerEntries[providerId] ?: return null
         if (current.generation != generation) {
             return null
         }
         providerEntries[providerId] = current.copy(
-            batch = applyUpdate(current.batch, update),
+            batch = applyResult(current.batch, result, defaultLineRange),
         )
         return buildBatch()
+    }
+
+    fun finishGeneration(
+        providerId: String,
+        generation: Int,
+    ): Boolean {
+        val current = providerEntries[providerId] ?: return hasPendingRequests().not()
+        if (current.generation != generation || current.pendingGeneration != generation) {
+            return hasPendingRequests().not()
+        }
+        providerEntries[providerId] = current.copy(pendingGeneration = null)
+        return hasPendingRequests().not()
     }
 
     fun removeProvider(providerId: String): DecorationBatch? {
@@ -142,6 +237,8 @@ internal class DecorationProviderManager {
         return DecorationBatch()
     }
 
+    fun hasPendingRequests(): Boolean = providerEntries.values.any { it.pendingGeneration != null }
+
     internal fun buildBatch(): DecorationBatch {
         var textStyles: Map<Int, TextStyle> = emptyMap()
         var syntaxSpans: Map<Int, List<StyleSpan>> = emptyMap()
@@ -150,6 +247,10 @@ internal class DecorationProviderManager {
         var phantomTexts: Map<Int, List<PhantomText>> = emptyMap()
         var gutterIcons: Map<Int, List<GutterIcon>> = emptyMap()
         var diagnostics: Map<Int, List<DiagnosticItem>> = emptyMap()
+        var indentGuides: List<IndentGuide> = emptyList()
+        var bracketGuides: List<BracketGuide> = emptyList()
+        var flowGuides: List<FlowGuide> = emptyList()
+        var separatorGuides: List<SeparatorGuide> = emptyList()
         var foldRegions: List<FoldRegion> = emptyList()
 
         providerEntries.values.forEach { entry ->
@@ -161,6 +262,10 @@ internal class DecorationProviderManager {
             phantomTexts = phantomTexts.mergeValues(batch.phantomTexts)
             gutterIcons = gutterIcons.mergeValues(batch.gutterIcons)
             diagnostics = diagnostics.mergeValues(batch.diagnostics)
+            indentGuides = indentGuides + batch.indentGuides
+            bracketGuides = bracketGuides + batch.bracketGuides
+            flowGuides = flowGuides + batch.flowGuides
+            separatorGuides = separatorGuides + batch.separatorGuides
             foldRegions = foldRegions + batch.foldRegions
         }
 
@@ -174,49 +279,56 @@ internal class DecorationProviderManager {
             phantomTexts = phantomTexts,
             gutterIcons = gutterIcons,
             diagnostics = diagnostics,
+            indentGuides = indentGuides,
+            bracketGuides = bracketGuides,
+            flowGuides = flowGuides,
+            separatorGuides = separatorGuides,
             foldRegions = foldRegions,
         )
     }
 
-    private fun applyUpdate(
+    private fun applyResult(
         current: DecorationBatch,
-        update: DecorationUpdate?,
+        result: DecorationResult,
+        defaultLineRange: IntRange,
     ): DecorationBatch {
-        if (update == null) {
-            return DecorationBatch()
-        }
-        val decorations = update.decorations
         return DecorationBatch(
-            textStyles = applyTextStyles(current.textStyles, decorations.textStyles, update),
+            textStyles = applyTextStyles(current.textStyles, result.textStyles, result.textStylesMode),
             spansByLayer = mapOf(
                 SpanLayer.Syntax to applyLineMap(
                     current.spansByLayer[SpanLayer.Syntax].orEmpty(),
-                    decorations.syntaxSpans,
-                    update,
+                    result.syntaxSpans,
+                    result.syntaxSpansMode,
+                    result.lineRange ?: defaultLineRange,
                 ),
                 SpanLayer.Semantic to applyLineMap(
                     current.spansByLayer[SpanLayer.Semantic].orEmpty(),
-                    decorations.semanticSpans,
-                    update,
+                    result.semanticSpans,
+                    result.semanticSpansMode,
+                    result.lineRange ?: defaultLineRange,
                 ),
             ),
-            inlayHints = applyLineMap(current.inlayHints, decorations.inlayHints, update),
-            phantomTexts = applyLineMap(current.phantomTexts, decorations.phantomTexts, update),
-            gutterIcons = applyLineMap(current.gutterIcons, decorations.gutterIcons, update),
-            diagnostics = applyLineMap(current.diagnostics, decorations.diagnostics, update),
-            foldRegions = applyFoldRegions(current.foldRegions, decorations.foldRegions, update),
+            inlayHints = applyLineMap(current.inlayHints, result.inlayHints, result.inlayHintsMode, result.lineRange ?: defaultLineRange),
+            phantomTexts = applyLineMap(current.phantomTexts, result.phantomTexts, result.phantomTextsMode, result.lineRange ?: defaultLineRange),
+            gutterIcons = applyLineMap(current.gutterIcons, result.gutterIcons, result.gutterIconsMode, result.lineRange ?: defaultLineRange),
+            diagnostics = applyLineMap(current.diagnostics, result.diagnostics, result.diagnosticsMode, result.lineRange ?: defaultLineRange),
+            indentGuides = applyGuideList(current.indentGuides, result.indentGuides, result.indentGuidesMode, result.lineRange ?: defaultLineRange) { it.start.line },
+            bracketGuides = applyGuideList(current.bracketGuides, result.bracketGuides, result.bracketGuidesMode, result.lineRange ?: defaultLineRange) { it.parent.line },
+            flowGuides = applyGuideList(current.flowGuides, result.flowGuides, result.flowGuidesMode, result.lineRange ?: defaultLineRange) { it.start.line },
+            separatorGuides = applyGuideList(current.separatorGuides, result.separatorGuides, result.separatorGuidesMode, result.lineRange ?: defaultLineRange) { it.line },
+            foldRegions = applyFoldRegions(current.foldRegions, result.foldRegions, result.foldRegionsMode, result.lineRange ?: defaultLineRange),
         )
     }
 
     private fun applyTextStyles(
         current: Map<Int, TextStyle>,
         next: Map<Int, TextStyle>?,
-        update: DecorationUpdate,
+        mode: DecorationApplyMode,
     ): Map<Int, TextStyle> {
         if (next == null) {
             return current
         }
-        return when (update.applyMode) {
+        return when (mode) {
             DecorationApplyMode.Merge,
             DecorationApplyMode.ReplaceRange,
             -> current + next
@@ -228,50 +340,68 @@ internal class DecorationProviderManager {
     private fun <T> applyLineMap(
         current: Map<Int, List<T>>,
         next: Map<Int, List<T>>?,
-        update: DecorationUpdate,
+        mode: DecorationApplyMode,
+        lineRange: IntRange,
     ): Map<Int, List<T>> {
         if (next == null) {
             return current
         }
-        return when (update.applyMode) {
+        return when (mode) {
             DecorationApplyMode.Merge -> current.mergeValues(next)
             DecorationApplyMode.ReplaceAll -> next
             DecorationApplyMode.ReplaceRange -> {
-                val lineRange = update.lineRange ?: inferLineRange(next.keys)
-                if (lineRange == null) {
-                    current
-                } else {
-                    current
-                        .filterKeys { it !in lineRange }
-                        .mergeValues(next)
-                }
+                current
+                    .filterKeys { it !in lineRange }
+                    .mergeValues(next)
             }
+        }
+    }
+
+    private fun <T> applyGuideList(
+        current: List<T>,
+        next: List<T>?,
+        mode: DecorationApplyMode,
+        lineRange: IntRange,
+        lineSelector: (T) -> Int,
+    ): List<T> {
+        if (next == null) {
+            return current
+        }
+        return when (mode) {
+            DecorationApplyMode.Merge -> current + next
+            DecorationApplyMode.ReplaceAll -> next
+            DecorationApplyMode.ReplaceRange -> current.filterNot { lineSelector(it) in lineRange } + next
         }
     }
 
     private fun applyFoldRegions(
         current: List<FoldRegion>,
         next: List<FoldRegion>?,
-        update: DecorationUpdate,
+        mode: DecorationApplyMode,
+        lineRange: IntRange,
     ): List<FoldRegion> {
         if (next == null) {
             return current
         }
-        return when (update.applyMode) {
+        return when (mode) {
             DecorationApplyMode.Merge -> current + next
             DecorationApplyMode.ReplaceAll -> next
-            DecorationApplyMode.ReplaceRange -> {
-                val lineRange = update.lineRange ?: inferLineRange(next.map { it.startLine })
-                if (lineRange == null) {
-                    current
-                } else {
-                    current.filterNot { it.startLine in lineRange || it.endLine in lineRange } + next
-                }
-            }
+            DecorationApplyMode.ReplaceRange -> current.filterNot { it.startLine in lineRange || it.endLine in lineRange } + next
         }
     }
 
     private fun ProviderEntry?.orEmpty(): ProviderEntry = this ?: ProviderEntry()
+}
+
+internal suspend fun runDecorationProviderSafely(
+    block: suspend () -> Unit,
+): Boolean = try {
+    block()
+    true
+} catch (error: CancellationException) {
+    throw error
+} catch (_: Throwable) {
+    false
 }
 
 private fun computeVisibleLineRange(

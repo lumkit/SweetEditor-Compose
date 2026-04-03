@@ -88,6 +88,7 @@ class LanguageConfigDecorationProviderCommonTest {
                     scrollMetrics = ScrollMetrics(),
                     lastEditResult = TextEditResult.Empty,
                     languageConfiguration = configuration,
+                    editorMetadata = null,
                 ),
             )
         }
@@ -100,6 +101,54 @@ class LanguageConfigDecorationProviderCommonTest {
         assertTrue(syntaxSpans.getValue(1).any { it.styleId == EditorThemeStyleIds.Function })
         assertTrue(syntaxSpans.getValue(2).any { it.styleId == EditorThemeStyleIds.Comment })
         assertTrue(syntaxSpans.getValue(3).any { it.styleId == EditorThemeStyleIds.Comment })
+    }
+
+    @Test
+    fun providerAcceptsUnicodeScriptPropertyPatterns() {
+        val configuration = LanguageConfigurationParser.parse(
+            """
+                {
+                  "name": "unicode-demo",
+                  "variables": {
+                    "identifier": "(?:(?:[\\p{Han}\\w_$]+)(?:[\\p{Han}\\w_$0-9]*))"
+                  },
+                  "states": {
+                    "default": [
+                      {
+                        "pattern": "(@interface)\\b(?:[ \\t\\f])+(${'$'}{identifier})",
+                        "styles": [1, "keyword", 2, "class"]
+                      }
+                    ]
+                  }
+                }
+            """.trimIndent(),
+        )
+        val document = EditorDocument(
+            FakeLanguageDocumentBridge(
+                listOf("@interface 示例"),
+            ),
+        )
+        val provider = LanguageConfigDecorationProvider()
+
+        val update = runSuspend {
+            provider.provide(
+                DecorationProviderContext(
+                    document = document,
+                    visibleLineRange = 0..0,
+                    requestedLineRange = 0..0,
+                    renderModel = null,
+                    scrollMetrics = ScrollMetrics(),
+                    lastEditResult = TextEditResult.Empty,
+                    languageConfiguration = configuration,
+                    editorMetadata = null,
+                ),
+            )
+        }
+
+        assertNotNull(update)
+        val syntaxSpans = update.decorations.syntaxSpans
+        assertNotNull(syntaxSpans)
+        assertTrue(syntaxSpans.getValue(0).any { it.styleId == EditorThemeStyleIds.Class })
     }
 }
 

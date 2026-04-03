@@ -1,6 +1,7 @@
 package com.qiplat.compose.sweeteditor.bridge
 
 import com.qiplat.compose.sweeteditor.model.foundation.*
+import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 
 internal interface NativeTextMeasurer {
     fun measureTextWidth(text: String, fontStyle: Int): Float
@@ -53,7 +54,15 @@ internal interface NativeEditorBridge {
 
     fun setReadOnly(readOnly: Boolean)
 
+    fun isReadOnly(): Boolean
+
     fun setCompositionEnabled(enabled: Boolean)
+
+    fun isCompositionEnabled(): Boolean
+
+    fun setAutoIndentMode(mode: AutoIndentMode)
+
+    fun getAutoIndentMode(): AutoIndentMode
 
     fun setCursorPosition(position: TextPosition)
 
@@ -100,6 +109,70 @@ internal interface NativeEditorBridge {
 
     fun deleteForward(): ByteArray?
 
+    fun insertSnippet(template: String): ByteArray?
+
+    fun startLinkedEditing(model: LinkedEditingModel)
+
+    fun isInLinkedEditing(): Boolean
+
+    fun linkedEditingNext(): Boolean
+
+    fun linkedEditingPrev(): Boolean
+
+    fun cancelLinkedEditing()
+
+    fun moveLineUp(): ByteArray?
+
+    fun moveLineDown(): ByteArray?
+
+    fun copyLineUp(): ByteArray?
+
+    fun copyLineDown(): ByteArray?
+
+    fun deleteLine(): ByteArray?
+
+    fun insertLineAbove(): ByteArray?
+
+    fun insertLineBelow(): ByteArray?
+
+    fun undo(): ByteArray?
+
+    fun redo(): ByteArray?
+
+    fun canUndo(): Boolean
+
+    fun canRedo(): Boolean
+
+    fun selectAll()
+
+    fun getSelectedText(): String?
+
+    fun getWordRangeAtCursor(): TextRange
+
+    fun getWordAtCursor(): String?
+
+    fun moveCursorLeft(extendSelection: Boolean)
+
+    fun moveCursorRight(extendSelection: Boolean)
+
+    fun moveCursorUp(extendSelection: Boolean)
+
+    fun moveCursorDown(extendSelection: Boolean)
+
+    fun moveCursorToLineStart(extendSelection: Boolean)
+
+    fun moveCursorToLineEnd(extendSelection: Boolean)
+
+    fun scrollToLine(line: Int, behavior: ScrollBehavior)
+
+    fun gotoPosition(line: Int, column: Int)
+
+    fun setScroll(scrollX: Float, scrollY: Float)
+
+    fun getPositionRect(line: Int, column: Int): com.qiplat.compose.sweeteditor.model.visual.CursorRect
+
+    fun getCursorRect(): com.qiplat.compose.sweeteditor.model.visual.CursorRect
+
     fun registerBatchTextStyles(data: ByteArray)
 
     fun setBatchLineSpans(data: ByteArray)
@@ -112,7 +185,27 @@ internal interface NativeEditorBridge {
 
     fun setBatchLineDiagnostics(data: ByteArray)
 
+    fun clearInlayHints()
+
+    fun clearPhantomTexts()
+
+    fun clearGutterIcons()
+
+    fun clearDiagnostics()
+
+    fun setIndentGuides(data: ByteArray)
+
+    fun setBracketGuides(data: ByteArray)
+
+    fun setFlowGuides(data: ByteArray)
+
+    fun setSeparatorGuides(data: ByteArray)
+
+    fun clearGuides()
+
     fun setFoldRegions(data: ByteArray)
+
+    fun clearAllDecorations()
 
     fun setMaxGutterIcons(count: Int)
 }

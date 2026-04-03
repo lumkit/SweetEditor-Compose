@@ -10,7 +10,7 @@ set_target_properties(
     sweeteditor
     PROPERTIES
     IMPORTED_LOCATION
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../editor-core/include/android/${ANDROID_ABI}/libsweeteditor.so
+    ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libsweeteditor.so
 )
 
 add_library(

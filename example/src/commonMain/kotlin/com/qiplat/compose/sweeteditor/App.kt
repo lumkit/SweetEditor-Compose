@@ -33,7 +33,7 @@ fun App() {
         val editorFontConfig = remember(editorFontFamily) {
             EditorFontConfig(
                 fontFamily = editorFontFamily,
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 lineNumberFontSize = 13.sp,
                 inlayHintFontSize = 12.sp,
                 iconSize = 16.sp,
@@ -62,7 +62,7 @@ fun App() {
             listOf(
                 ExampleSampleSpec("example.kt", "files/example_kt", "files/kotlin_json"),
                 ExampleSampleSpec("example.java", "files/example_java", "files/java_json"),
-                ExampleSampleSpec("View.java", "files/View.java", "files/java_json"),
+                ExampleSampleSpec("View.java", "files/View_java", "files/java_json"),
                 ExampleSampleSpec("example.lua", "files/example_lua", "files/lua_json"),
                 ExampleSampleSpec("nlohmann-json.hpp", "files/nlohmann-json_hpp", "files/cpp_json"),
             )
@@ -70,7 +70,7 @@ fun App() {
         val decorationProviders = remember {
             listOf(
                 LanguageConfigDecorationProvider(),
-//                ExampleDiagnosticsDecorationProvider(),
+                ExampleDiagnosticsDecorationProvider(),
             )
         }
         val editorSettings = remember(wrapEnabled, readOnly, compositionEnabled) {
@@ -293,6 +293,7 @@ fun App() {
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                FpsText()
                                 StatusLabel("Gesture", gestureSummary)
                                 StatusLabel("Hit", hitTargetSummary)
                                 StatusLabel("Menu", contextMenuSummary)
@@ -392,6 +393,52 @@ private class ExampleDiagnosticsDecorationProvider : DecorationProvider {
             lineRange = context.requestedLineRange,
         )
     }
+}
+
+@Composable
+fun FpsText(
+    modifier: Modifier = Modifier
+) {
+    val fsp by rememberFps()
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.widthIn(max = 420.dp),
+    ) {
+        Text(
+            text = "FPS",
+            color = IntelliJTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+        )
+        Text(
+            text = fsp.toString().take(5),
+            color = IntelliJTextPrimary,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+fun rememberFps(): State<Float> {
+    val fpsState = remember { mutableStateOf(0f) }
+
+    LaunchedEffect(Unit) {
+        var lastFrameTime = 0L
+
+        while (true) {
+            withFrameNanos { frameTime ->
+                if (lastFrameTime != 0L) {
+                    val delta = frameTime - lastFrameTime
+                    fpsState.value = 1_000_000_000f / delta
+                }
+                lastFrameTime = frameTime
+            }
+        }
+    }
+
+    return fpsState
 }
 
 private data class ExampleSampleSpec(

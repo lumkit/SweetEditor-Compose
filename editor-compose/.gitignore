@@ -1,0 +1,5 @@
+.cxx/
+build/
+/src/androidMain/jniLibs/
+/src/iosMain/resources/native/
+/src/jvmMain/resources/native/

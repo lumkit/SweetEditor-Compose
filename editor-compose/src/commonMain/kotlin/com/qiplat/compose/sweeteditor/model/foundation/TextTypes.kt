@@ -22,6 +22,11 @@ data class TextRange(
         get() = start == end
 }
 
+data class LineSpacing(
+    val extra: Float = 0f,
+    val multiplier: Float = 1f,
+)
+
 enum class ScrollBehavior {
     GoToTop,
     GoToCenter,

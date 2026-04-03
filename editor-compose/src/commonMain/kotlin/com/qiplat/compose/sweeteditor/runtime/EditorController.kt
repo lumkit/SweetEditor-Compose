@@ -6,6 +6,9 @@ import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
+import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
+import com.qiplat.compose.sweeteditor.model.visual.CursorRect
+import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.protocol.ProtocolDecoder
 import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
@@ -30,6 +33,9 @@ class EditorController(
         state.bridgeFactory.createEditor(
             textMeasurer = editorTextMeasurer.asNativeTextMeasurer(),
         )
+    private var settingsSnapshot: EditorSettings = EditorSettings()
+    private var scaleSnapshot: Float = 1f
+    private var showSplitLineSnapshot: Boolean = true
 
     internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
 
@@ -103,7 +109,13 @@ class EditorController(
     fun setFoldArrowMode(mode: FoldArrowMode) {
         ensureActive()
         nativeEditorBridge.setFoldArrowMode(mode)
+        settingsSnapshot = settingsSnapshot.copy(foldArrowMode = mode)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getFoldArrowMode(): FoldArrowMode {
+        ensureActive()
+        return settingsSnapshot.foldArrowMode
     }
 
     /**
@@ -114,7 +126,13 @@ class EditorController(
     fun setWrapMode(mode: WrapMode) {
         ensureActive()
         nativeEditorBridge.setWrapMode(mode)
+        settingsSnapshot = settingsSnapshot.copy(wrapMode = mode)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getWrapMode(): WrapMode {
+        ensureActive()
+        return settingsSnapshot.wrapMode
     }
 
     /**
@@ -125,7 +143,13 @@ class EditorController(
     fun setTabSize(tabSize: Int) {
         ensureActive()
         nativeEditorBridge.setTabSize(tabSize)
+        settingsSnapshot = settingsSnapshot.copy(tabSize = tabSize)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getTabSize(): Int {
+        ensureActive()
+        return settingsSnapshot.tabSize
     }
 
     /**
@@ -136,7 +160,13 @@ class EditorController(
     fun setScale(scale: Float) {
         ensureActive()
         nativeEditorBridge.setScale(scale)
+        scaleSnapshot = scale
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getScale(): Float {
+        ensureActive()
+        return scaleSnapshot
     }
 
     /**
@@ -160,7 +190,19 @@ class EditorController(
     fun setLineSpacing(add: Float, mult: Float) {
         ensureActive()
         nativeEditorBridge.setLineSpacing(add, mult)
+        settingsSnapshot = settingsSnapshot.copy(
+            lineSpacingExtra = add,
+            lineSpacingMultiplier = mult,
+        )
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getLineSpacing(): LineSpacing {
+        ensureActive()
+        return LineSpacing(
+            extra = settingsSnapshot.lineSpacingExtra,
+            multiplier = settingsSnapshot.lineSpacingMultiplier,
+        )
     }
 
     /**
@@ -171,7 +213,13 @@ class EditorController(
     fun setShowSplitLine(show: Boolean) {
         ensureActive()
         nativeEditorBridge.setShowSplitLine(show)
+        showSplitLineSnapshot = show
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun isShowSplitLine(): Boolean {
+        ensureActive()
+        return showSplitLineSnapshot
     }
 
     /**
@@ -191,6 +239,7 @@ class EditorController(
      */
     fun applySettings(settings: EditorSettings) {
         ensureActive()
+        settingsSnapshot = settings
         nativeEditorBridge.setWrapMode(settings.wrapMode)
         nativeEditorBridge.setTabSize(settings.tabSize)
         nativeEditorBridge.setLineSpacing(
@@ -203,6 +252,7 @@ class EditorController(
         nativeEditorBridge.setCurrentLineRenderMode(settings.currentLineRenderMode)
         nativeEditorBridge.setReadOnly(settings.readOnly)
         nativeEditorBridge.setCompositionEnabled(settings.compositionEnabled)
+        nativeEditorBridge.setAutoIndentMode(settings.autoIndentMode)
         requestRefresh(renderModel = true, scrollMetrics = true)
     }
 
@@ -225,7 +275,13 @@ class EditorController(
     fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) {
         ensureActive()
         nativeEditorBridge.setCurrentLineRenderMode(mode)
+        settingsSnapshot = settingsSnapshot.copy(currentLineRenderMode = mode)
         requestRefresh(renderModel = true)
+    }
+
+    fun getCurrentLineRenderMode(): CurrentLineRenderMode {
+        ensureActive()
+        return settingsSnapshot.currentLineRenderMode
     }
 
     /**
@@ -236,7 +292,13 @@ class EditorController(
     fun setGutterSticky(sticky: Boolean) {
         ensureActive()
         nativeEditorBridge.setGutterSticky(sticky)
+        settingsSnapshot = settingsSnapshot.copy(gutterSticky = sticky)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun isGutterSticky(): Boolean {
+        ensureActive()
+        return settingsSnapshot.gutterSticky
     }
 
     /**
@@ -247,7 +309,13 @@ class EditorController(
     fun setGutterVisible(visible: Boolean) {
         ensureActive()
         nativeEditorBridge.setGutterVisible(visible)
+        settingsSnapshot = settingsSnapshot.copy(gutterVisible = visible)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun isGutterVisible(): Boolean {
+        ensureActive()
+        return settingsSnapshot.gutterVisible
     }
 
     /**
@@ -258,7 +326,13 @@ class EditorController(
     fun setReadOnly(readOnly: Boolean) {
         ensureActive()
         nativeEditorBridge.setReadOnly(readOnly)
+        settingsSnapshot = settingsSnapshot.copy(readOnly = readOnly)
         requestRefresh(renderModel = true)
+    }
+
+    fun isReadOnly(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.isReadOnly()
     }
 
     /**
@@ -269,7 +343,25 @@ class EditorController(
     fun setCompositionEnabled(enabled: Boolean) {
         ensureActive()
         nativeEditorBridge.setCompositionEnabled(enabled)
+        settingsSnapshot = settingsSnapshot.copy(compositionEnabled = enabled)
         requestRefresh(renderModel = true)
+    }
+
+    fun isCompositionEnabled(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.isCompositionEnabled()
+    }
+
+    fun setAutoIndentMode(mode: AutoIndentMode) {
+        ensureActive()
+        nativeEditorBridge.setAutoIndentMode(mode)
+        settingsSnapshot = settingsSnapshot.copy(autoIndentMode = mode)
+        requestRefresh(renderModel = true)
+    }
+
+    fun getAutoIndentMode(): AutoIndentMode {
+        ensureActive()
+        return nativeEditorBridge.getAutoIndentMode()
     }
 
     /**
@@ -428,6 +520,221 @@ class EditorController(
         val editResult = decodeEditResult(nativeEditorBridge.deleteForward())
         requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
         return editResult
+    }
+
+    fun insertSnippet(template: String): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.insertSnippet(template))
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun startLinkedEditing(model: LinkedEditingModel) {
+        ensureActive()
+        nativeEditorBridge.startLinkedEditing(model)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun isInLinkedEditing(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.isInLinkedEditing()
+    }
+
+    fun linkedEditingNext(): Boolean {
+        ensureActive()
+        val moved = nativeEditorBridge.linkedEditingNext()
+        requestRefresh(renderModel = true, scrollMetrics = true)
+        return moved
+    }
+
+    fun linkedEditingPrev(): Boolean {
+        ensureActive()
+        val moved = nativeEditorBridge.linkedEditingPrev()
+        requestRefresh(renderModel = true, scrollMetrics = true)
+        return moved
+    }
+
+    fun cancelLinkedEditing() {
+        ensureActive()
+        nativeEditorBridge.cancelLinkedEditing()
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveLineUp(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.moveLineUp())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun moveLineDown(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.moveLineDown())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun copyLineUp(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.copyLineUp())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun copyLineDown(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.copyLineDown())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun deleteLine(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.deleteLine())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun insertLineAbove(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.insertLineAbove())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun insertLineBelow(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.insertLineBelow())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun undo(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.undo())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun redo(): TextEditResult {
+        ensureActive()
+        val editResult = decodeEditResult(nativeEditorBridge.redo())
+        requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
+        return editResult
+    }
+
+    fun canUndo(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.canUndo()
+    }
+
+    fun canRedo(): Boolean {
+        ensureActive()
+        return nativeEditorBridge.canRedo()
+    }
+
+    fun selectAll() {
+        ensureActive()
+        nativeEditorBridge.selectAll()
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getSelectedText(): String? {
+        ensureActive()
+        return nativeEditorBridge.getSelectedText()
+    }
+
+    fun getWordRangeAtCursor(): TextRange {
+        ensureActive()
+        return nativeEditorBridge.getWordRangeAtCursor()
+    }
+
+    fun getWordAtCursor(): String? {
+        ensureActive()
+        return nativeEditorBridge.getWordAtCursor()
+    }
+
+    fun moveCursorLeft(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorLeft(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveCursorRight(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorRight(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveCursorUp(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorUp(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveCursorDown(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorDown(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveCursorToLineStart(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorToLineStart(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun moveCursorToLineEnd(extendSelection: Boolean) {
+        ensureActive()
+        nativeEditorBridge.moveCursorToLineEnd(extendSelection)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun scrollToLine(
+        line: Int,
+        behavior: ScrollBehavior,
+    ) {
+        ensureActive()
+        nativeEditorBridge.scrollToLine(line, behavior)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun gotoPosition(
+        line: Int,
+        column: Int,
+    ) {
+        ensureActive()
+        nativeEditorBridge.gotoPosition(line, column)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun ensureCursorVisible() {
+        ensureActive()
+        val cursor = nativeEditorBridge.getCursorPosition()
+        nativeEditorBridge.gotoPosition(cursor.line, cursor.column)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun setScroll(
+        scrollX: Float,
+        scrollY: Float,
+    ) {
+        ensureActive()
+        nativeEditorBridge.setScroll(scrollX, scrollY)
+        requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun getPositionRect(
+        line: Int,
+        column: Int,
+    ): CursorRect {
+        ensureActive()
+        return nativeEditorBridge.getPositionRect(line, column)
+    }
+
+    fun getCursorRect(): CursorRect {
+        ensureActive()
+        return nativeEditorBridge.getCursorRect()
     }
 
     /**
@@ -619,6 +926,74 @@ class EditorController(
         requestRefresh(renderModel = true)
     }
 
+    fun clearInlayHints() {
+        ensureActive()
+        nativeEditorBridge.clearInlayHints()
+        requestRefresh(renderModel = true)
+    }
+
+    fun clearPhantomTexts() {
+        ensureActive()
+        nativeEditorBridge.clearPhantomTexts()
+        requestRefresh(renderModel = true)
+    }
+
+    fun clearGutterIcons() {
+        ensureActive()
+        nativeEditorBridge.clearGutterIcons()
+        requestRefresh(renderModel = true)
+    }
+
+    fun clearDiagnostics() {
+        ensureActive()
+        nativeEditorBridge.clearDiagnostics()
+        requestRefresh(renderModel = true)
+    }
+
+    fun setIndentGuides(guides: List<IndentGuide>) {
+        ensureActive()
+        nativeEditorBridge.setIndentGuides(
+            ProtocolEncoder.encodeIndentGuides(guides),
+        )
+        requestRefresh(renderModel = true)
+    }
+
+    fun setBracketGuides(guides: List<BracketGuide>) {
+        ensureActive()
+        nativeEditorBridge.setBracketGuides(
+            ProtocolEncoder.encodeBracketGuides(guides),
+        )
+        requestRefresh(renderModel = true)
+    }
+
+    fun setFlowGuides(guides: List<FlowGuide>) {
+        ensureActive()
+        nativeEditorBridge.setFlowGuides(
+            ProtocolEncoder.encodeFlowGuides(guides),
+        )
+        requestRefresh(renderModel = true)
+    }
+
+    fun setSeparatorGuides(guides: List<SeparatorGuide>) {
+        ensureActive()
+        nativeEditorBridge.setSeparatorGuides(
+            ProtocolEncoder.encodeSeparatorGuides(guides),
+        )
+        requestRefresh(renderModel = true)
+    }
+
+    fun clearGuides() {
+        ensureActive()
+        nativeEditorBridge.clearGuides()
+        requestRefresh(renderModel = true)
+    }
+
+    fun clearAllDecorations() {
+        ensureActive()
+        nativeEditorBridge.clearAllDecorations()
+        requestRefresh(renderModel = true)
+    }
+
     /**
      * Flushes a merged decoration batch to the native editor.
      *
@@ -646,6 +1021,18 @@ class EditorController(
         nativeEditorBridge.setBatchLineDiagnostics(
             ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics),
         )
+        nativeEditorBridge.setIndentGuides(
+            ProtocolEncoder.encodeIndentGuides(batch.indentGuides),
+        )
+        nativeEditorBridge.setBracketGuides(
+            ProtocolEncoder.encodeBracketGuides(batch.bracketGuides),
+        )
+        nativeEditorBridge.setFlowGuides(
+            ProtocolEncoder.encodeFlowGuides(batch.flowGuides),
+        )
+        nativeEditorBridge.setSeparatorGuides(
+            ProtocolEncoder.encodeSeparatorGuides(batch.separatorGuides),
+        )
         nativeEditorBridge.setFoldRegions(
             ProtocolEncoder.encodeFoldRegions(batch.foldRegions),
         )
@@ -663,12 +1050,21 @@ class EditorController(
         requestRefresh(renderModel = true)
     }
 
+    fun requestDecorationRefresh() {
+        ensureActive()
+        requestRefresh(decorations = true)
+    }
+
     /**
      * Requests both render model and scroll metrics refresh on the next frame.
      */
     fun refresh() {
         ensureActive()
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    fun flush() {
+        refreshNow()
     }
 
     /**
@@ -700,7 +1096,7 @@ class EditorController(
         state.isAttached = false
         state.isDisposed = true
         state.renderModel = null
-        state.scrollMetrics = com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics()
+        state.scrollMetrics = ScrollMetrics()
         state.isRenderModelDirty = false
         state.isScrollMetricsDirty = false
         state.isDecorationDirty = false

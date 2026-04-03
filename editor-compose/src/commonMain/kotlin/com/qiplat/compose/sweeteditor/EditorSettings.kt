@@ -1,5 +1,6 @@
 package com.qiplat.compose.sweeteditor
 
+import com.qiplat.compose.sweeteditor.model.foundation.AutoIndentMode
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.FoldArrowMode
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
@@ -15,4 +16,5 @@ data class EditorSettings(
     val currentLineRenderMode: CurrentLineRenderMode = CurrentLineRenderMode.Background,
     val readOnly: Boolean = false,
     val compositionEnabled: Boolean = true,
+    val autoIndentMode: AutoIndentMode = AutoIndentMode.None,
 )

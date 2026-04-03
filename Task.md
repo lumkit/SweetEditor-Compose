@@ -4,13 +4,42 @@
 
 - 目标：基于现有 `editor-core` Native 内核，为 `editor-compose` 补齐 Compose Multiplatform 高亮编辑器能力
 - 参考对象：Android 平台样板的架构分层、JNI/Native 桥接、协议编解码、渲染与输入系统
-- 当前状态：本仓库的 CMP 工程仍是项目骨架，`editor-compose` 还缺少公共模型、平台桥接、状态管理、Compose 渲染与输入链路
+- 当前状态：`editor-compose` 已不再是项目骨架，已完成 commonMain API/model/protocol/runtime、Android/JVM bridge、Compose 渲染与多平台输入链路的主干闭环，当前重点转向 provider runtime、snippet/linked editing、iOS native bridge 与更完整的示例验收
 - 核心原则：
   - 不在 Kotlin 层重写 `editor-core` 已具备的编辑、布局、折叠、高亮、linked editing 等核心算法
   - Kotlin/CMP 层负责公共 API、状态同步、协议编解码、Compose UI 集成、平台桥接
   - 全部 line / column 均保持 0-based
   - `TextRange` 语义保持 start inclusive、end exclusive
   - 注意 UTF-8 / UTF-16 边界、二进制 payload 释放与批量接口优先
+
+## 最新进度（2026-04-02）
+
+- 已完成的主干闭环：
+  - `SweetEditorController`、`EditorState`、`EditorController` 三层控制面已形成稳定公共入口
+  - commonMain 协议层、渲染层、输入分发层、provider manager 已接通
+  - Android 与 JVM Desktop 已具备 native bridge、动态库导入、构建验证与运行链路
+  - `./gradlew assemble` 当前可通过
+- 已落地的关键能力：
+  - Completion 已进入最小闭环
+    - provider
+    - context/result/item
+    - trigger character / retrigger
+    - 选择 / 应用 / dismiss
+    - 最小 popup UI
+  - `NewLineActionProvider` 已接入 Enter 路径
+    - Desktop Compose 键盘路径
+    - Android IME `commitText("\n")` / editor action / enter key 路径
+  - EventBus 与标准事件类型已补齐
+  - DecorationProvider 已从单次返回演进到 receiver 语义，并开始收口 runtime 的过期/进行中请求处理
+  - DecorationProvider runtime 已开始覆盖无 provider / provider 移除 / 多次 snapshot 的 dirty 状态与聚合语义
+  - DecorationProvider runtime 已明确区分 provider failure 与 coroutine cancellation，开始把“异常可隔离、取消要上抛”的语义固定下来
+  - DecorationProvider runtime 已开始补增量更新规则测试，包括同一 generation 内 Merge/ReplaceRange 交错与失败代次结果保留策略
+  - 多项标准状态查询 API、行编辑命令、滚动定位与装饰清理 API 已补齐
+- 当前仍然在推进的重点：
+  - DecorationProvider runtime 的多次 snapshot、异常隔离与取消/过期语义
+  - snippet / linked editing 命令式闭环
+  - iOS native bridge 真正接入 cinterop 与内核产物
+  - example 的 completion / fold / undo redo / linked editing 演示
 
 ## Phase 0：架构定稿（已完成）
 
@@ -233,7 +262,7 @@
 
 ## Phase 4：Android 平台桥接（进行中）
 
-- 状态：已完成第一版 Android JNI bridge、`.so` 装载、ABI 配置与 text measurer 回调链路
+- 状态：已完成 Android JNI bridge、模块内 `.so` 同步导入、输入/IME 主链路与大批 C API 覆盖，后续重点转向 UTF-16 边界与更细节输入校准
 - 已落地文件：
   - `editor-compose/src/androidMain/kotlin/com/qiplat/compose/sweeteditor/bridge/AndroidNativeBindings.kt`
   - `editor-compose/src/androidMain/kotlin/com/qiplat/compose/sweeteditor/bridge/AndroidNativeBridge.kt`
@@ -242,17 +271,19 @@
   - `editor-compose/build.gradle.kts`
 - 本阶段已完成：
   - 建立 Android Native 实际 bridge
-  - 接入 `editor-core/include/android` 下的预编译 `.so`
-  - 配置 ABI 过滤与 `jniLibs`
+  - 将 Android native 库同步到 `editor-compose/src/androidMain/jniLibs`
+  - 配置 ABI 过滤与模块内 `jniLibs`
   - 建立 JNI 到 C API 的调用转发
   - 建立 Android `NativeTextMeasurer` 回调链路
   - 让 binary payload 在 JNI 内复制为 `ByteArray` 后立即释放，避免向 Kotlin 暴露裸指针
-  - 接入首批编辑、渲染、滚动、装饰更新、选择与文本变更接口
+  - 接入编辑、渲染、滚动、装饰更新、选择、文本变更、undo/redo、行编辑命令、状态查询等大批接口
+  - 接入 Android `PlatformTextInputModifierNode` 输入链与 `InputConnection`
+  - 接入 composition、`setComposingRegion`、surrounding text、`ExtractedText`、`CursorAnchorInfo` 基础更新
+  - 将 Completion / NewLineAction 接入 Android Enter/IME 路径
 - 本阶段剩余工作：
-  - 用更高层 `EditorState` / `Controller` 驱动 bridge
-  - 完善 Android 输入系统到 `GestureType` / key modifiers 的映射
-  - 补 composition、scrollbar config、handle config 等更多 C API 覆盖面
-  - 补 Android 侧桥接测试与真实 demo 验证
+  - 继续校准 Android IME 的 UTF-16 / surrogate pair / emoji 边界
+  - 继续细化 `CursorAnchorInfo` 与更大范围 surrounding text
+  - 补更多 bridge 集成测试与 example 手工验收
 
 - 为 `androidMain` 建立实际 bridge 实现
 - 接入 `editor-core/include/android` 下的 `.so`
@@ -264,11 +295,13 @@
 
 ## Phase 5：iOS 平台桥接（进行中）
 
-- 状态：已完成第一版 iOS bridge 骨架，当前受限于仓库尚未提供 iOS native editor-core 产物
+- 状态：已完成 iOS bridge 骨架、资源目录与通用 IME 入口，但 native bridge 仍受 cinterop / iOS 内核产物缺失限制
 - 已落地文件：
   - `editor-compose/src/iosMain/kotlin/com/qiplat/compose/sweeteditor/bridge/IosNativeBridge.kt`
 - 本阶段已完成：
   - 建立 iOS `NativeBridgeFactory` 骨架入口
+  - 建立 `iosMain` 通用 IME 会话入口
+  - 动态库同步任务已可将 iOS native 资源写入模块内目录
   - 明确当前 iOS 桥接的阻塞条件为缺少 iOS native 库与 cinterop 配置
   - 将运行时失败显式收敛为受控错误，而不是隐式链接失败
 - 本阶段剩余工作：
@@ -288,7 +321,7 @@
 
 ## Phase 6：JVM Desktop 平台桥接（进行中）
 
-- 状态：已完成第一版 Desktop JNI bridge、macOS `.dylib` 定位逻辑与本地构建任务
+- 状态：已完成 Desktop JNI bridge、资源化 native 加载、Desktop bridge 构建与输入/运行闭环，后续重点转向跨桌面平台与更细节交互
 - 已落地文件：
   - `editor-compose/src/jvmMain/kotlin/com/qiplat/compose/sweeteditor/bridge/DesktopNativeBindings.kt`
   - `editor-compose/src/jvmMain/kotlin/com/qiplat/compose/sweeteditor/bridge/DesktopNativeBridge.kt`
@@ -297,15 +330,15 @@
   - `editor-compose/build.gradle.kts`
 - 本阶段已完成：
   - 建立 Desktop Native 实际 bridge
-  - 接入 macOS `libsweeteditor.dylib` 路径解析
+  - 将 Desktop core library 与 bridge library 统一改为从 classpath resources 提取并加载
   - 建立 Desktop JNI 到 C API 的调用转发
   - 建立 Desktop `NativeTextMeasurer` 回调链路
   - 新增 `buildDesktopBridge` 构建任务，输出 Desktop JNI bridge 动态库
+  - 建立 `syncEditorComposeNativeLibraries` 与 `copyDesktopBridgeToJvmResources` 资源打包链路
+  - 让 Desktop 成为当前主要运行与构建验收平台
 - 本阶段剩余工作：
-  - 用更高层 `EditorState` / `Controller` 驱动 Desktop bridge
-  - 补充 Desktop 输入事件映射与 Compose Desktop 接入
-  - 补充 Desktop 运行时验证与 demo 演示
-  - 视后续需要决定是否将 Desktop bridge 自动挂接到 JVM 资源打包流程
+  - 继续补 Linux / Windows Desktop 运行时实机验收
+  - 继续细化 Completion / popup / 输入交互体验
 
 - 为 JVM Desktop 绑定 macOS `.dylib`
 - 封装加载路径与失败兜底
@@ -315,13 +348,15 @@
 
 ## Phase 7：Document、Controller、State（进行中）
 
-- 状态：已完成第一版 commonMain 运行时骨架，平台 bridge 已开始通过公共控制层收敛
+- 状态：已完成 commonMain 控制层主干闭环，并已将标准命名 `SweetEditorController`、事件系统、provider 挂载与大量公共 API 收敛到统一控制面
 - 已落地文件：
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/bridge/PlatformNativeBridgeFactory.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/runtime/EditorTextMeasurer.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/runtime/EditorDocument.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/runtime/EditorState.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/runtime/EditorController.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/SweetEditorController.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/EditorEvent.kt`
   - `editor-compose/src/androidMain/kotlin/com/qiplat/compose/sweeteditor/bridge/PlatformNativeBridgeFactory.android.kt`
   - `editor-compose/src/jvmMain/kotlin/com/qiplat/compose/sweeteditor/bridge/PlatformNativeBridgeFactory.jvm.kt`
   - `editor-compose/src/iosMain/kotlin/com/qiplat/compose/sweeteditor/bridge/PlatformNativeBridgeFactory.ios.kt`
@@ -329,14 +364,22 @@
   - `editor-compose/src/wasmJsMain/kotlin/com/qiplat/compose/sweeteditor/bridge/PlatformNativeBridgeFactory.wasmJs.kt`
 - 本阶段已完成：
   - 将 `EditorDocument`、`EditorState`、`EditorController` 优先沉淀到 commonMain
+  - 提供标准命名的 `SweetEditorController`
+  - 补齐 `whenReady`、`bind`、`unbind`、`dispose/close`
   - 建立平台 bridge 工厂的公共入口，并把平台差异收敛到 actual/sourceSet
   - 让控制层直接消费协议层与 bridge 层，完成渲染刷新、文本编辑、键盘事件、手势事件、装饰批量更新的公共编排
+  - 补齐大量公共 API：
+    - 文档加载
+    - 状态查询
+    - 行编辑命令
+    - scroll / cursor / selection / geometry
+    - completion / newline / decoration provider 管理
+  - 建立类型安全事件总线与标准事件分发
   - 为 Web/Wasm 提供显式未实现的桥接占位，避免把平台细节泄露到 commonMain
 - 本阶段剩余工作：
-  - 增加更细粒度的配置对象与事件流
   - 补 snippet / linked editing 入口
-  - 增加 `EditorState` 与 Compose 渲染层之间的绑定辅助 API
-  - 补控制层测试与后续 `remember` 风格接入
+  - 继续补更少量尚未收口的 3.1 / 3.2 API
+  - 继续加强 controller 层测试覆盖
 
 - 设计 `EditorDocument` Kotlin 包装层
 - 设计 `EditorController`
@@ -356,14 +399,14 @@
 
 ## Phase 8：Compose 渲染层（进行中）
 
-- 状态：已完成 commonMain 的第一版 Editor Surface 入口与基础渲染骨架
+- 状态：已完成 Editor Surface、主渲染链与 Completion 最小弹层，后续重点是 popup/命中/图标体验继续细化
 - 已落地文件：
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/SweetEditor.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/RememberEditor.kt`
 - 本阶段已完成：
   - 定义 `@Composable SweetEditor(...)` 入口
-  - 定义 `rememberEditorState()` 与 `rememberEditorController()`
-  - 将 Compose UI 层建立在 commonMain `EditorState` / `EditorController` 之上
+  - 定义 `rememberEditorState()`、`rememberSweetEditorController()`、`rememberEditorController()`
+  - 将 Compose UI 层建立在 commonMain `EditorState` / `EditorController` / `SweetEditorController` 之上
   - 不使用 `Text` / `BasicTextField` 组件承载编辑内容，而是将 Compose 端实现为真正的 Editor Surface
     - 可滚动 viewport
     - 可接收键盘事件的宿主
@@ -384,12 +427,13 @@
     - gutter icon 占位图形
     - fold marker 占位图形
     - selection handle 占位图形
+  - 接入 `CompletionPopup` 最小 UI
+  - 将 controller 动态挂载的 decoration providers 与参数 provider 列表在 UI 层合并安装
 - 本阶段剩余工作：
   - 补 gutter icon、fold marker、selection handle 的正式图标/命中逻辑
-  - 补更完整的输入系统与命中测试接入
-  - 补 IME 组合输入桥接
+  - 补更完善的 completion popup 体验
   - 把文本测量与 Compose 文本绘制之间的视觉一致性继续收敛
-  - 为 `SweetEditor` 补主题、配置与事件回调 API
+  - 继续细化渲染层职责与后续 `EditorRenderer` 抽离
 
 - 定义 `@Composable SweetEditor(...)` 入口
 - 设计 Compose 侧主题、配置、回调 API
@@ -468,7 +512,26 @@
   - gutter icon click
   - fold toggle click
 
-## Phase 10：IME 与文本输入
+## Phase 10：IME 与文本输入（进行中）
+
+- 状态：已完成多平台 IME 会话入口、Android 低层输入链与 Desktop/JS/Wasm/iOS 通用文本输入代理，当前重点转向 UTF-16 边界与更细节平台一致性
+- 已落地文件：
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/EditorImeInterop.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.kt`
+  - `editor-compose/src/androidMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.android.kt`
+  - `editor-compose/src/jvmMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.jvm.kt`
+  - `editor-compose/src/iosMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.ios.kt`
+  - `editor-compose/src/jsMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.js.kt`
+  - `editor-compose/src/wasmJsMain/kotlin/com/qiplat/compose/sweeteditor/PlatformImeSession.wasmJs.kt`
+- 本阶段已完成：
+  - 定义 commonMain IME 代理与同步逻辑
+  - 接通 Desktop / JS / Wasm / iOS 的 `LocalTextInputService` 方案
+  - 接通 Android `PlatformTextInputModifierNode` + `InputConnection`
+  - 让 Completion / NewLineAction 参与 Enter / IME action 路径
+  - 建立 composition start/update/end/cancel 公共协作链
+- 本阶段剩余工作：
+  - 继续验证 UTF-8 / UTF-16 / surrogate pair / emoji 边界
+  - 继续提升各平台 IME 体验一致性
 
 - 定义 commonMain IME 协议接口
   - `compositionStart`
@@ -538,7 +601,7 @@
 
 ## Phase 12：Decoration Provider 系统（进行中）
 
-- 状态：已完成首版 KMP `DecorationProvider` / `DecorationProviderManager`、可见区调度与批量 flush 闭环，并补上 `LanguageConfigDecorationProvider` 的 json 驱动语法装饰
+- 状态：已完成首版 KMP `DecorationProvider` / `DecorationProviderManager`、receiver 语义、json 驱动语法装饰与 controller 挂载链路，当前重点转向多次 snapshot 与 runtime 语义继续收口
 - 已落地文件：
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/DecorationProvider.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/LanguageConfigDecorationProvider.kt`
@@ -560,17 +623,61 @@
     - debounce
     - generation cancel
     - merge / replace-range / replace-all
+  - 补齐 `DecorationProviderContext` 的标准字段：
+    - `visibleStartLine`
+    - `visibleEndLine`
+    - `totalLineCount`
+    - `textChanges`
+    - `editorMetadata`
+  - 提供 `DecorationReceiver`
+  - 提供按字段 `DecorationResult` 与独立 `DecorationApplyMode`
   - 实现 `LanguageConfigDecorationProvider`，支持 `variables / fragments / states / include / includes / subStates / onLineEndState`
   - 将 decoration 更新统一收敛为批量 bridge 调用
   - 在 `EditorController` 暴露统一批量 flush 入口
   - 将 decoration 刷新与文本变化、滚动变化解耦，并接入 `SweetEditor` 生命周期
+  - 支持 `SweetEditorController.addDecorationProvider/removeDecorationProvider`
+  - 开始收口 runtime 进行中请求跟踪，避免 `isDecorationDirty` 被首个 provider 结果过早清空
+  - 开始收口无 provider、provider 移除、无文档场景下的 dirty 状态复位
+  - 已明确 provider failure 不应拖垮整轮 runtime，但 coroutine cancellation 仍保持正常传播
+  - 已开始补同一 generation 内增量更新规则测试，并固定失败代次默认保留上一轮 batch 的策略
 - 本阶段剩余工作：
+  - 继续补多次 snapshot / 增量结果更新测试与运行时语义
   - 继续细化 provider 调度策略，例如更稳定的可见区 diff 与更精确的 scroll 触发时机
-  - 继续补 decoration provider 的公共结果模型，例如更细粒度的清理/优先级语义
   - 继续补全更复杂的 language state 机语义与增量重算缓存
   - 在 example 中补更多 decoration provider 演示
 
-## Phase 13：Completion 与 Inline Suggestion
+## Phase 13：Completion 与 Inline Suggestion（进行中）
+
+- 状态：Completion 已完成 provider/context/result/controller/popup 的最小闭环；Inline Suggestion 尚未开始
+- 已落地文件：
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/CompletionProvider.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/runtime/CompletionProviderManager.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/SweetEditorController.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/SweetEditor.kt`
+- 本阶段已完成：
+  - 设计 `CompletionProvider`
+  - 设计 `CompletionProviderManager`
+  - 建立 completion context
+    - cursor
+    - line text
+    - word range
+    - language configuration
+    - metadata
+  - 支持触发方式：
+    - invoked
+    - trigger character
+    - retrigger
+  - 实现 controller 侧 completion 流程
+  - 实现最小 Compose popup UI
+  - 实现 completion commit 逻辑：
+    - `textEdit`
+    - `insertText`
+    - `label`
+  - 实现选择 / 上下移动 / Tab / Enter / Escape 交互基础链路
+- 本阶段剩余工作：
+  - 补更完整的 popup 体验与选中项滚动可见
+  - 补 snippet completion 语义
+  - 开始 inline suggestion 第一版
 
 - 设计 `CompletionProvider`
 - 设计 `CompletionProviderManager`
@@ -593,7 +700,31 @@
   - snippet
 - 基于 phantom text 实现 inline suggestion 第一版
 
-## Phase 14：事件系统
+## Phase 14：事件系统（进行中）
+
+- 状态：已完成类型安全事件模型与事件总线，后续若需要再评估是否增加 `Flow` 风格订阅面
+- 已落地文件：
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/EditorEvent.kt`
+  - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/SweetEditorController.kt`
+- 本阶段已完成：
+  - 定义公共事件模型
+    - `TextChanged`
+    - `CursorChanged`
+    - `SelectionChanged`
+    - `ScrollChanged`
+    - `ScaleChanged`
+    - `LongPress`
+    - `DoubleTap`
+    - `FoldToggle`
+    - `GutterIconClick`
+    - `InlayHintClick`
+    - `ContextMenu`
+    - `DocumentLoaded`
+  - 提供类型安全事件总线与订阅接口
+  - 在 controller / gesture / text edit 路径上分发语义事件
+- 本阶段剩余工作：
+  - 评估是否额外提供 `Flow` 风格只读订阅入口
+  - 继续扩展 linked editing / completion 相关语义事件（如后续需要）
 
 - 定义公共事件模型
   - `TextChanged`
@@ -609,7 +740,7 @@
 
 ## Phase 15：Linked Editing 与 Snippet（进行中）
 
-- 状态：已完成 linked editing 的公共模型、协议编码与渲染消费基础，snippet/controller 交互流程尚未实现
+- 状态：已完成 linked editing 的公共模型、协议编码、渲染消费基础，以及 snippet / linked editing 的 controller/native bridge 命令式入口；linked editing 与 completion 的基础互斥已接入，example 演示仍待补齐
 - 已落地文件：
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/model/snippet/LinkedEditingModels.kt`
   - `editor-compose/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/protocol/ProtocolEncoder.kt`
@@ -618,15 +749,23 @@
 - 本阶段已完成：
   - 实现 `LinkedEditingModel` 编码器
   - 在 render model / Compose 层消费 linked editing rect 并进行高亮绘制
+  - 实现 `insertSnippet(template)`
+  - 实现 `startLinkedEditing(model)`
+  - 实现 `isInLinkedEditing()`
+  - 实现 `linkedEditingNext()`
+  - 实现 `linkedEditingPrev()`
+  - 实现 `cancelLinkedEditing()`
+  - 打通 Android / JVM native bridge 对应 C API
+  - 接入 linked editing 与 completion 的基础互斥
+  - 让 Tab / Shift+Tab 优先走 linked editing next/prev
+  - 让 Escape 可取消 linked editing
 - 本阶段剩余工作：
-  - 实现 `insertSnippet`
-  - 实现 `startLinkedEditing`
-  - 实现 `next / prev / cancel`
-  - 处理 linked editing 期间与 completion 的互斥关系
+  - 补 linked editing 在 Enter / Tab 路径中的更完整交互
+  - 在 example 中补 snippet / linked editing 演示
 
 ## Phase 16：Example 与集成验证（进行中）
 
-- 状态：`example` 已脱离空壳，具备文本加载、语言元数据展示、设置开关与 json 驱动 syntax/diagnostics provider 演示，更多交互演示仍待补齐
+- 状态：`example` 已脱离空壳，具备文本加载、语言元数据展示、设置开关与 json 驱动 syntax/diagnostics provider 演示，Completion 等更完整交互演示仍待补齐
 - 已落地文件：
   - `example/src/commonMain/kotlin/com/qiplat/compose/sweeteditor/App.kt`
 - 本阶段已完成：
@@ -647,7 +786,7 @@
 
 ## Phase 17：测试（进行中）
 
-- 状态：已建立协议层、运行时、theme/language、decoration manager 与 language-config provider 的 commonTest 基础覆盖，bridge 集成测试与 example 验收仍缺失
+- 状态：已建立协议层、运行时、theme/language、decoration manager、language-config provider、completion/newline 的 commonTest 基础覆盖，bridge 集成测试与 example 验收仍缺失
 - 已落地文件：
   - `editor-compose/src/commonTest/kotlin/com/qiplat/compose/sweeteditor/protocol/ProtocolCommonTest.kt`
   - `editor-compose/src/commonTest/kotlin/com/qiplat/compose/sweeteditor/runtime/EditorControllerCommonTest.kt`
@@ -660,7 +799,9 @@
     - append-only tail
     - 空 payload / null payload 的部分解码覆盖
   - 为运行时层补充 controller 设置与手势分发测试
+  - 为 completion apply/newline provider 补充 commonTest
   - 为 decoration manager 的 merge / replace-range 聚合策略补充 commonTest
+  - 为 decoration runtime 的 pending generation 语义补充 commonTest
   - 为 theme / language configuration 解析补充 commonTest
   - 为 `LanguageConfigDecorationProvider` 的 json 驱动 span 产出补充 commonTest
 - 本阶段剩余工作：

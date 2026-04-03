@@ -128,6 +128,60 @@ object ProtocolEncoder {
         return writer.toByteArray()
     }
 
+    fun encodeIndentGuides(guides: List<IndentGuide>): ByteArray {
+        val writer = BinaryWriter(initialCapacity = 4 + guides.size * 16)
+        writer.writeInt(guides.size)
+        guides.forEach { guide ->
+            writer.writeInt(guide.start.line)
+            writer.writeInt(guide.start.column)
+            writer.writeInt(guide.end.line)
+            writer.writeInt(guide.end.column)
+        }
+        return writer.toByteArray()
+    }
+
+    fun encodeBracketGuides(guides: List<BracketGuide>): ByteArray {
+        val childCount = guides.sumOf { it.children.size }
+        val writer = BinaryWriter(initialCapacity = 4 + guides.size * 20 + childCount * 8)
+        writer.writeInt(guides.size)
+        guides.forEach { guide ->
+            writer.writeInt(guide.parent.line)
+            writer.writeInt(guide.parent.column)
+            writer.writeInt(guide.end.line)
+            writer.writeInt(guide.end.column)
+            writer.writeInt(guide.children.size)
+            guide.children.forEach { child ->
+                writer.writeInt(child.line)
+                writer.writeInt(child.column)
+            }
+        }
+        return writer.toByteArray()
+    }
+
+    fun encodeFlowGuides(guides: List<FlowGuide>): ByteArray {
+        val writer = BinaryWriter(initialCapacity = 4 + guides.size * 16)
+        writer.writeInt(guides.size)
+        guides.forEach { guide ->
+            writer.writeInt(guide.start.line)
+            writer.writeInt(guide.start.column)
+            writer.writeInt(guide.end.line)
+            writer.writeInt(guide.end.column)
+        }
+        return writer.toByteArray()
+    }
+
+    fun encodeSeparatorGuides(guides: List<SeparatorGuide>): ByteArray {
+        val writer = BinaryWriter(initialCapacity = 4 + guides.size * 16)
+        writer.writeInt(guides.size)
+        guides.forEach { guide ->
+            writer.writeInt(guide.line)
+            writer.writeInt(guide.style.toNativeValue())
+            writer.writeInt(guide.count)
+            writer.writeInt(guide.textEndColumn)
+        }
+        return writer.toByteArray()
+    }
+
     fun encodeLineInlayHints(line: Int, hints: List<InlayHint>): ByteArray {
         val writer = BinaryWriter()
         writer.writeInt(line)

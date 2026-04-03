@@ -3,6 +3,10 @@ package com.qiplat.compose.sweeteditor.runtime
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.qiplat.compose.sweeteditor.CompletionItemRenderer
+import com.qiplat.compose.sweeteditor.CompletionResult
+import com.qiplat.compose.sweeteditor.EditorIconProvider
+import com.qiplat.compose.sweeteditor.EditorMetadata
 import com.qiplat.compose.sweeteditor.bridge.NativeBridgeFactory
 import com.qiplat.compose.sweeteditor.bridge.platformNativeBridgeFactory
 import com.qiplat.compose.sweeteditor.model.foundation.GestureResult
@@ -80,6 +84,21 @@ class EditorState internal constructor(
      * Active language configuration used by decoration providers and higher-level features.
      */
     var languageConfiguration: LanguageConfiguration? by mutableStateOf(null)
+        internal set
+
+    var metadata: EditorMetadata? by mutableStateOf(null)
+        internal set
+
+    var editorIconProvider: EditorIconProvider? by mutableStateOf(null)
+        internal set
+
+    var completionResult: CompletionResult? by mutableStateOf(null)
+        internal set
+
+    var completionSelectedIndex: Int by mutableStateOf(0)
+        internal set
+
+    var completionItemRenderer: CompletionItemRenderer? by mutableStateOf(null)
         internal set
 
     /**

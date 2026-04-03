@@ -1,7 +1,10 @@
 package com.qiplat.compose.sweeteditor.bridge
 
 import com.qiplat.compose.sweeteditor.model.foundation.*
+import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
+import com.qiplat.compose.sweeteditor.model.visual.CursorRect
 import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
+import com.qiplat.compose.sweeteditor.protocol.toAutoIndentMode
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
 
 internal object DesktopNativeBridgeFactory : NativeBridgeFactory {
@@ -107,9 +110,22 @@ private class DesktopNativeEditorBridge(
         DesktopNativeBindings.nativeSetReadOnly(handle, readOnly)
     }
 
+    override fun isReadOnly(): Boolean =
+        DesktopNativeBindings.nativeIsReadOnly(handle)
+
     override fun setCompositionEnabled(enabled: Boolean) {
         DesktopNativeBindings.nativeSetCompositionEnabled(handle, enabled)
     }
+
+    override fun isCompositionEnabled(): Boolean =
+        DesktopNativeBindings.nativeIsCompositionEnabled(handle)
+
+    override fun setAutoIndentMode(mode: AutoIndentMode) {
+        DesktopNativeBindings.nativeSetAutoIndentMode(handle, mode.toNativeValue())
+    }
+
+    override fun getAutoIndentMode(): AutoIndentMode =
+        DesktopNativeBindings.nativeGetAutoIndentMode(handle).toAutoIndentMode()
 
     override fun setCursorPosition(position: TextPosition) {
         DesktopNativeBindings.nativeSetCursorPosition(handle, position.line, position.column)
@@ -221,6 +237,117 @@ private class DesktopNativeEditorBridge(
     override fun deleteForward(): ByteArray? =
         DesktopNativeBindings.nativeDeleteForward(handle)
 
+    override fun insertSnippet(template: String): ByteArray? =
+        DesktopNativeBindings.nativeInsertSnippet(handle, template)
+
+    override fun startLinkedEditing(model: LinkedEditingModel) {
+        DesktopNativeBindings.nativeStartLinkedEditing(
+            handle,
+            ProtocolEncoder.encodeLinkedEditingModel(model),
+        )
+    }
+
+    override fun isInLinkedEditing(): Boolean =
+        DesktopNativeBindings.nativeIsInLinkedEditing(handle)
+
+    override fun linkedEditingNext(): Boolean =
+        DesktopNativeBindings.nativeLinkedEditingNext(handle)
+
+    override fun linkedEditingPrev(): Boolean =
+        DesktopNativeBindings.nativeLinkedEditingPrev(handle)
+
+    override fun cancelLinkedEditing() {
+        DesktopNativeBindings.nativeCancelLinkedEditing(handle)
+    }
+
+    override fun moveLineUp(): ByteArray? =
+        DesktopNativeBindings.nativeMoveLineUp(handle)
+
+    override fun moveLineDown(): ByteArray? =
+        DesktopNativeBindings.nativeMoveLineDown(handle)
+
+    override fun copyLineUp(): ByteArray? =
+        DesktopNativeBindings.nativeCopyLineUp(handle)
+
+    override fun copyLineDown(): ByteArray? =
+        DesktopNativeBindings.nativeCopyLineDown(handle)
+
+    override fun deleteLine(): ByteArray? =
+        DesktopNativeBindings.nativeDeleteLine(handle)
+
+    override fun insertLineAbove(): ByteArray? =
+        DesktopNativeBindings.nativeInsertLineAbove(handle)
+
+    override fun insertLineBelow(): ByteArray? =
+        DesktopNativeBindings.nativeInsertLineBelow(handle)
+
+    override fun undo(): ByteArray? =
+        DesktopNativeBindings.nativeUndo(handle)
+
+    override fun redo(): ByteArray? =
+        DesktopNativeBindings.nativeRedo(handle)
+
+    override fun canUndo(): Boolean =
+        DesktopNativeBindings.nativeCanUndo(handle)
+
+    override fun canRedo(): Boolean =
+        DesktopNativeBindings.nativeCanRedo(handle)
+
+    override fun selectAll() {
+        DesktopNativeBindings.nativeSelectAll(handle)
+    }
+
+    override fun getSelectedText(): String? =
+        DesktopNativeBindings.nativeGetSelectedText(handle)
+
+    override fun getWordRangeAtCursor(): TextRange =
+        DesktopNativeBindings.nativeGetWordRangeAtCursor(handle).toTextRange()
+
+    override fun getWordAtCursor(): String? =
+        DesktopNativeBindings.nativeGetWordAtCursor(handle)
+
+    override fun moveCursorLeft(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorLeft(handle, extendSelection)
+    }
+
+    override fun moveCursorRight(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorRight(handle, extendSelection)
+    }
+
+    override fun moveCursorUp(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorUp(handle, extendSelection)
+    }
+
+    override fun moveCursorDown(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorDown(handle, extendSelection)
+    }
+
+    override fun moveCursorToLineStart(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorToLineStart(handle, extendSelection)
+    }
+
+    override fun moveCursorToLineEnd(extendSelection: Boolean) {
+        DesktopNativeBindings.nativeMoveCursorToLineEnd(handle, extendSelection)
+    }
+
+    override fun scrollToLine(line: Int, behavior: ScrollBehavior) {
+        DesktopNativeBindings.nativeScrollToLine(handle, line, behavior.toNativeValue())
+    }
+
+    override fun gotoPosition(line: Int, column: Int) {
+        DesktopNativeBindings.nativeGotoPosition(handle, line, column)
+    }
+
+    override fun setScroll(scrollX: Float, scrollY: Float) {
+        DesktopNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
+    }
+
+    override fun getPositionRect(line: Int, column: Int): CursorRect =
+        DesktopNativeBindings.nativeGetPositionRect(handle, line, column).toCursorRect()
+
+    override fun getCursorRect(): CursorRect =
+        DesktopNativeBindings.nativeGetCursorRect(handle).toCursorRect()
+
     override fun registerBatchTextStyles(data: ByteArray) {
         DesktopNativeBindings.nativeRegisterBatchTextStyles(handle, data)
     }
@@ -245,11 +372,68 @@ private class DesktopNativeEditorBridge(
         DesktopNativeBindings.nativeSetBatchLineDiagnostics(handle, data)
     }
 
+    override fun clearInlayHints() {
+        DesktopNativeBindings.nativeClearInlayHints(handle)
+    }
+
+    override fun clearPhantomTexts() {
+        DesktopNativeBindings.nativeClearPhantomTexts(handle)
+    }
+
+    override fun clearGutterIcons() {
+        DesktopNativeBindings.nativeClearGutterIcons(handle)
+    }
+
+    override fun clearDiagnostics() {
+        DesktopNativeBindings.nativeClearDiagnostics(handle)
+    }
+
+    override fun setIndentGuides(data: ByteArray) {
+        DesktopNativeBindings.nativeSetIndentGuides(handle, data)
+    }
+
+    override fun setBracketGuides(data: ByteArray) {
+        DesktopNativeBindings.nativeSetBracketGuides(handle, data)
+    }
+
+    override fun setFlowGuides(data: ByteArray) {
+        DesktopNativeBindings.nativeSetFlowGuides(handle, data)
+    }
+
+    override fun setSeparatorGuides(data: ByteArray) {
+        DesktopNativeBindings.nativeSetSeparatorGuides(handle, data)
+    }
+
+    override fun clearGuides() {
+        DesktopNativeBindings.nativeClearGuides(handle)
+    }
+
     override fun setFoldRegions(data: ByteArray) {
         DesktopNativeBindings.nativeSetFoldRegions(handle, data)
+    }
+
+    override fun clearAllDecorations() {
+        DesktopNativeBindings.nativeClearAllDecorations(handle)
     }
 
     override fun setMaxGutterIcons(count: Int) {
         DesktopNativeBindings.nativeSetMaxGutterIcons(handle, count)
     }
 }
+
+private fun FloatArray.toCursorRect(): CursorRect = CursorRect(
+    x = getOrElse(0) { 0f },
+    y = getOrElse(1) { 0f },
+    height = getOrElse(2) { 0f },
+)
+
+private fun IntArray.toTextRange(): TextRange = TextRange(
+    start = TextPosition(
+        line = getOrElse(0) { 0 },
+        column = getOrElse(1) { 0 },
+    ),
+    end = TextPosition(
+        line = getOrElse(2) { 0 },
+        column = getOrElse(3) { 0 },
+    ),
+)
