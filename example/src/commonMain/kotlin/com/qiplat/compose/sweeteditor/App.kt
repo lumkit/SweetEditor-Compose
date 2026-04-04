@@ -1,8 +1,12 @@
 package com.qiplat.compose.sweeteditor
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
@@ -14,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
@@ -196,6 +201,42 @@ fun App() {
                 onSelectionHandleDragStateChange = { dragState ->
 
                 },
+                completions = { selectedIndex, items, renderer ->
+                    val theme = editorAppearance.theme
+                    val backgroundColor = theme.gutterBackgroundColor.toComposeColor()
+                    val borderColor = theme.scrollbarThumbColor.toComposeColor()
+                    val selectedColor = theme.selectionColor.toComposeColor()
+                    val textColor = theme.textColor.toComposeColor()
+
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .background(backgroundColor)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                                .padding(vertical = 4.dp),
+                        ) {
+                            items.forEachIndexed { index, item ->
+                                val isSelected = index == selectedIndex
+                                Text(
+                                    text = renderer?.render(item) ?: item.detail?.let { "${item.label}  $it" } ?: item.label,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .background(if (isSelected) selectedColor else Color.Transparent)
+                                        .clickable {
+                                            editorController.selectCompletionItem(index)
+                                            editorController.applySelectedCompletionItem()
+                                            editorController.dismissCompletion()
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textColor
+                                )
+                            }
+                        }
+                    }
+                }
             )
         }
     }
