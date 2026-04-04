@@ -1,6 +1,8 @@
 package com.qiplat.compose.sweeteditor
 
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -34,6 +36,79 @@ class SweetEditorController(
     private val newLineActionProviderManager = NewLineActionProviderManager()
     private val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val eventBus = EditorEventBus()
+    private val _documentState = mutableStateOf(state.document)
+    val documentState: State<EditorDocument?> = _documentState
+    private val _totalLineCountState = mutableStateOf(getTotalLineCount())
+    val totalLineCountState: State<Int> = _totalLineCountState
+    private val _themeState = mutableStateOf(getTheme())
+    val themeState: State<EditorTheme> = _themeState
+    private val _settingsState = mutableStateOf(getSettings())
+    val settingsState: State<EditorSettings> = _settingsState
+    private val _languageConfigurationState = mutableStateOf(getLanguageConfiguration())
+    val languageConfigurationState: State<LanguageConfiguration?> = _languageConfigurationState
+    private val _metadataState = mutableStateOf(getMetadata())
+    val metadataState: State<EditorMetadata?> = _metadataState
+    private val _editorIconProviderState = mutableStateOf(getEditorIconProvider())
+    val editorIconProviderState: State<EditorIconProvider?> = _editorIconProviderState
+    private val _completionResultState = mutableStateOf(getCompletionResult())
+    val completionResultState: State<CompletionResult?> = _completionResultState
+    private val _selectedCompletionIndexState = mutableStateOf(getSelectedCompletionIndex())
+    val selectedCompletionIndexState: State<Int> = _selectedCompletionIndexState
+    private val _visibleCompletionState = mutableStateOf(hasVisibleCompletion())
+    val visibleCompletionState: State<Boolean> = _visibleCompletionState
+    private val _scrollMetricsState = mutableStateOf(getScrollMetrics())
+    val scrollMetricsState: State<ScrollMetrics> = _scrollMetricsState
+    private val _visibleLineRangeState = mutableStateOf(getVisibleLineRange())
+    val visibleLineRangeState: State<IntRange?> = _visibleLineRangeState
+    private val _foldArrowModeState = mutableStateOf(getFoldArrowMode())
+    val foldArrowModeState: State<FoldArrowMode> = _foldArrowModeState
+    private val _wrapModeState = mutableStateOf(getWrapMode())
+    val wrapModeState: State<WrapMode> = _wrapModeState
+    private val _tabSizeState = mutableStateOf(getTabSize())
+    val tabSizeState: State<Int> = _tabSizeState
+    private val _scaleState = mutableStateOf(getScale())
+    val scaleState: State<Float> = _scaleState
+    private val _lineSpacingState = mutableStateOf(getLineSpacing())
+    val lineSpacingState: State<LineSpacing> = _lineSpacingState
+    private val _showSplitLineState = mutableStateOf(isShowSplitLine())
+    val showSplitLineState: State<Boolean> = _showSplitLineState
+    private val _currentLineRenderModeState = mutableStateOf(getCurrentLineRenderMode())
+    val currentLineRenderModeState: State<CurrentLineRenderMode> = _currentLineRenderModeState
+    private val _gutterStickyState = mutableStateOf(isGutterSticky())
+    val gutterStickyState: State<Boolean> = _gutterStickyState
+    private val _gutterVisibleState = mutableStateOf(isGutterVisible())
+    val gutterVisibleState: State<Boolean> = _gutterVisibleState
+    private val _readOnlyState = mutableStateOf(isReadOnly())
+    val readOnlyState: State<Boolean> = _readOnlyState
+    private val _compositionEnabledState = mutableStateOf(isCompositionEnabled())
+    val compositionEnabledState: State<Boolean> = _compositionEnabledState
+    private val _autoIndentModeState = mutableStateOf(getAutoIndentMode())
+    val autoIndentModeState: State<AutoIndentMode> = _autoIndentModeState
+    private val _cursorPositionState = mutableStateOf(getCursorPosition())
+    val cursorPositionState: State<TextPosition> = _cursorPositionState
+    private val _selectionState = mutableStateOf(getSelection())
+    val selectionState: State<TextRange?> = _selectionState
+    private val _composingState = mutableStateOf(isComposing())
+    val composingState: State<Boolean> = _composingState
+    private val _canUndoState = mutableStateOf(canUndo())
+    val canUndoState: State<Boolean> = _canUndoState
+    private val _canRedoState = mutableStateOf(canRedo())
+    val canRedoState: State<Boolean> = _canRedoState
+    private val _selectedTextState = mutableStateOf(getSelectedText())
+    val selectedTextState: State<String?> = _selectedTextState
+    private val _wordRangeAtCursorState = mutableStateOf(
+        TextRange(
+            start = TextPosition(0, 0),
+            end = TextPosition(0, 0),
+        ),
+    )
+    val wordRangeAtCursorState: State<TextRange> = _wordRangeAtCursorState
+    private val _wordAtCursorState = mutableStateOf(getWordAtCursor())
+    val wordAtCursorState: State<String?> = _wordAtCursorState
+
+    init {
+        refreshComposeStates()
+    }
 
     fun whenReady(callback: () -> Unit) {
         if (isDisposed) {
@@ -89,6 +164,7 @@ class SweetEditorController(
         dismissCompletion()
         editorController.setDocument(document)
         eventBus.publish(DocumentLoadedEvent(state.document))
+        refreshComposeStates()
     }
 
     fun getDocument(): EditorDocument? = state.document
@@ -112,6 +188,7 @@ class SweetEditorController(
     fun applyTheme(theme: EditorTheme) {
         themeSnapshot = theme
         editorController.applyTheme(theme)
+        refreshComposeStates()
     }
 
     fun getTheme(): EditorTheme = themeSnapshot
@@ -119,12 +196,14 @@ class SweetEditorController(
     fun applySettings(settings: EditorSettings) {
         settingsSnapshot = settings
         editorController.applySettings(settings)
+        refreshComposeStates()
     }
 
     fun getSettings(): EditorSettings = settingsSnapshot
 
     fun setLanguageConfiguration(configuration: LanguageConfiguration?) {
         editorController.setLanguageConfiguration(configuration)
+        refreshComposeStates()
     }
 
     fun getLanguageConfiguration(): LanguageConfiguration? = state.languageConfiguration
@@ -132,6 +211,7 @@ class SweetEditorController(
     fun setMetadata(metadata: EditorMetadata?) {
         state.metadata = metadata
         editorController.requestDecorationRefresh()
+        refreshComposeStates()
     }
 
     fun getMetadata(): EditorMetadata? = state.metadata
@@ -139,6 +219,7 @@ class SweetEditorController(
     fun setEditorIconProvider(provider: EditorIconProvider?) {
         state.editorIconProvider = provider
         editorController.refresh()
+        refreshComposeStates()
     }
 
     fun getEditorIconProvider(): EditorIconProvider? = state.editorIconProvider
@@ -202,6 +283,7 @@ class SweetEditorController(
             return
         }
         state.completionSelectedIndex = index.coerceIn(0, result.items.lastIndex)
+        refreshComposeStates()
     }
 
     fun selectNextCompletionItem() {
@@ -211,6 +293,7 @@ class SweetEditorController(
         }
         val nextIndex = (state.completionSelectedIndex + 1) % result.items.size
         state.completionSelectedIndex = nextIndex
+        refreshComposeStates()
     }
 
     fun selectPreviousCompletionItem() {
@@ -224,6 +307,7 @@ class SweetEditorController(
             state.completionSelectedIndex - 1
         }
         state.completionSelectedIndex = nextIndex
+        refreshComposeStates()
     }
 
     fun applySelectedCompletionItem(): TextEditResult? {
@@ -410,13 +494,20 @@ class SweetEditorController(
         return firstLine..lastLine
     }
 
-    fun setViewport(width: Int, height: Int) = editorController.setViewport(width, height)
+    fun setViewport(width: Int, height: Int) {
+        editorController.setViewport(width, height)
+        refreshComposeStates()
+    }
 
-    fun onFontMetricsChanged() = editorController.onFontMetricsChanged()
+    fun onFontMetricsChanged() {
+        editorController.onFontMetricsChanged()
+        refreshComposeStates()
+    }
 
     fun setFoldArrowMode(mode: FoldArrowMode) {
         settingsSnapshot = settingsSnapshot.copy(foldArrowMode = mode)
         editorController.setFoldArrowMode(mode)
+        refreshComposeStates()
     }
 
     fun getFoldArrowMode(): FoldArrowMode = editorController.getFoldArrowMode()
@@ -424,6 +515,7 @@ class SweetEditorController(
     fun setWrapMode(mode: WrapMode) {
         settingsSnapshot = settingsSnapshot.copy(wrapMode = mode)
         editorController.setWrapMode(mode)
+        refreshComposeStates()
     }
 
     fun getWrapMode(): WrapMode = editorController.getWrapMode()
@@ -431,6 +523,7 @@ class SweetEditorController(
     fun setTabSize(tabSize: Int) {
         settingsSnapshot = settingsSnapshot.copy(tabSize = tabSize)
         editorController.setTabSize(tabSize)
+        refreshComposeStates()
     }
 
     fun getTabSize(): Int = editorController.getTabSize()
@@ -438,6 +531,7 @@ class SweetEditorController(
     fun setScale(scale: Float) {
         editorController.setScale(scale)
         eventBus.publish(ScaleChangedEvent(scale))
+        refreshComposeStates()
     }
 
     fun getScale(): Float = editorController.getScale()
@@ -448,17 +542,22 @@ class SweetEditorController(
             lineSpacingMultiplier = mult,
         )
         editorController.setLineSpacing(add, mult)
+        refreshComposeStates()
     }
 
     fun getLineSpacing(): LineSpacing = editorController.getLineSpacing()
 
-    fun setShowSplitLine(show: Boolean) = editorController.setShowSplitLine(show)
+    fun setShowSplitLine(show: Boolean) {
+        editorController.setShowSplitLine(show)
+        refreshComposeStates()
+    }
 
     fun isShowSplitLine(): Boolean = editorController.isShowSplitLine()
 
     fun setCurrentLineRenderMode(mode: CurrentLineRenderMode) {
         settingsSnapshot = settingsSnapshot.copy(currentLineRenderMode = mode)
         editorController.setCurrentLineRenderMode(mode)
+        refreshComposeStates()
     }
 
     fun getCurrentLineRenderMode(): CurrentLineRenderMode = editorController.getCurrentLineRenderMode()
@@ -466,6 +565,7 @@ class SweetEditorController(
     fun setGutterSticky(sticky: Boolean) {
         settingsSnapshot = settingsSnapshot.copy(gutterSticky = sticky)
         editorController.setGutterSticky(sticky)
+        refreshComposeStates()
     }
 
     fun isGutterSticky(): Boolean = editorController.isGutterSticky()
@@ -473,6 +573,7 @@ class SweetEditorController(
     fun setGutterVisible(visible: Boolean) {
         settingsSnapshot = settingsSnapshot.copy(gutterVisible = visible)
         editorController.setGutterVisible(visible)
+        refreshComposeStates()
     }
 
     fun isGutterVisible(): Boolean = editorController.isGutterVisible()
@@ -480,6 +581,7 @@ class SweetEditorController(
     fun setReadOnly(readOnly: Boolean) {
         settingsSnapshot = settingsSnapshot.copy(readOnly = readOnly)
         editorController.setReadOnly(readOnly)
+        refreshComposeStates()
     }
 
     fun isReadOnly(): Boolean = editorController.isReadOnly()
@@ -487,6 +589,7 @@ class SweetEditorController(
     fun setCompositionEnabled(enabled: Boolean) {
         settingsSnapshot = settingsSnapshot.copy(compositionEnabled = enabled)
         editorController.setCompositionEnabled(enabled)
+        refreshComposeStates()
     }
 
     fun isCompositionEnabled(): Boolean = editorController.isCompositionEnabled()
@@ -494,6 +597,7 @@ class SweetEditorController(
     fun setAutoIndentMode(mode: AutoIndentMode) {
         settingsSnapshot = settingsSnapshot.copy(autoIndentMode = mode)
         editorController.setAutoIndentMode(mode)
+        refreshComposeStates()
     }
 
     fun getAutoIndentMode(): AutoIndentMode = editorController.getAutoIndentMode()
@@ -632,6 +736,7 @@ class SweetEditorController(
     ) {
         editorController.scrollToLine(line, behavior)
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
+        refreshComposeStates()
     }
 
     fun gotoPosition(
@@ -641,11 +746,13 @@ class SweetEditorController(
         editorController.gotoPosition(line, column)
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
         publishCursorAndSelectionEvents()
+        refreshComposeStates()
     }
 
     fun ensureCursorVisible() {
         editorController.ensureCursorVisible()
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
+        refreshComposeStates()
     }
 
     fun setScroll(
@@ -654,6 +761,7 @@ class SweetEditorController(
     ) {
         editorController.setScroll(scrollX, scrollY)
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
+        refreshComposeStates()
     }
 
     fun getPositionRect(
@@ -743,11 +851,13 @@ class SweetEditorController(
     fun refresh() {
         editorController.refresh()
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
+        refreshComposeStates()
     }
 
     fun flush() {
         editorController.flush()
         eventBus.publish(ScrollChangedEvent(state.scrollMetrics))
+        refreshComposeStates()
     }
 
     private fun buildCompletionContext(
@@ -832,6 +942,49 @@ class SweetEditorController(
         }
     }
 
+    private fun refreshComposeStates() {
+        _documentState.value = state.document
+        _totalLineCountState.value = getTotalLineCount()
+        _themeState.value = themeSnapshot
+        _settingsState.value = settingsSnapshot
+        _languageConfigurationState.value = state.languageConfiguration
+        _metadataState.value = state.metadata
+        _editorIconProviderState.value = state.editorIconProvider
+        _completionResultState.value = state.completionResult
+        _selectedCompletionIndexState.value = state.completionSelectedIndex
+        _visibleCompletionState.value = hasVisibleCompletion()
+        _scrollMetricsState.value = state.scrollMetrics
+        _visibleLineRangeState.value = getVisibleLineRange()
+        _foldArrowModeState.value = getFoldArrowMode()
+        _wrapModeState.value = getWrapMode()
+        _tabSizeState.value = getTabSize()
+        _scaleState.value = getScale()
+        _lineSpacingState.value = getLineSpacing()
+        _showSplitLineState.value = isShowSplitLine()
+        _currentLineRenderModeState.value = getCurrentLineRenderMode()
+        _gutterStickyState.value = isGutterSticky()
+        _gutterVisibleState.value = isGutterVisible()
+        _readOnlyState.value = isReadOnly()
+        _compositionEnabledState.value = isCompositionEnabled()
+        _autoIndentModeState.value = getAutoIndentMode()
+        _cursorPositionState.value = getCursorPosition()
+        _selectionState.value = getSelection()
+        _composingState.value = isComposing()
+        _canUndoState.value = canUndo()
+        _canRedoState.value = canRedo()
+        _selectedTextState.value = getSelectedText()
+        if (state.document != null) {
+            _wordRangeAtCursorState.value = getWordRangeAtCursor()
+            _wordAtCursorState.value = getWordAtCursor()
+        } else {
+            _wordRangeAtCursorState.value = TextRange(
+                start = TextPosition(0, 0),
+                end = TextPosition(0, 0),
+            )
+            _wordAtCursorState.value = null
+        }
+    }
+
     private fun updateCompletionResult(result: CompletionResult?) {
         val normalizedResult = result?.takeIf { it.items.isNotEmpty() || it.isIncomplete }
         state.completionResult = normalizedResult
@@ -839,6 +992,7 @@ class SweetEditorController(
             normalizedResult == null || normalizedResult.items.isEmpty() -> 0
             else -> state.completionSelectedIndex.coerceIn(0, normalizedResult.items.lastIndex)
         }
+        refreshComposeStates()
     }
 
     private fun handleCompletionAfterImeCommands(commands: List<EditCommand>) {
@@ -906,6 +1060,7 @@ class SweetEditorController(
     private fun publishCursorAndSelectionEvents() {
         eventBus.publish(CursorChangedEvent(getCursorPosition()))
         eventBus.publish(SelectionChangedEvent(getSelection()))
+        refreshComposeStates()
     }
 
     private fun publishGestureEvents(result: GestureResult) {

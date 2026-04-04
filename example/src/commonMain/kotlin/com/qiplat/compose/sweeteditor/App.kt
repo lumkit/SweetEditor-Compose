@@ -1,12 +1,17 @@
 package com.qiplat.compose.sweeteditor
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material.icons.automirrored.outlined.WrapText
+import androidx.compose.material.icons.outlined.Colorize
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -14,21 +19,23 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.qiplat.compose.sweeteditor.model.decoration.DiagnosticItem
-import com.qiplat.compose.sweeteditor.model.decoration.DiagnosticSeverity
+import com.qiplat.compose.sweeteditor.model.decoration.*
+import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
+import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.Font
 import sweeteditor_compose.example.generated.resources.JetBrainsMono_Regular
 import sweeteditor_compose.example.generated.resources.Res
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 @Preview
 fun App() {
     MaterialTheme {
+        var darkThemeState by rememberSaveable { mutableStateOf(true) }
         val editorFontFamily = FontFamily(Font(Res.font.JetBrainsMono_Regular))
         val editorFontConfig = remember(editorFontFamily) {
             EditorFontConfig(
@@ -42,7 +49,7 @@ fun App() {
         val editorAppearance = rememberEditorAppearance(
             themeContent = null,
             fontConfig = editorFontConfig,
-            darkMode = true,
+            darkMode = darkThemeState,
         )
         val editorState = rememberEditorState()
         val editorController = rememberSweetEditorController(
@@ -51,19 +58,10 @@ fun App() {
         )
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
-        var gestureSummary by remember { mutableStateOf("No gesture") }
-        var hitTargetSummary by remember { mutableStateOf("No hit target") }
-        var contextMenuSummary by remember { mutableStateOf("No context menu") }
-        var handleDragSummary by remember { mutableStateOf("HandleDrag=false") }
-        var linkedEditingSummary by remember { mutableStateOf("LinkedEditing=false") }
         var wrapEnabled by remember { mutableStateOf(false) }
         var readOnly by remember { mutableStateOf(false) }
         var compositionEnabled by remember { mutableStateOf(true) }
-        val updateLinkedEditingSummary = remember(editorController) {
-            {
-                linkedEditingSummary = "LinkedEditing=${editorController.isInLinkedEditing()}"
-            }
-        }
+
         val sampleSpecs = remember {
             listOf(
                 ExampleSampleSpec("example.kt", "files/example_kt", "files/kotlin_json"),
@@ -76,9 +74,10 @@ fun App() {
         val decorationProviders = remember {
             listOf(
                 LanguageConfigDecorationProvider(),
-                ExampleDiagnosticsDecorationProvider(),
+                ExampleDemoDecorationProvider(),
             )
         }
+        val completionProvider = remember { ExampleDemoCompletionProvider() }
         val editorSettings = remember(wrapEnabled, readOnly, compositionEnabled) {
             EditorSettings(
                 wrapMode = if (wrapEnabled) WrapMode.WordBreak else WrapMode.None,
@@ -89,21 +88,8 @@ fun App() {
                 compositionEnabled = compositionEnabled,
             )
         }
-        val activeSample = loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
-        val languageSummary = activeSample?.let { sample ->
-            buildString {
-                val configuration = sample.configuration
-                append(configuration.scopeName.ifBlank { configuration.name.ifBlank { "unknown" } })
-                append(" · ext=")
-                append(configuration.fileExtensions.joinToString().ifBlank { "-" })
-                append(" · styles=")
-                append(configuration.highlightStyleIds.size)
-                configuration.comments.lineComment?.let {
-                    append(" · lineComment=")
-                    append(it)
-                }
-            }
-        } ?: "Language metadata unavailable"
+        val activeSample =
+            loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
 
         LaunchedEffect(sampleSpecs) {
             val configurationCache = mutableMapOf<String, LanguageConfiguration>()
@@ -127,344 +113,431 @@ fun App() {
             editorController.loadText(sampleText)
             editorController.setShowSplitLine(true)
             editorController.onFontMetricsChanged()
-            updateLinkedEditingSummary()
         }
 
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = IntelliJBackground,
-        ) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (loadedSamples.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(IntelliJBackground)
-                            .padding(it),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(IntelliJToolbar)
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text(
-                                    text = "SweetEditor Compose",
-                                    color = IntelliJTextPrimary,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
+        DisposableEffect(editorController, completionProvider) {
+            editorController.addCompletionProvider(completionProvider)
+            onDispose {
+                editorController.removeCompletionProvider(completionProvider)
+            }
+        }
 
-                                Row(
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    IdeToggleChip(
-                                        label = if (wrapEnabled) "Soft Wraps" else "No Wrap",
-                                        selected = wrapEnabled,
-                                        onClick = { wrapEnabled = !wrapEnabled },
-                                    )
-                                    IdeToggleChip(
-                                        label = if (readOnly) "ReadOnly" else "Editable",
-                                        selected = readOnly,
-                                        onClick = { readOnly = !readOnly },
-                                    )
-                                    IdeToggleChip(
-                                        label = if (compositionEnabled) "IME On" else "IME Off",
-                                        selected = compositionEnabled,
-                                        onClick = { compositionEnabled = !compositionEnabled },
-                                    )
-                                    OutlinedButton(
-                                        onClick = {
-                                            editorController.insertSnippet(
-                                                "val ${'$'}{1:name} = ${'$'}{2:value}${'$'}0",
-                                            )
-                                            updateLinkedEditingSummary()
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    ) {
-                                        Text("Insert Snippet")
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            editorController.linkedEditingPrev()
-                                            updateLinkedEditingSummary()
-                                        },
-                                        enabled = editorController.isInLinkedEditing(),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    ) {
-                                        Text("Prev TabStop")
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            editorController.linkedEditingNext()
-                                            updateLinkedEditingSummary()
-                                        },
-                                        enabled = editorController.isInLinkedEditing(),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    ) {
-                                        Text("Next TabStop")
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            editorController.cancelLinkedEditing()
-                                            updateLinkedEditingSummary()
-                                        },
-                                        enabled = editorController.isInLinkedEditing(),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    ) {
-                                        Text("Cancel Linked")
-                                    }
-                                }
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color(editorAppearance.theme.gutterBackgroundColor),
+            topBar = {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(editorAppearance.theme.gutterBackgroundColor),
+                        titleContentColor = Color(editorAppearance.theme.textColor),
+                        actionIconContentColor = Color(editorAppearance.theme.textColor),
+                    ),
+                    title = {
+                        Text("Sweet Editor For Compose")
+                    },
+                    actions = {
+                        Actions(
+                            editorController,
+                            darkThemeState,
+                            onDarkThemeChanged = {
+                                darkThemeState = it
                             }
-                        }
-                        SecondaryScrollableTabRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(IntelliJTabStrip),
-                            selectedTabIndex = selectedSampleIndex.coerceIn(0, loadedSamples.lastIndex),
-                            containerColor = IntelliJTabStrip,
-                            contentColor = IntelliJTextPrimary,
-                            edgePadding = 12.dp,
-                            divider = {
-                                HorizontalDivider(color = IntelliJBorder)
-                            },
+                        )
+                    }
+                )
+            },
+            bottomBar = {
+                CompositionLocalProvider(
+                    LocalContentColor provides Color(editorAppearance.theme.textColor),
+                ) {
+                    ProvideTextStyle(value = MaterialTheme.typography.labelMedium) {
+                        val scale by editorController.scaleState
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                .height(56.dp)
+                                .padding(horizontal = 16.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            loadedSamples.forEachIndexed { index, sample ->
-                                Tab(
-                                    selected = index == selectedSampleIndex,
-                                    onClick = { selectedSampleIndex = index },
-                                    selectedContentColor = IntelliJTextPrimary,
-                                    unselectedContentColor = IntelliJTextSecondary,
-                                    text = {
-                                        Text(sample.spec.title)
-                                    },
-                                )
-                            }
-                        }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(IntelliJSurface)
-                                    .border(width = 1.dp, color = IntelliJBorder)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = activeSample?.spec?.title.orEmpty(),
-                                    color = IntelliJTextPrimary,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                                Text(
-                                    text = languageSummary,
-                                    color = IntelliJTextSecondary,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth()
-                                    .background(IntelliJEditorSurface)
-                                    .border(width = 1.dp, color = IntelliJBorder),
-                            ) {
-                                SweetEditor(
-                                    controller = editorController,
-                                    modifier = Modifier.fillMaxSize(),
-                                    theme = editorAppearance.theme,
-                                    settings = editorSettings,
-                                    decorationProviders = decorationProviders,
-                                    onGestureResult = { result ->
-                                        gestureSummary = "${result.type.name} · scale=${result.viewScale.toReadableScale()}"
-                                    },
-                                    onHitTarget = { hitTarget ->
-                                        hitTargetSummary = buildString {
-                                            append(hitTarget.type.name)
-                                            if (hitTarget.line != 0 || hitTarget.column != 0) {
-                                                append(" @ ")
-                                                append(hitTarget.line)
-                                                append(':')
-                                                append(hitTarget.column)
-                                            }
-                                        }
-                                    },
-                                    onContextMenuRequest = { request ->
-                                        contextMenuSummary = buildString {
-                                            append("ContextMenu @ ")
-                                            append(request.gestureResult.tapPoint.x.toInt())
-                                            append(',')
-                                            append(request.gestureResult.tapPoint.y.toInt())
-                                            append(" · ")
-                                            append(request.hitTarget.type.name)
-                                        }
-                                    },
-                                    onSelectionHandleDragStateChange = { dragState ->
-                                        handleDragSummary = buildString {
-                                            append("HandleDrag=")
-                                            append(dragState.active)
-                                            if (dragState.active) {
-                                                append(" @ ")
-                                                append(dragState.startHandle.position.x.toInt())
-                                                append(',')
-                                                append(dragState.startHandle.position.y.toInt())
-                                                append(" -> ")
-                                                append(dragState.endHandle.position.x.toInt())
-                                                append(',')
-                                                append(dragState.endHandle.position.y.toInt())
-                                            }
-                                        }
-                                    },
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(IntelliJStatusBar)
-                                    .border(width = 1.dp, color = IntelliJBorder)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                FpsText()
-                                StatusLabel("Gesture", gestureSummary)
-                                StatusLabel("Hit", hitTargetSummary)
-                                StatusLabel("Menu", contextMenuSummary)
-                                StatusLabel("Selection", handleDragSummary)
-                                StatusLabel("Snippet", linkedEditingSummary)
-                            }
+                            Text(
+                                text = "Scale: ${scale.toString().take(4)}",
+                                modifier = Modifier.width(80.dp)
+                            )
+
+                            Slider(
+                                value = scale,
+                                onValueChange = {
+                                    editorController.setScale(it)
+                                },
+                                valueRange = .5f..2f,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(color = IntelliJAccent)
+                }
+            }
+        ) {
+            SweetEditor(
+                controller = editorController,
+                modifier = Modifier.padding(it).fillMaxSize(),
+                theme = editorAppearance.theme,
+                settings = editorSettings,
+                decorationProviders = decorationProviders,
+                onGestureResult = { result ->
+
+                },
+                onHitTarget = { hitTarget ->
+
+                },
+                onContextMenuRequest = { request ->
+
+                },
+                onSelectionHandleDragStateChange = { dragState ->
+
+                },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RowScope.Actions(
+    editorController: SweetEditorController,
+    darkThemeState: Boolean,
+    onDarkThemeChanged: (Boolean) -> Unit,
+) {
+    var menuState by rememberSaveable { mutableStateOf(false) }
+    val wrapMode by editorController.wrapModeState
+
+    Column {
+        IconButton(
+            onClick = {
+                menuState = true
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.MoreVert,
+                contentDescription = null,
+            )
+        }
+
+        DropdownMenu(
+            expanded = menuState,
+            onDismissRequest = { menuState = false },
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text("undo")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Undo,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    editorController.undo()
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text("redo")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Redo,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    editorController.redo()
+                }
+            )
+
+            HorizontalDivider()
+
+            DropdownMenuItem(
+                text = {
+                    Text("TextWrap: ${wrapMode.name}")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.WrapText,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    val nextMode = (wrapMode.ordinal + 1).let {
+                        if (it >= WrapMode.entries.size) 0 else it
+                    }
+                    editorController.setWrapMode(WrapMode.entries[nextMode])
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (darkThemeState) "Dark" else "Light")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Colorize,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    onDarkThemeChanged(!darkThemeState)
+                    menuState = false
+                }
+            )
+        }
+    }
+}
+
+private class ExampleDemoCompletionProvider : CompletionProvider {
+    private val triggerChars = setOf(".", ":")
+
+    override fun isTriggerCharacter(ch: String): Boolean = ch in triggerChars
+
+    override suspend fun provideCompletions(
+        context: CompletionContext,
+        receiver: CompletionReceiver,
+    ) {
+        if (
+            context.triggerKind == CompletionTriggerKind.Character &&
+            context.triggerCharacter == "."
+        ) {
+            receiver.accept(
+                CompletionResult(
+                    items = listOf(
+                        CompletionItem(
+                            label = "length",
+                            detail = "size_t",
+                            kind = CompletionItem.KIND_PROPERTY,
+                            insertText = "length()",
+                            sortKey = "a_length",
+                        ),
+                        CompletionItem(
+                            label = "push_back",
+                            detail = "void push_back(T)",
+                            kind = CompletionItem.KIND_FUNCTION,
+                            insertText = "push_back()",
+                            sortKey = "b_push_back",
+                        ),
+                        CompletionItem(
+                            label = "begin",
+                            detail = "iterator",
+                            kind = CompletionItem.KIND_FUNCTION,
+                            insertText = "begin()",
+                            sortKey = "c_begin",
+                        ),
+                        CompletionItem(
+                            label = "end",
+                            detail = "iterator",
+                            kind = CompletionItem.KIND_FUNCTION,
+                            insertText = "end()",
+                            sortKey = "d_end",
+                        ),
+                        CompletionItem(
+                            label = "size",
+                            detail = "size_t",
+                            kind = CompletionItem.KIND_FUNCTION,
+                            insertText = "size()",
+                            sortKey = "e_size",
+                        ),
+                    ),
+                ),
+            )
+            return
+        }
+
+        delay(200)
+        if (receiver.isCancelled()) {
+            return
+        }
+        receiver.accept(
+            CompletionResult(
+                items = listOf(
+                    CompletionItem(
+                        label = "std::string",
+                        detail = "class",
+                        kind = CompletionItem.KIND_CLASS,
+                        insertText = "std::string",
+                        sortKey = "a_string",
+                    ),
+                    CompletionItem(
+                        label = "std::vector",
+                        detail = "template class",
+                        kind = CompletionItem.KIND_CLASS,
+                        insertText = "std::vector<>",
+                        sortKey = "b_vector",
+                    ),
+                    CompletionItem(
+                        label = "std::cout",
+                        detail = "ostream",
+                        kind = CompletionItem.KIND_VARIABLE,
+                        insertText = "std::cout",
+                        sortKey = "c_cout",
+                    ),
+                    CompletionItem(
+                        label = "if",
+                        detail = "snippet",
+                        kind = CompletionItem.KIND_SNIPPET,
+                        insertText = "if (${ '$' }{1:condition}) {\n\t${ '$' }0\n}",
+                        insertTextFormat = CompletionItem.SNIPPET,
+                        sortKey = "d_if",
+                    ),
+                    CompletionItem(
+                        label = "for",
+                        detail = "snippet",
+                        kind = CompletionItem.KIND_SNIPPET,
+                        insertText = "for (int ${ '$' }{1:i} = 0; ${ '$' }{1:i} < ${ '$' }{2:n}; ++${ '$' }{1:i}) {\n\t${ '$' }0\n}",
+                        insertTextFormat = CompletionItem.SNIPPET,
+                        sortKey = "e_for",
+                    ),
+                    CompletionItem(
+                        label = "class",
+                        detail = "snippet — class definition",
+                        kind = CompletionItem.KIND_SNIPPET,
+                        insertText = "class ${ '$' }{1:ClassName} {\npublic:\n\t${ '$' }{1:ClassName}() {\n\t\t${ '$' }2\n\t}\n\t~${ '$' }{1:ClassName}() {\n\t\t${ '$' }3\n\t}\n\t${ '$' }0\n};",
+                        insertTextFormat = CompletionItem.SNIPPET,
+                        sortKey = "f_class",
+                    ),
+                    CompletionItem(
+                        label = "return",
+                        detail = "keyword",
+                        kind = CompletionItem.KIND_KEYWORD,
+                        insertText = "return ",
+                        sortKey = "g_return",
+                    ),
+                ),
+            ),
+        )
+    }
+}
+
+private class ExampleDemoDecorationProvider : DecorationProvider {
+    override val id: String = "example.demo.decoration"
+    override val overscanLines: Int = 8
+    override val capabilities: Set<DecorationType> = setOf(
+        DecorationType.InlayHint,
+        DecorationType.Diagnostic,
+        DecorationType.IndentGuide,
+        DecorationType.FoldRegion,
+        DecorationType.GutterIcon,
+        DecorationType.SeparatorGuide,
+    )
+
+    override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
+        val inlayHints = linkedMapOf<Int, MutableList<InlayHint>>()
+        val gutterIcons = linkedMapOf<Int, MutableList<GutterIcon>>()
+        val separatorGuides = mutableListOf<SeparatorGuide>()
+        val foldRegions = mutableListOf<FoldRegion>()
+        val indentGuides = mutableListOf<IndentGuide>()
+        val styleIdColorToken = EditorThemeStyleIds.UserBase + 1
+        val textStyles = mapOf(
+            styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
+        )
+        val syntaxSpans = linkedMapOf<Int, MutableList<StyleSpan>>()
+        val diagnostics = linkedMapOf<Int, List<DiagnosticItem>>()
+        val braceStack = ArrayDeque<Pair<Int, Int>>()
+        val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
+
+        for (line in context.requestedLineRange) {
+            val lineText = context.document.getLineText(line)
+            val lineDiagnostics = mutableListOf<DiagnosticItem>()
+            lineText.indexOf("TODO").takeIf { it >= 0 }?.let { column ->
+                lineDiagnostics += DiagnosticItem(
+                    column = column,
+                    length = 4,
+                    severity = DiagnosticSeverity.Hint,
+                )
+            }
+            lineText.indexOf("FIXME").takeIf { it >= 0 }?.let { column ->
+                lineDiagnostics += DiagnosticItem(
+                    column = column,
+                    length = 5,
+                    severity = DiagnosticSeverity.Warning,
+                )
+            }
+            if (lineDiagnostics.isNotEmpty()) {
+                diagnostics[line] = lineDiagnostics
+            }
+
+            lineText.indexOf('@').takeIf { it >= 0 }?.let {
+                gutterIcons.getOrPut(line) { mutableListOf() }.add(
+                    GutterIcon(iconId = if (line % 2 == 0) 1 else 2),
+                )
+            }
+
+            if ("#region" in lineText || "// region" in lineText.lowercase()) {
+                separatorGuides += SeparatorGuide(
+                    line = line,
+                    style = SeparatorStyle.Single,
+                    count = 1,
+                    textEndColumn = lineText.length,
+                )
+            }
+
+            val leadingSpaces = lineText.indexOfFirst { !it.isWhitespace() }
+                .takeIf { it >= 0 }
+                ?.coerceAtMost(lineText.length)
+                ?: 0
+            if (leadingSpaces >= 4) {
+                indentGuides += IndentGuide(
+                    start = TextPosition(line, 0),
+                    end = TextPosition(line, leadingSpaces),
+                )
+            }
+
+            colorRegex.findAll(lineText).forEach { match ->
+                inlayHints.getOrPut(line) { mutableListOf() }.add(
+                    InlayHint(
+                        type = InlayType.Color,
+                        column = match.range.last + 1,
+                        color = match.value.removePrefix("#").toLong(16).toInt() or 0xFF000000.toInt(),
+                    ),
+                )
+                syntaxSpans.getOrPut(line) { mutableListOf() }.add(
+                    StyleSpan(
+                        column = match.range.first,
+                        length = match.value.length,
+                        styleId = styleIdColorToken,
+                    ),
+                )
+            }
+
+            lineText.forEachIndexed { column, ch ->
+                when (ch) {
+                    '{' -> braceStack.addLast(line to column)
+                    '}' -> {
+                        val start = braceStack.removeLastOrNull() ?: return@forEachIndexed
+                        if (line > start.first) {
+                            foldRegions += FoldRegion(
+                                startLine = start.first,
+                                endLine = line,
+                            )
+                        }
                     }
                 }
             }
         }
-    }
-}
-
-private fun Float.toReadableScale(): String =
-    ((this * 100).roundToInt() / 100f).toString()
-
-@Composable
-private fun IdeToggleChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = {
-            Text(label)
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = IntelliJAccent.copy(alpha = 0.18f),
-            selectedLabelColor = IntelliJTextPrimary,
-            containerColor = IntelliJToolbar,
-            labelColor = IntelliJTextSecondary,
-        ),
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = true,
-            selected = selected,
-            borderColor = IntelliJBorder,
-            selectedBorderColor = IntelliJAccent,
-        ),
-    )
-}
-
-@Composable
-private fun StatusLabel(
-    title: String,
-    value: String,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.widthIn(max = 420.dp),
-    ) {
-        Text(
-            text = title,
-            color = IntelliJTextSecondary,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Text(
-            text = value,
-            color = IntelliJTextPrimary,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-        )
-    }
-}
-
-private class ExampleDiagnosticsDecorationProvider : DecorationProvider {
-    override val id: String = "example.demo.diagnostics"
-    override val overscanLines: Int = 8
-
-    override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
-        val diagnostics = linkedMapOf<Int, List<DiagnosticItem>>()
-        for (line in context.requestedLineRange) {
-            val lineText = context.document.getLineText(line)
-            if ("TODO" !in lineText) {
-                continue
-            }
-            diagnostics[line] = listOf(
-                DiagnosticItem(
-                    column = lineText.indexOf("TODO").coerceAtLeast(0),
-                    length = 4,
-                    severity = DiagnosticSeverity.Hint,
-                ),
-            )
-        }
         return DecorationUpdate(
-            decorations = DecorationSet(diagnostics = diagnostics),
-            applyMode = DecorationApplyMode.ReplaceRange,
+            decorations = DecorationSet(
+                textStyles = textStyles,
+                syntaxSpans = syntaxSpans,
+                inlayHints = inlayHints,
+                gutterIcons = gutterIcons,
+                diagnostics = diagnostics,
+                separatorGuides = separatorGuides,
+                indentGuides = indentGuides,
+                foldRegions = foldRegions,
+            ),
+            applyMode = DecorationApplyMode.Merge,
             lineRange = context.requestedLineRange,
-        )
-    }
-}
-
-@Composable
-fun FpsText(
-    modifier: Modifier = Modifier
-) {
-    val fsp by rememberFps()
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.widthIn(max = 420.dp),
-    ) {
-        Text(
-            text = "FPS",
-            color = IntelliJTextSecondary,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Text(
-            text = fsp.toString().take(5),
-            color = IntelliJTextPrimary,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
         )
     }
 }
@@ -500,14 +573,3 @@ private data class LoadedExampleSample(
     val spec: ExampleSampleSpec,
     val configuration: LanguageConfiguration,
 )
-
-private val IntelliJBackground = Color(0xFF1E1F22)
-private val IntelliJToolbar = Color(0xFF2B2D30)
-private val IntelliJTabStrip = Color(0xFF313338)
-private val IntelliJSurface = Color(0xFF2B2D30)
-private val IntelliJEditorSurface = Color(0xFF1F2023)
-private val IntelliJStatusBar = Color(0xFF2B2D30)
-private val IntelliJBorder = Color(0xFF3C3F41)
-private val IntelliJTextPrimary = Color(0xFFD8D8D8)
-private val IntelliJTextSecondary = Color(0xFF9DA0A6)
-private val IntelliJAccent = Color(0xFF4C89FF)

@@ -143,7 +143,11 @@ fun SweetEditor(
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer(cacheSize = 256)
     val renderModel = state.renderModel
-    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: 1f
+    val controllerScale = publicController?.scaleState?.value
+    val renderScale = controllerScale
+        ?.takeIf { it > 0f }
+        ?: state.scrollMetrics.scale.takeIf { it > 0f }
+        ?: 1f
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
     }
@@ -604,25 +608,57 @@ private fun DrawScope.drawEditorSurface(
         currentLineBorderColor = currentLineBorderColor(theme),
         splitLineColor = theme.splitLineColor.toComposeColor(),
     )
-    renderModel.lines.forEach { line ->
-        if (viewportBounds.intersectsLine(line, estimatedLineHeight)) {
-            drawLineNumber(renderModel, textMeasurer, line, drawCache, viewportBounds, estimatedLineHeight)
-        }
-    }
-
     val activeLineColor = currentLineAccentColor(theme)
-    renderModel.gutterIcons.forEach { item ->
-        if (viewportBounds.intersects(item.origin.x, item.origin.y, item.width, item.height)) {
-            drawGutterIcon(
-                item = item,
-                painter = iconPainter,
-                tint = if (item.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else theme.inlayHintIconColor.toComposeColor(),
-            )
+    val overlayMode = renderModel.maxGutterIcons == 0
+    val gutterIconsByLine = renderModel.gutterIcons.groupBy { it.logicalLine }
+    val foldMarkerByLine = renderModel.foldMarkers.associateBy { it.logicalLine }
+    var currentDrawingLineNumber = -1
+    renderModel.lines.forEach { line ->
+        if (line.wrapIndex != 0 || line.isPhantomLine) {
+            return@forEach
         }
-    }
+        if (!viewportBounds.intersectsLine(line, estimatedLineHeight)) {
+            return@forEach
+        }
+        val logicalLine = line.logicalLine
+        val lineNumber = logicalLine + 1
+        val iconItems = gutterIconsByLine[logicalLine].orEmpty()
+        val hasIcons = iconItems.isNotEmpty()
+        val lineIconTint = if (logicalLine == renderModel.cursor.textPosition.line) {
+            activeLineColor
+        } else {
+            theme.inlayHintIconColor.toComposeColor()
+        }
 
-    renderModel.foldMarkers.forEach { marker ->
-        if (viewportBounds.intersects(marker.origin.x, marker.origin.y, marker.width, marker.height)) {
+        if (overlayMode && hasIcons) {
+            val item = iconItems.first()
+            if (viewportBounds.intersects(item.origin.x, item.origin.y, item.width, item.height)) {
+                drawGutterIcon(
+                    item = item,
+                    painter = iconPainter,
+                    tint = lineIconTint,
+                )
+            }
+            currentDrawingLineNumber = lineNumber
+        } else if (lineNumber != currentDrawingLineNumber) {
+            drawLineNumber(renderModel, textMeasurer, line, drawCache, viewportBounds, estimatedLineHeight)
+            currentDrawingLineNumber = lineNumber
+        }
+
+        if (!overlayMode && hasIcons) {
+            iconItems.forEach { item ->
+                if (viewportBounds.intersects(item.origin.x, item.origin.y, item.width, item.height)) {
+                    drawGutterIcon(
+                        item = item,
+                        painter = iconPainter,
+                        tint = lineIconTint,
+                    )
+                }
+            }
+        }
+
+        val marker = foldMarkerByLine[logicalLine]
+        if (marker != null && viewportBounds.intersects(marker.origin.x, marker.origin.y, marker.width, marker.height)) {
             drawFoldMarker(
                 marker = marker,
                 color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else theme.lineNumberColor.toComposeColor(),
