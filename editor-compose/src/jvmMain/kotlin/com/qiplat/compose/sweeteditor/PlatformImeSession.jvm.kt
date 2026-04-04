@@ -2,6 +2,7 @@ package com.qiplat.compose.sweeteditor
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalTextInputService
 import androidx.compose.ui.text.input.*
 import com.qiplat.compose.sweeteditor.runtime.EditorState
@@ -27,6 +28,9 @@ internal actual fun InstallPlatformImeSession(
         if (!isFocused || isReadOnly) {
             return@LaunchedEffect
         }
+        if (controller.isComposing()) {
+            return@LaunchedEffect
+        }
         val oldValue = imeValue
         val synchronizedValue = controller.synchronizeImeProxyValue(oldValue)
         if (synchronizedValue != oldValue) {
@@ -36,23 +40,44 @@ internal actual fun InstallPlatformImeSession(
         }
     }
 
+    LaunchedEffect(
+        isFocused,
+        isReadOnly,
+        imeSession,
+        state.renderModel?.cursor?.position?.x,
+        state.renderModel?.cursor?.position?.y,
+        state.renderModel?.cursor?.height,
+    ) {
+        if (!isFocused || isReadOnly) {
+            return@LaunchedEffect
+        }
+        val session = imeSession ?: return@LaunchedEffect
+        val cursor = state.renderModel?.cursor ?: return@LaunchedEffect
+        session.notifyFocusedRect(
+            Rect(
+                left = cursor.position.x,
+                top = cursor.position.y,
+                right = cursor.position.x + 1f,
+                bottom = cursor.position.y + cursor.height.coerceAtLeast(1f),
+            ),
+        )
+    }
+
     LaunchedEffect(isFocused, isReadOnly, textInputService, controller, state.document) {
-        val service = textInputService
-        if (service == null || state.document == null) {
+        if (textInputService == null || state.document == null) {
             imeSession = null
             return@LaunchedEffect
         }
         if (isFocused && !isReadOnly) {
             controller.setCompositionEnabled(true)
             if (imeSession == null) {
-                val session = service.startInput(
+                val session = textInputService.startInput(
                     value = imeValue,
                     imeOptions = ImeOptions.Default,
                     onEditCommand = { commands ->
                         val oldValue = imeValue
                         val newValue = imeEditProcessor.apply(commands)
-                        val normalizedValue = controller.handleImeEditCommands(
-                            commands = commands,
+                        val normalizedValue = controller.editorController.applyImeProxyValueChange(
                             previousValue = oldValue,
                             newValue = newValue,
                         )
@@ -70,10 +95,10 @@ internal actual fun InstallPlatformImeSession(
                 )
                 imeSession = session
                 imeEditProcessor.reset(imeValue, session)
-                service.showSoftwareKeyboard()
+                textInputService.showSoftwareKeyboard()
             }
         } else {
-            imeSession?.let(service::stopInput)
+            imeSession?.let(textInputService::stopInput)
             imeSession = null
             if (controller.isComposing()) {
                 controller.compositionCancel()
@@ -81,7 +106,7 @@ internal actual fun InstallPlatformImeSession(
             val clearedValue = TextFieldValue()
             imeValue = clearedValue
             imeEditProcessor.reset(clearedValue, null)
-            service.hideSoftwareKeyboard()
+            textInputService.hideSoftwareKeyboard()
         }
     }
     return Modifier

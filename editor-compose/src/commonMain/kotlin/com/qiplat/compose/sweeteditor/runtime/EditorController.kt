@@ -178,6 +178,7 @@ class EditorController(
      */
     fun syncPlatformScale(scale: Float) {
         ensureActive()
+        scaleSnapshot = scale
         editorTextMeasurer.setScale(scale)
         nativeEditorBridge.onFontMetricsChanged()
         requestRefresh(renderModel = true, scrollMetrics = true)

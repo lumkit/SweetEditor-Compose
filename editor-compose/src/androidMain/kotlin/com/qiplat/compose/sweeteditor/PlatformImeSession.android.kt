@@ -79,6 +79,7 @@ private class AndroidPlatformImeNode :
     private var activeInputConnection: SweetEditorInputConnection? = null
     private var imeSessionRequested: Boolean = false
     private var pendingKeyboardGesture: GestureResult? = null
+    private var keyboardRequested: Boolean = false
     private var lastProxyContext = AndroidImeProxyContext.empty()
     private var extractedTextToken: Int? = null
     private var cursorUpdateMode: Int = 0
@@ -118,14 +119,25 @@ private class AndroidPlatformImeNode :
         if (readOnly) {
             imeSessionRequested = false
             pendingKeyboardGesture = null
+            keyboardRequested = false
         }
         syncSession()
         syncImeState(
             restartInput = false,
-            syncEditable = true,
-            syncExtractedText = true,
+            syncEditable = gestureResult.type !in setOf(
+                GestureType.Scroll,
+                GestureType.FastScroll,
+                GestureType.Scale,
+            ),
+            syncExtractedText = gestureResult.type !in setOf(
+                GestureType.Scroll,
+                GestureType.FastScroll,
+                GestureType.Scale,
+            ),
         )
-        maybeShowKeyboard()
+        if (pendingKeyboardGesture != null) {
+            maybeShowKeyboard()
+        }
     }
 
     override fun onFocusEvent(focusState: FocusState) {
@@ -133,6 +145,9 @@ private class AndroidPlatformImeNode :
         if (!focusState.isFocused && !externalFocused) {
             imeSessionRequested = false
             pendingKeyboardGesture = null
+            keyboardRequested = false
+        } else if (!readOnly) {
+            imeSessionRequested = true
         }
         syncSession()
         maybeShowKeyboard()
@@ -181,18 +196,24 @@ private class AndroidPlatformImeNode :
     private fun maybeShowKeyboard() {
         val view = activeView ?: return
         val pendingGesture = pendingKeyboardGesture
-        if (pendingGesture != null && isEditorFocused() && !readOnly) {
+        val shouldShow = isEditorFocused() &&
+            !readOnly &&
+            imeSessionRequested &&
+            (pendingGesture != null || !keyboardRequested)
+        if (shouldShow) {
             view.requestFocus()
             val imm = view.context.inputMethodManager()
             view.post {
                 imm.restartInput(view)
                 imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
             }
+            keyboardRequested = true
             pendingKeyboardGesture = null
         }
     }
 
     private fun hideKeyboard() {
+        keyboardRequested = false
         val view = activeView ?: return
         view.context.inputMethodManager().hideSoftInputFromWindow(view.windowToken, 0)
     }

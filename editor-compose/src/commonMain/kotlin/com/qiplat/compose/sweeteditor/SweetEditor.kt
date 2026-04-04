@@ -83,8 +83,7 @@ fun SweetEditor(
     Box(modifier = modifier) {
         SweetEditor(
             state = controller.state,
-            controller = controller.editorController,
-            publicController = controller,
+            controller = controller,
             modifier = Modifier.matchParentSize(),
             theme = theme,
             settings = settings,
@@ -126,8 +125,7 @@ fun SweetEditor(
 @Composable
 fun SweetEditor(
     state: EditorState,
-    controller: EditorController,
-    publicController: SweetEditorController? = null,
+    controller: SweetEditorController,
     modifier: Modifier = Modifier,
     theme: EditorTheme = EditorTheme.dark(),
     settings: EditorSettings = EditorSettings(),
@@ -138,15 +136,15 @@ fun SweetEditor(
     onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
 ) {
     val platformType = LocalPlatformType.current
+    val preferDesktopIme = platformType == PlatformType.Desktop
     val mobilePlatformTypes = remember { listOf(PlatformType.Android, PlatformType.IOS) }
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer(cacheSize = 256)
     val renderModel = state.renderModel
-    val controllerScale = publicController?.scaleState?.value
-    val renderScale = controllerScale
-        ?.takeIf { it > 0f }
-        ?: state.scrollMetrics.scale.takeIf { it > 0f }
+    val controllerScale = controller.scaleState.value
+    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f }
+        ?: controllerScale.takeIf { it > 0f }
         ?: 1f
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
@@ -156,7 +154,7 @@ fun SweetEditor(
     }
     val iconPainter = remember(controller, state.editorIconProvider) {
         EditorGutterIconPainter(
-            controller = controller,
+            controller = controller.editorController,
             provider = state.editorIconProvider,
         )
     }
@@ -212,7 +210,7 @@ fun SweetEditor(
 
     SweetEditorEffects(
         state = state,
-        controller = controller,
+        controller = controller.editorController,
         theme = theme,
         settings = settings,
         decorationProviders = decorationProviders,
@@ -222,31 +220,35 @@ fun SweetEditor(
         onSelectionHandleDragStateChange = onSelectionHandleDragStateChange,
     )
 
-    val platformImeModifier = publicController?.let {
-        InstallPlatformImeSession(
-            controller = it,
-            state = state,
-            isFocused = isFocused,
-            isReadOnly = settings.readOnly,
-        )
-    } ?: Modifier
-
     Canvas(
         modifier = modifier
             .clipToBounds()
-            .then(platformImeModifier)
+            .then(
+                InstallPlatformImeSession(
+                    controller = controller,
+                    state = state,
+                    isFocused = isFocused,
+                    isReadOnly = settings.readOnly,
+                )
+            )
             .focusRequester(focusRequester)
-            .focusable(interactionSource = interactionSource)
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
+            .focusable(interactionSource = interactionSource)
             .onSizeChanged { size ->
                 if (size.width > 0 && size.height > 0) {
                     controller.setViewport(size.width, size.height)
                 }
             }
             .onPreviewKeyEvent { event ->
-                publicController?.handleComposeKeyEvent(event) ?: controller.handleComposeKeyEvent(event)
+                controller.handleComposeKeyEvent(
+                    event = event,
+                    preferIme = preferDesktopIme,
+                )
+            }
+            .onKeyEvent { event ->
+                controller.handleComposeTextInputFallback(event)
             }
             .pointerInput(controller) {
                 awaitPointerEventScope {
@@ -388,9 +390,8 @@ private fun SweetEditorEffects(
     val lastGestureResult = state.lastGestureResult
     val renderModel = state.renderModel
     val scrollMetrics = state.scrollMetrics
-    val platformScale = lastGestureResult.viewScale
-        .takeIf { it > 0f }
-        ?: scrollMetrics.scale.takeIf { it > 0f }
+    val platformScale = scrollMetrics.scale.takeIf { it > 0f }
+        ?: controller.getScale().takeIf { it > 0f }
         ?: 1f
 
     LaunchedEffect(controller, state) {
@@ -1886,17 +1887,50 @@ private fun PointerEvent.toNativeModifiers(): Int {
     return value
 }
 
-private fun EditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
+private fun EditorController.handleComposeKeyEvent(
+    event: KeyEvent,
+    preferIme: Boolean,
+): Boolean {
     if (event.type != KeyEventType.KeyDown) {
         return false
     }
+    if (isComposing() && event.key != Key.Escape) {
+        return false
+    }
+    val mappedKeyCode = event.key.toEditorKeyCode()
+    if (mappedKeyCode != 0) {
+        val result = handleKeyEvent(
+            keyCode = mappedKeyCode,
+            text = null,
+            modifiers = event.toNativeModifiers(),
+        )
+        return result.handled
+    }
+    if (preferIme) {
+        val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
+            (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
+        } ?: return false
+        val result = handleKeyEvent(
+            keyCode = shortcutKeyCode,
+            text = null,
+            modifiers = event.toNativeModifiers(),
+        )
+        return result.handled
+    }
     val text = event.toInsertedText()
+    if (text != null && event.shouldInsertDirectText()) {
+        insertText(text)
+        return true
+    }
+    val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
+        (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
+    } ?: return false
     val result = handleKeyEvent(
-        keyCode = event.key.keyCode.toInt(),
-        text = text,
+        keyCode = shortcutKeyCode,
+        text = null,
         modifiers = event.toNativeModifiers(),
     )
-    return result.handled || text != null
+    return result.handled
 }
 
 @Composable
@@ -1955,8 +1989,14 @@ private fun CompletionPopup(
     }
 }
 
-private fun SweetEditorController.handleComposeKeyEvent(event: KeyEvent): Boolean {
+private fun SweetEditorController.handleComposeKeyEvent(
+    event: KeyEvent,
+    preferIme: Boolean,
+): Boolean {
     if (event.type != KeyEventType.KeyDown) {
+        return false
+    }
+    if (isComposing() && event.key != Key.Escape) {
         return false
     }
     when (event.key) {
@@ -1993,13 +2033,55 @@ private fun SweetEditorController.handleComposeKeyEvent(event: KeyEvent): Boolea
             }
         }
     }
+    val mappedKeyCode = event.key.toEditorKeyCode()
+    if (mappedKeyCode != 0) {
+        val result = handleKeyEvent(
+            keyCode = mappedKeyCode,
+            text = null,
+            modifiers = event.toNativeModifiers(),
+        )
+        return result.handled
+    }
+    if (preferIme) {
+        val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
+            (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
+        } ?: return false
+        val result = handleKeyEvent(
+            keyCode = shortcutKeyCode,
+            text = null,
+            modifiers = event.toNativeModifiers(),
+        )
+        return result.handled
+    }
     val text = event.toInsertedText()
+    if (text != null && event.shouldInsertDirectText()) {
+        insertText(text)
+        return true
+    }
+    val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
+        (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
+    } ?: return false
     val result = handleKeyEvent(
-        keyCode = event.key.keyCode.toInt(),
-        text = text,
+        keyCode = shortcutKeyCode,
+        text = null,
         modifiers = event.toNativeModifiers(),
     )
-    return result.handled || text != null
+    return result.handled
+}
+
+private fun SweetEditorController.handleComposeTextInputFallback(event: KeyEvent): Boolean {
+    if (event.type != KeyEventType.KeyDown) {
+        return false
+    }
+    if (isComposing()) {
+        return false
+    }
+    val text = event.toInsertedText() ?: return false
+    if (!event.shouldInsertDirectText()) {
+        return false
+    }
+    insertText(text)
+    return true
 }
 
 private fun KeyEvent.toNativeModifiers(): Int {
@@ -2020,11 +2102,79 @@ private fun KeyEvent.toNativeModifiers(): Int {
 }
 
 private fun KeyEvent.toInsertedText(): String? {
-    val codePoint = utf16CodePoint
-    if (codePoint <= 0 || codePoint < 32) {
+    if (key.isModifierKey()) {
         return null
     }
-    return codePoint.toChar().toString()
+    val codePoint = utf16CodePoint
+    if (
+        codePoint <= 0 ||
+        codePoint < 32 ||
+        codePoint == 0x7F ||
+        codePoint in 0xE000..0xF8FF ||
+        codePoint in 0xF0000..0xFFFFD ||
+        codePoint in 0x100000..0x10FFFD ||
+        codePoint > 0x10FFFF
+    ) {
+        return null
+    }
+    return if (codePoint <= 0xFFFF) {
+        codePoint.toChar().toString()
+    } else {
+        val value = codePoint - 0x10000
+        val high = (value / 0x400 + 0xD800).toChar()
+        val low = (value % 0x400 + 0xDC00).toChar()
+        "$high$low"
+    }
+}
+
+private fun KeyEvent.shouldInsertDirectText(): Boolean =
+    !isCtrlPressed &&
+        !isAltPressed &&
+        !isMetaPressed &&
+        !key.isModifierKey()
+
+private fun Key.toEditorKeyCode(): Int = when (this) {
+    Key.Backspace -> 8
+    Key.Tab -> 9
+    Key.Enter, Key.NumPadEnter -> 13
+    Key.Escape -> 27
+    Key.Delete -> 46
+    Key.DirectionLeft -> 37
+    Key.DirectionUp -> 38
+    Key.DirectionRight -> 39
+    Key.DirectionDown -> 40
+    Key.MoveHome -> 36
+    Key.MoveEnd -> 35
+    Key.PageUp -> 33
+    Key.PageDown -> 34
+    else -> 0
+}
+
+private fun Key.isCtrlShortcutKey(): Boolean = when (this) {
+    Key.A,
+    Key.C,
+    Key.V,
+    Key.X,
+    Key.Y,
+    Key.Z,
+    Key.Spacebar,
+    -> true
+
+    else -> false
+}
+
+private fun Key.isModifierKey(): Boolean = when (this) {
+    Key.CtrlLeft,
+    Key.CtrlRight,
+    Key.ShiftLeft,
+    Key.ShiftRight,
+    Key.AltLeft,
+    Key.AltRight,
+    Key.MetaLeft,
+    Key.MetaRight,
+    -> true
+
+    else -> false
 }
 
 private fun Int.toComposeColor(): Color = Color(this)

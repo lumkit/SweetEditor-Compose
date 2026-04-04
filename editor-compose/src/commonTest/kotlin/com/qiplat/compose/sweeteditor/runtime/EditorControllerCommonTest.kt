@@ -10,6 +10,10 @@ import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 import com.qiplat.compose.sweeteditor.model.snippet.TabStopGroup
 import com.qiplat.compose.sweeteditor.model.visual.CursorRect
 import com.qiplat.compose.sweeteditor.protocol.BinaryWriter
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -207,10 +211,10 @@ class EditorControllerCommonTest {
         )
 
         controller.triggerCompletion()
-        kotlinx.coroutines.runBlocking {
-            kotlinx.coroutines.withTimeout(1_000) {
+        GlobalScope.launch {
+            withTimeout(1_000) {
                 while (controller.getCompletionResult() == null) {
-                    kotlinx.coroutines.delay(10)
+                    delay(10)
                 }
             }
         }

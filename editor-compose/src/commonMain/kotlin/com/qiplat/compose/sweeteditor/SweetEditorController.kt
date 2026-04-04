@@ -1019,6 +1019,7 @@ class SweetEditorController(
         editResult: TextEditResult,
         insertedText: String? = null,
     ) {
+
         if (!editResult.changed) {
             return
         }

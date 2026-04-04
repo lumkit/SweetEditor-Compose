@@ -15,6 +15,7 @@ internal fun EditorController.handleImeEditCommands(
     newValue: TextFieldValue,
 ): TextFieldValue {
     var shouldClearProxyValue = false
+    val composingText = newValue.extractComposingText()
     commands.forEach { command ->
         when (command) {
             is SetComposingTextCommand,
@@ -23,7 +24,7 @@ internal fun EditorController.handleImeEditCommands(
                 if (!isComposing()) {
                     compositionStart()
                 }
-                compositionUpdate(newValue.text)
+                compositionUpdate(composingText.orEmpty())
             }
 
             is FinishComposingTextCommand -> {
@@ -46,8 +47,8 @@ internal fun EditorController.handleImeEditCommands(
                     if (!isComposing()) {
                         compositionStart()
                     }
-                    if (newValue.text.isNotEmpty()) {
-                        compositionUpdate(newValue.text)
+                    if (!composingText.isNullOrEmpty()) {
+                        compositionUpdate(composingText)
                     } else {
                         compositionCancel()
                         shouldClearProxyValue = true
@@ -66,7 +67,7 @@ internal fun EditorController.handleImeEditCommands(
                     if (!isComposing()) {
                         compositionStart()
                     }
-                    compositionUpdate(newValue.text)
+                    compositionUpdate(composingText.orEmpty())
                 } else {
                     backspace()
                     shouldClearProxyValue = true
@@ -76,15 +77,34 @@ internal fun EditorController.handleImeEditCommands(
     }
 
     return if (newValue.composition != null) {
+        val normalizedSelection = newValue.selection.normalized(newValue.text.length)
+        val normalizedComposition = newValue.composition?.normalized(newValue.text.length)
         newValue.copy(
-            selection = ComposeTextRange(newValue.text.length),
-            composition = ComposeTextRange(0, newValue.text.length),
+            selection = normalizedSelection,
+            composition = normalizedComposition,
         )
     } else if (shouldClearProxyValue || previousValue.text != newValue.text) {
-        TextFieldValue()
+        synchronizeImeProxyValue(TextFieldValue())
     } else {
         newValue
     }
+}
+
+private fun TextFieldValue.extractComposingText(): String? {
+    val range = composition?.normalized(text.length) ?: return null
+    if (range.collapsed) {
+        return ""
+    }
+    return text.substring(range.start, range.end)
+}
+
+private fun ComposeTextRange.normalized(textLength: Int): ComposeTextRange {
+    val boundedStart = start.coerceIn(0, textLength)
+    val boundedEnd = end.coerceIn(0, textLength)
+    return ComposeTextRange(
+        start = minOf(boundedStart, boundedEnd),
+        end = maxOf(boundedStart, boundedEnd),
+    )
 }
 
 internal fun EditorController.handleImeAction(

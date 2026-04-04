@@ -133,7 +133,7 @@ fun App() {
                         actionIconContentColor = Color(editorAppearance.theme.textColor),
                     ),
                     title = {
-                        Text("Sweet Editor For Compose")
+                        Text("Sweet Editor")
                     },
                     actions = {
                         Actions(
@@ -211,6 +211,30 @@ private fun RowScope.Actions(
     var menuState by rememberSaveable { mutableStateOf(false) }
     val wrapMode by editorController.wrapModeState
 
+    IconButton(
+        {
+            editorController.undo()
+        },
+        enabled = editorController.canUndoState.value,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.Undo,
+            contentDescription = "Undo",
+        )
+    }
+
+    IconButton(
+        {
+            editorController.redo()
+        },
+        enabled = editorController.canRedoState.value,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.Redo,
+            contentDescription = "Redo",
+        )
+    }
+
     Column {
         IconButton(
             onClick = {
@@ -227,38 +251,6 @@ private fun RowScope.Actions(
             expanded = menuState,
             onDismissRequest = { menuState = false },
         ) {
-            DropdownMenuItem(
-                text = {
-                    Text("undo")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Undo,
-                        contentDescription = null,
-                    )
-                },
-                onClick = {
-                    editorController.undo()
-                }
-            )
-
-            DropdownMenuItem(
-                text = {
-                    Text("redo")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Redo,
-                        contentDescription = null,
-                    )
-                },
-                onClick = {
-                    editorController.redo()
-                }
-            )
-
-            HorizontalDivider()
-
             DropdownMenuItem(
                 text = {
                     Text("TextWrap: ${wrapMode.name}")
@@ -435,15 +427,13 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
         val inlayHints = linkedMapOf<Int, MutableList<InlayHint>>()
         val gutterIcons = linkedMapOf<Int, MutableList<GutterIcon>>()
         val separatorGuides = mutableListOf<SeparatorGuide>()
-        val foldRegions = mutableListOf<FoldRegion>()
-        val indentGuides = mutableListOf<IndentGuide>()
+        val (foldRegions, indentGuides) = buildStructuralDecorations(context)
         val styleIdColorToken = EditorThemeStyleIds.UserBase + 1
         val textStyles = mapOf(
             styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
         )
         val syntaxSpans = linkedMapOf<Int, MutableList<StyleSpan>>()
         val diagnostics = linkedMapOf<Int, List<DiagnosticItem>>()
-        val braceStack = ArrayDeque<Pair<Int, Int>>()
         val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
 
         for (line in context.requestedLineRange) {
@@ -482,17 +472,6 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                 )
             }
 
-            val leadingSpaces = lineText.indexOfFirst { !it.isWhitespace() }
-                .takeIf { it >= 0 }
-                ?.coerceAtMost(lineText.length)
-                ?: 0
-            if (leadingSpaces >= 4) {
-                indentGuides += IndentGuide(
-                    start = TextPosition(line, 0),
-                    end = TextPosition(line, leadingSpaces),
-                )
-            }
-
             colorRegex.findAll(lineText).forEach { match ->
                 inlayHints.getOrPut(line) { mutableListOf() }.add(
                     InlayHint(
@@ -509,21 +488,6 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                     ),
                 )
             }
-
-            lineText.forEachIndexed { column, ch ->
-                when (ch) {
-                    '{' -> braceStack.addLast(line to column)
-                    '}' -> {
-                        val start = braceStack.removeLastOrNull() ?: return@forEachIndexed
-                        if (line > start.first) {
-                            foldRegions += FoldRegion(
-                                startLine = start.first,
-                                endLine = line,
-                            )
-                        }
-                    }
-                }
-            }
         }
         return DecorationUpdate(
             decorations = DecorationSet(
@@ -538,6 +502,114 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
             ),
             applyMode = DecorationApplyMode.Merge,
             lineRange = context.requestedLineRange,
+        )
+    }
+
+    private fun buildStructuralDecorations(
+        context: DecorationProviderContext,
+    ): Pair<List<FoldRegion>, List<IndentGuide>> {
+        val foldSet = linkedSetOf<FoldRegion>()
+        val indentSet = linkedSetOf<IndentGuide>()
+        val braceStack = ArrayDeque<Int>()
+        val regionStack = ArrayDeque<Int>()
+        var inBlockComment = false
+
+        for (line in 0 until context.totalLineCount) {
+            val text = context.document.getLineText(line)
+            val trimmed = text.trim().lowercase()
+            if (trimmed.startsWith("#region") || trimmed.startsWith("// region")) {
+                regionStack.addLast(line)
+            } else if (trimmed.startsWith("#endregion") || trimmed.startsWith("// endregion")) {
+                val start = regionStack.removeLastOrNull()
+                if (start != null && line > start) {
+                    addStructuralRegion(
+                        foldSet = foldSet,
+                        indentSet = indentSet,
+                        startLine = start,
+                        endLine = line,
+                        startText = context.document.getLineText(start),
+                    )
+                }
+            }
+
+            var i = 0
+            var inString = false
+            var stringQuote = '\u0000'
+            while (i < text.length) {
+                val c = text[i]
+                val next = text.getOrNull(i + 1)
+                if (inString) {
+                    if (c == '\\') {
+                        i += 2
+                        continue
+                    }
+                    if (c == stringQuote) {
+                        inString = false
+                    }
+                    i++
+                    continue
+                }
+                if (inBlockComment) {
+                    if (c == '*' && next == '/') {
+                        inBlockComment = false
+                        i += 2
+                    } else {
+                        i++
+                    }
+                    continue
+                }
+                if (c == '/' && next == '/') {
+                    break
+                }
+                if (c == '/' && next == '*') {
+                    inBlockComment = true
+                    i += 2
+                    continue
+                }
+                if (c == '"' || c == '\'') {
+                    inString = true
+                    stringQuote = c
+                    i++
+                    continue
+                }
+                if (c == '{') {
+                    braceStack.addLast(line)
+                } else if (c == '}') {
+                    val start = braceStack.removeLastOrNull()
+                    if (start != null && line > start) {
+                        addStructuralRegion(
+                            foldSet = foldSet,
+                            indentSet = indentSet,
+                            startLine = start,
+                            endLine = line,
+                            startText = context.document.getLineText(start),
+                        )
+                    }
+                }
+                i++
+            }
+        }
+        return foldSet.toList() to indentSet.toList()
+    }
+
+    private fun addStructuralRegion(
+        foldSet: MutableSet<FoldRegion>,
+        indentSet: MutableSet<IndentGuide>,
+        startLine: Int,
+        endLine: Int,
+        startText: String,
+    ) {
+        if (endLine <= startLine) {
+            return
+        }
+        foldSet += FoldRegion(startLine = startLine, endLine = endLine)
+        val indentColumn = startText.indexOfFirst { !it.isWhitespace() }
+            .takeIf { it >= 0 }
+            ?.coerceAtLeast(0)
+            ?: 0
+        indentSet += IndentGuide(
+            start = TextPosition(startLine, indentColumn),
+            end = TextPosition(endLine, indentColumn),
         )
     }
 }
