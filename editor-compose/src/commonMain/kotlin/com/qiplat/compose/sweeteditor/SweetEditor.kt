@@ -1987,7 +1987,7 @@ private fun CompletionPopup(
                     focusable = false,
                     dismissOnBackPress = true,
                     dismissOnClickOutside = true,
-                    clippingEnabled = false
+                    clippingEnabled = true
                 )
             ) {
                 Column(
