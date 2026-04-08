@@ -1,6 +1,5 @@
 import com.vanniktech.maven.publish.DeploymentValidation
 import com.vanniktech.maven.publish.KotlinMultiplatform
-import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.*
@@ -13,6 +12,10 @@ plugins {
     alias(libs.plugins.maven.publish)
 }
 
+val editorCoreDirectory = rootProject.layout.projectDirectory.dir("editor-core")
+val editorCoreHeaderDirectory = editorCoreDirectory.asFile.absolutePath
+val iosArm64LibraryDirectory = editorCoreDirectory.dir("ios/arm64").asFile.absolutePath
+val iosSimulatorArm64LibraryDirectory = editorCoreDirectory.dir("ios/simulator-arm64").asFile.absolutePath
 kotlin {
     androidTarget {
         compilerOptions {
@@ -22,6 +25,38 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
+
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget> {
+        binaries {
+            framework {
+                baseName = "SweetEditor"
+
+                linkerOpts(
+                    "-L$iosArm64LibraryDirectory",
+                    "-L$iosSimulatorArm64LibraryDirectory",
+                    "-lsweeteditor_static"
+                )
+            }
+        }
+        compilations["main"].cinterops {
+            create("sweeteditor") {
+                defFile(project.file("src/nativeInterop/cinterop/sweeteditor.def"))
+                includeDirs(editorCoreHeaderDirectory)
+                compilerOpts("-I$editorCoreHeaderDirectory")
+                val iosLibraryDirectory = when (konanTarget.name) {
+                    "iosArm64" -> iosArm64LibraryDirectory
+                    "iosSimulatorArm64" -> iosSimulatorArm64LibraryDirectory
+                    else -> null
+                }
+                if (iosLibraryDirectory != null) {
+                    linkerOpts(
+                        "-L$iosLibraryDirectory",
+                        "-lsweeteditor_static",
+                    )
+                }
+            }
+        }
+    }
 
     jvm()
 
@@ -149,7 +184,7 @@ val desktopArchDir = when {
 val rootNativeLibraryDir = rootProject.layout.projectDirectory.dir("editor-core")
 val androidModuleNativeDir = layout.projectDirectory.dir("src/androidMain/jniLibs")
 val jvmModuleNativeDir = layout.projectDirectory.dir("src/jvmMain/resources/native")
-val iosModuleNativeDir = layout.projectDirectory.dir("src/iosMain/resources/native")
+val iosModuleNativeDir = layout.projectDirectory.dir("src/nativeInterop/libs/ios")
 val desktopBridgeOutputDir = layout.buildDirectory.dir("native/jvm/$desktopArchDir")
 val desktopBridgeBuildDir = layout.buildDirectory.dir("native/jvm/cmake/$desktopArchDir")
 val generatedJvmResourceDir = layout.buildDirectory.dir("generated/resources/jvm/main")
@@ -205,7 +240,13 @@ fun syncEditorComposeNativeLibraries() {
     copy {
         from(rootNativeLibraryDir.dir("ios"))
         into(iosModuleNativeDir)
-        include("**/libsweeteditor.dylib")
+        include("**/libsweeteditor_static.a")
+        includeEmptyDirs = false
+    }
+    copy {
+        from(rootNativeLibraryDir)
+        into(iosModuleNativeDir.dir("headers"))
+        include("c_api.h")
         includeEmptyDirs = false
     }
 }
@@ -217,6 +258,7 @@ val syncEditorComposeNativeLibraries by tasks.registering {
     outputs.dir(androidModuleNativeDir)
     outputs.dir(jvmModuleNativeDir)
     outputs.dir(iosModuleNativeDir)
+    outputs.dir(iosModuleNativeDir.dir("headers"))
     doLast {
         syncEditorComposeNativeLibraries()
     }

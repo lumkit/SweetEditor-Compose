@@ -262,7 +262,7 @@ Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeGetDocume
     jlong handle,
     jint line
 ) {
-    const U16Char* text = get_document_line_text(
+    const U16Char* text = get_document_line_utf16(
         static_cast<intptr_t>(handle),
         static_cast<size_t>(line)
     );

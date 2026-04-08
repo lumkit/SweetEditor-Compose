@@ -5,3 +5,7 @@ PRODUCT_BUNDLE_IDENTIFIER=com.qiplat.compose.sweeteditor.sweeteditor$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
+
+LIBRARY_SEARCH_PATHS[sdk=iphoneos*]=$(inherited) $(SRCROOT)/../editor-core/ios/arm64
+LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]=$(inherited) $(SRCROOT)/../editor-core/ios/simulator-arm64
+OTHER_LDFLAGS=$(inherited) -lsweeteditor_static

@@ -20,13 +20,17 @@
     #define EDITOR_API __declspec(dllimport)
   #endif
   #define EDITOR_CALL __stdcall
-  #ifndef __cplusplus
+  #ifdef __cplusplus
+    using U16Char = wchar_t;
+  #else
     typedef uint16_t U16Char;
   #endif
 #else
   #define EDITOR_API __attribute__((visibility("default")))
   #define EDITOR_CALL
-  #ifndef __cplusplus
+  #ifdef __cplusplus
+    using U16Char = char16_t;
+  #else
     typedef uint16_t U16Char;
   #endif
 #endif
@@ -72,17 +76,26 @@ EDITOR_API intptr_t create_document_from_file(const char* path);
 EDITOR_API void free_document(intptr_t document_handle);
 
 /// Get Document UTF8 text
-/// @return UTF8 text content
-EDITOR_API const char* get_document_text(intptr_t document_handle);
+/// @return UTF8 text content; caller owns returned buffer and must free it with free_u8_string
+EDITOR_API char* get_document_utf8(intptr_t document_handle);
+
+/// Get Document UTF16 text
+/// @return UTF16 text content; caller owns returned buffer and must free it with free_u16_string
+EDITOR_API U16Char* get_document_utf16(intptr_t document_handle);
 
 /// Get total line count of Document
 /// @return total line count of Document
 EDITOR_API size_t get_document_line_count(intptr_t document_handle);
 
-/// Get text of a specific Document line
+/// Get UTF8 text of a specific Document line
 /// @param line Line number
-/// @return UTF16 text content of the specified line
-EDITOR_API const U16Char* get_document_line_text(intptr_t document_handle, size_t line);
+/// @return UTF8 text content of the specified line; caller owns returned buffer and must free it with free_u8_string
+EDITOR_API char* get_document_line_utf8(intptr_t document_handle, size_t line);
+
+/// Get UTF16 text of a specific Document line
+/// @param line Line number
+/// @return UTF16 text content of the specified line; caller owns returned buffer and must free it with free_u16_string
+EDITOR_API U16Char* get_document_line_utf16(intptr_t document_handle, size_t line);
 
 /// Create EditorCore and return its handle
 /// @param measurer Text measurement callback set
@@ -94,6 +107,7 @@ EDITOR_API const U16Char* get_document_line_text(intptr_t document_handle, size_
 ///        f32 fling_min_velocity — Minimum fling velocity in px/s (default 50)
 ///        f32 fling_max_velocity — Maximum fling velocity in px/s (default 8000)
 ///        u64 max_undo_stack_size — Max undo stack depth, 0=unlimited (default 512)
+///        i64 key_chord_timeout_ms — Key chord pending timeout in ms (default 2000)
 /// @param options_size Byte length of options_data
 /// @return EditorCore handle
 EDITOR_API intptr_t create_editor(text_measurer_t measurer, const uint8_t* options_data, size_t options_size);
@@ -238,8 +252,8 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///            - i32 visible
 ///            - i32 show_dragger
 ///         16. i32 selection_rect_count
-///         17. SelectionRect[selection_rect_count] selection_rects
-///             SelectionRect layout:
+///         17. Rect[selection_rect_count] selection_rects
+///             Rect layout:
 ///             - PointF origin
 ///             - f32 width
 ///             - f32 height
@@ -280,8 +294,8 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///             - f32 height
 ///             - i32 is_active
 ///         28. i32 bracket_highlight_rect_count
-///         29. BracketHighlightRect[bracket_highlight_rect_count] bracket_highlight_rects
-///             BracketHighlightRect layout:
+///         29. Rect[bracket_highlight_rect_count] bracket_highlight_rects
+///             Rect layout:
 ///             - PointF origin
 ///             - f32 width
 ///             - f32 height
@@ -290,9 +304,9 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///             ScrollbarModel layout:
 ///             - i32 visible
 ///             - f32 alpha (0~1)
-///             - ScrollbarRect track
-///             - ScrollbarRect thumb
-///             ScrollbarRect layout:
+///             - Rect track
+///             - Rect thumb
+///             Rect layout:
 ///             - PointF origin
 ///             - f32 width
 ///             - f32 height
@@ -409,6 +423,18 @@ EDITOR_API const uint8_t* editor_tick_animations(intptr_t editor_handle, size_t*
 /// @param modifiers Modifier key flags(SHIFT=1, CTRL=2, ALT=4, META=8)
 /// @return KeyEventResult binary payload, returns NULL on failure
 EDITOR_API const uint8_t* handle_editor_key_event(intptr_t editor_handle, uint16_t key_code, const char* text, uint8_t modifiers, size_t* out_size);
+
+/// Set custom key map from binary payload.
+/// Payload format (LE byte order):
+///   u32 binding_count
+///   Repeat binding_count times:
+///     u8  first_modifiers
+///     u16 first_key_code
+///     u8  second_modifiers
+///     u16 second_key_code  (0 = single-chord)
+///     u32 command          (EditorCommand enum value)
+/// Invalid or empty payload is ignored (current key map is preserved).
+EDITOR_API void editor_set_keymap(intptr_t editor_handle, const uint8_t* data, size_t size);
 
 #pragma endregion
 
@@ -615,6 +641,14 @@ EDITOR_API void editor_set_auto_indent_mode(intptr_t editor_handle, int mode);
 /// @return 0=NONE, 1=KEEP_INDENT
 EDITOR_API int editor_get_auto_indent_mode(intptr_t editor_handle);
 
+/// Set backspace unindent behavior
+/// @param enabled 1=enabled, 0=disabled
+EDITOR_API void editor_set_backspace_unindent(intptr_t editor_handle, int enabled);
+
+/// Set whether Tab inserts spaces up to the next tab stop instead of a literal '\t'
+/// @param enabled 1=insert spaces, 0=insert '\t'
+EDITOR_API void editor_set_insert_spaces(intptr_t editor_handle, int enabled);
+
 #pragma endregion
 
 #pragma region [Navigation, Styles & Decorations]
@@ -818,6 +852,12 @@ EDITOR_API void editor_clear_guides(intptr_t editor_handle);
 /// @param count Bracket pair count
 EDITOR_API void editor_set_bracket_pairs(intptr_t editor_handle, const uint32_t* open_chars, const uint32_t* close_chars, size_t count);
 
+/// Set auto-closing pair list (empty count = disable auto-closing)
+/// @param open_chars Open char array (UTF-32)
+/// @param close_chars Close char array (UTF-32)
+/// @param count Pair count
+EDITOR_API void editor_set_auto_closing_pairs(intptr_t editor_handle, const uint32_t* open_chars, const uint32_t* close_chars, size_t count);
+
 /// Externally set exact bracket match result (override built-in char scan)
 /// @param open_line open bracket line number(0-based)
 /// @param open_col open bracket column number (0-based)
@@ -909,6 +949,10 @@ EDITOR_API void editor_cancel_linked_editing(intptr_t editor_handle);
 /// Free string memory allocated on C++ side
 /// @param string_ptr String pointer
 EDITOR_API void free_u16_string(intptr_t string_ptr);
+
+/// Free UTF-8 string memory allocated on C++ side
+/// @param string_ptr String pointer
+EDITOR_API void free_u8_string(intptr_t string_ptr);
 
 /// Free binary memory returned by C++ side
 /// Applies to all APIs that return const uint8_t* + out_size.
