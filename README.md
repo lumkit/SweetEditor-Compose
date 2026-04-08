@@ -9,6 +9,8 @@
 
 **A C++17 core with platform-native rendering, built for long-term evolving editor infrastructure in IDEs, AI programming tools, cloud development workspaces, and similar products.**
 
+**Issues and pull requests are welcome.**
+
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=cplusplus)](https://isocpp.org/)
 [![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Desktop%20%7C%20Web*%20-brightgreen.svg)](#platform-support-status)
 [![License](https://img.shields.io/badge/License-LGPL--2.1%2B-yellow.svg)](LICENSE)
@@ -19,7 +21,24 @@
 
 >This repository is still in the development stage, so please pay attention.
 
-## Platform Demo Screenshots
+## Features
+- [x] Native editor kernel (C++17) with Compose Multiplatform wrapper
+- [x] Cross-platform targets: Android, iOS, JVM Desktop, JS, Wasm
+- [x] Render-model driven architecture (viewport, scroll metrics, cursor/selection rects)
+- [x] Syntax/semantic span rendering with batch style registration
+- [x] Decoration pipeline: inlay hints, phantom text, gutter icons, diagnostics
+- [x] Guide and structure rendering: indent guides, bracket guides, flow guides, separator guides, fold regions
+- [x] Cursor and selection operations with 0-based line/column semantics
+- [x] Editing primitives: insert, replace, delete, backspace, delete-forward
+- [x] Line operations: move/copy line up/down, delete line, insert line above/below
+- [x] Undo/redo stack integration
+- [x] Snippet insertion and linked-editing session support
+- [x] IME composition lifecycle: start/update/end/cancel
+- [x] Gesture and key event bridge to native input model
+- [x] Document loading from UTF-16 text and file path
+- [x] Read-only mode, wrap mode, auto-indent mode, gutter visibility/sticky options
+
+## Screenshots
 
 <div align="center">
   <table>
@@ -33,6 +52,12 @@
     </tr>
   </table>
 </div>
+
+## Contributors
+
+<a href="https://github.com/lumkit/SweetEditor-Compose/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=/lumkit/SweetEditor-Compose" />
+</a>
 
 ## License
 
