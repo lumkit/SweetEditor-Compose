@@ -1,2 +1,0 @@
-headers = c_api.h
-package = com.qiplat.compose.sweeteditor.nativeinterop

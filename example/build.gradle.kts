@@ -46,7 +46,6 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonMain.dependencies {
-            implementation(project(":editor-compose"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
@@ -57,6 +56,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
             implementation(libs.material.icons.extended)
+
+            implementation(libs.sweet.editor)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

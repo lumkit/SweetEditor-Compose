@@ -1,0 +1,4 @@
+headers = c_api.h
+package = com.qiplat.compose.sweeteditor.nativeinterop
+staticLibraries = libsweeteditor_static.a
+libraryPaths = src/nativeInterop/libs/ios/arm64
