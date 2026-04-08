@@ -25,7 +25,7 @@
   <table>
     <tr>
       <td align="center"><b>Android</b><br/><img src="docs/snapshot/Screenshot_Android.jpg" alt="Android screenshot" width="360"/></td>
-      <td align="center"><b>IOS screenshot</b><br/><img src="" alt="IOS screenshot" width="360"/></td>
+      <td align="center"><b>IOS screenshot</b><br/><img src="docs/snapshot/Screenshot_IOS.png" alt="IOS screenshot" width="360"/></td>
     </tr>
     <tr>
       <td align="center"><b>Desktop screenshot</b><br/><img src="docs/snapshot/Screenshot_Desktop.png" alt="Desktop screenshot" width="360"/></td>
