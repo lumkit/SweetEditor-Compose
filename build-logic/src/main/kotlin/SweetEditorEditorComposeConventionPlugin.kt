@@ -146,7 +146,6 @@ private fun Project.configureKotlin(
 private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org.gradle.api.file.Directory) {
     val osName = System.getProperty("os.name")
     val osArch = System.getProperty("os.arch")
-    val isMacOs = osName.contains("Mac", ignoreCase = true)
     val desktopPlatformDir = when {
         osName.contains("Mac", ignoreCase = true) -> "osx"
         osName.contains("Linux", ignoreCase = true) -> "linux"
