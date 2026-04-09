@@ -156,7 +156,7 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
     val desktopArchDir = when {
         osArch.contains("aarch64", ignoreCase = true) -> "arm64"
         osArch.contains("arm64", ignoreCase = true) -> "arm64"
-        else -> "x86_64"
+        else -> if (desktopPlatformDir == "windows") "x64" else "x86_64"
     }
     val androidModuleNativeDir = layout.projectDirectory.dir("src/androidMain/jniLibs")
     val jvmModuleNativeDir = layout.projectDirectory.dir("src/jvmMain/resources/native")
@@ -222,7 +222,7 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
     }
 
     val configureDesktopBridge = tasks.register("configureDesktopBridge", Exec::class.java) {
-        onlyIf { isMacOs }
+        onlyIf { desktopPlatformDir != "unsupported" }
         dependsOn(syncEditorComposeNativeLibraries)
         inputs.file(file("src/jvmMain/cpp/CMakeLists.txt"))
         inputs.file(file("src/jvmMain/cpp/desktop_bridge.cpp"))
@@ -243,7 +243,7 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
     }
 
     val buildDesktopBridge = tasks.register("buildDesktopBridge", Exec::class.java) {
-        onlyIf { isMacOs }
+        onlyIf { desktopPlatformDir != "unsupported" }
         dependsOn(configureDesktopBridge)
         outputs.dir(desktopBridgeOutputDir)
         doFirst {
@@ -259,7 +259,7 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
     }
 
     val copyDesktopBridgeToJvmResources = tasks.register("copyDesktopBridgeToJvmResources", Copy::class.java) {
-        onlyIf { isMacOs }
+        onlyIf { desktopPlatformDir != "unsupported" }
         dependsOn(buildDesktopBridge)
         from(desktopBridgeOutputDir)
         include(desktopBridgeLibraryName)

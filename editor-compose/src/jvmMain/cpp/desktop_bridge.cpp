@@ -12,8 +12,6 @@
 #define __stdcall
 #endif
 
-using U16Char = char16_t;
-
 #include "c_api.h"
 
 namespace {
