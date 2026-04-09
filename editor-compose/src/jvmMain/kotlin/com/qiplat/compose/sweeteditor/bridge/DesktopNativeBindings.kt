@@ -10,6 +10,9 @@ internal object DesktopNativeBindings {
     }
 
     @JvmStatic
+    external fun nativeLoadLibraries(coreLibraryPath: String): Boolean
+
+    @JvmStatic
     external fun nativeCreateDocumentFromUtf16(text: String): Long
 
     @JvmStatic
@@ -334,14 +337,22 @@ private object DesktopNativeLibraryLoader {
         }
         val platformDirectory = currentPlatformDirectory()
         val archDirectory = currentArchDirectory(platformDirectory)
-        val coreLibrary = extractResourceToTemp(
-            "native/$platformDirectory/$archDirectory/${currentCoreLibraryName(platformDirectory)}",
-        )
+        
+        // Extract and load bridge library first
         val bridgeLibrary = extractResourceToTemp(
             "native/$platformDirectory/$archDirectory/${System.mapLibraryName("sweeteditor_desktop_bridge")}",
         )
-        loadLibrary(coreLibrary)
         loadLibrary(bridgeLibrary)
+        
+        // Extract core library and let C++ code load it dynamically
+        val coreLibrary = extractResourceToTemp(
+            "native/$platformDirectory/$archDirectory/${currentCoreLibraryName(platformDirectory)}"
+        )
+        val success = DesktopNativeBindings.nativeLoadLibraries(coreLibrary.toString())
+        require(success) {
+            "Failed to load core library: $coreLibrary"
+        }
+        
         loaded = true
     }
 

@@ -40,15 +40,17 @@ else()
 endif()
 
 if(WIN32)
-    add_library(sweeteditor SHARED IMPORTED)
-    set_target_properties(
-        sweeteditor
-        PROPERTIES
-        IMPORTED_LOCATION
+    set(sweeteditor_dll_path
         ${CMAKE_CURRENT_SOURCE_DIR}/../resources/native/${SWEETEDITOR_PLATFORM_DIR}/${SWEETEDITOR_ARCH_DIR}/${SWEETEDITOR_CORE_LIBRARY_NAME}
-        IMPORTED_IMPLIB
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../editor-core/${SWEETEDITOR_PLATFORM_DIR}/${SWEETEDITOR_ARCH_DIR}/${SWEETEDITOR_IMPORT_LIBRARY_NAME}
     )
+
+    # Runtime DLL loading: No .lib file needed
+    # sweeteditor.dll will be loaded at runtime via LoadLibrary
+    message(STATUS "Windows: sweeteditor.dll will be loaded at runtime")
+    message(STATUS "  DLL path: ${sweeteditor_dll_path}")
+
+    # Interface library - no compile-time linking
+    add_library(sweeteditor INTERFACE)
 else()
     add_library(sweeteditor SHARED IMPORTED)
     set_target_properties(
@@ -63,6 +65,7 @@ add_library(
     sweeteditor_desktop_bridge
     SHARED
     desktop_bridge.cpp
+    dll_loader.cpp
 )
 
 # Set output directory for all configurations on Windows
@@ -93,3 +96,14 @@ target_link_libraries(
     sweeteditor_desktop_bridge
     sweeteditor
 )
+
+# Copy sweeteditor.dll to output directory at build time
+if(WIN32)
+    add_custom_command(
+        TARGET sweeteditor_desktop_bridge POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${sweeteditor_dll_path}
+            $<TARGET_FILE_DIR:sweeteditor_desktop_bridge>/sweeteditor.dll
+        COMMENT "Copying sweeteditor.dll to output directory"
+    )
+endif()

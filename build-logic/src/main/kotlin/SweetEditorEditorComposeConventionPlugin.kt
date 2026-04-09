@@ -1,4 +1,5 @@
 import com.android.build.api.dsl.LibraryExtension
+import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -264,6 +265,8 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
         include(desktopBridgeLibraryName)
         into(generatedDesktopBridgeResourceDir)
     }
+
+    // Windows DLL is now loaded at runtime, no .lib file needed
 
     tasks.named("jvmProcessResources", ProcessResources::class.java).configure {
         dependsOn(copyDesktopBridgeToJvmResources)

@@ -12,7 +12,108 @@
 #define __stdcall
 #endif
 
-#include "c_api.h"
+#include "dll_loader.h"
+
+// Use macros to redirect function calls to DLL loader
+#define DLL SweetEditorDllLoader::instance()
+
+// Redirect all c_api.h function calls to DLL function pointers
+#define create_editor(...) DLL.create_editor(__VA_ARGS__)
+#define free_editor(...) DLL.free_editor(__VA_ARGS__)
+#define set_editor_document(...) DLL.set_editor_document(__VA_ARGS__)
+#define set_editor_viewport(...) DLL.set_editor_viewport(__VA_ARGS__)
+#define editor_on_font_metrics_changed(...) DLL.editor_on_font_metrics_changed(__VA_ARGS__)
+#define editor_set_fold_arrow_mode(...) DLL.editor_set_fold_arrow_mode(__VA_ARGS__)
+#define editor_set_wrap_mode(...) DLL.editor_set_wrap_mode(__VA_ARGS__)
+#define editor_set_tab_size(...) DLL.editor_set_tab_size(__VA_ARGS__)
+#define editor_set_scale(...) DLL.editor_set_scale(__VA_ARGS__)
+#define editor_set_line_spacing(...) DLL.editor_set_line_spacing(__VA_ARGS__)
+#define editor_set_show_split_line(...) DLL.editor_set_show_split_line(__VA_ARGS__)
+#define editor_set_current_line_render_mode(...) DLL.editor_set_current_line_render_mode(__VA_ARGS__)
+#define editor_set_gutter_sticky(...) DLL.editor_set_gutter_sticky(__VA_ARGS__)
+#define editor_set_gutter_visible(...) DLL.editor_set_gutter_visible(__VA_ARGS__)
+#define editor_set_read_only(...) DLL.editor_set_read_only(__VA_ARGS__)
+#define editor_is_read_only(...) DLL.editor_is_read_only(__VA_ARGS__)
+#define editor_set_composition_enabled(...) DLL.editor_set_composition_enabled(__VA_ARGS__)
+#define editor_is_composition_enabled(...) DLL.editor_is_composition_enabled(__VA_ARGS__)
+#define editor_set_auto_indent_mode(...) DLL.editor_set_auto_indent_mode(__VA_ARGS__)
+#define editor_get_auto_indent_mode(...) DLL.editor_get_auto_indent_mode(__VA_ARGS__)
+#define editor_set_cursor_position(...) DLL.editor_set_cursor_position(__VA_ARGS__)
+#define editor_set_selection(...) DLL.editor_set_selection(__VA_ARGS__)
+#define editor_get_selection(...) DLL.editor_get_selection(__VA_ARGS__)
+#define editor_get_cursor_position(...) DLL.editor_get_cursor_position(__VA_ARGS__)
+#define build_editor_render_model(...) DLL.build_editor_render_model(__VA_ARGS__)
+#define editor_get_scroll_metrics(...) DLL.editor_get_scroll_metrics(__VA_ARGS__)
+#define handle_editor_gesture_event_ex(...) DLL.handle_editor_gesture_event_ex(__VA_ARGS__)
+#define editor_tick_animations(...) DLL.editor_tick_animations(__VA_ARGS__)
+#define handle_editor_key_event(...) DLL.handle_editor_key_event(__VA_ARGS__)
+#define editor_composition_start(...) DLL.editor_composition_start(__VA_ARGS__)
+#define editor_composition_update(...) DLL.editor_composition_update(__VA_ARGS__)
+#define editor_composition_end(...) DLL.editor_composition_end(__VA_ARGS__)
+#define editor_composition_cancel(...) DLL.editor_composition_cancel(__VA_ARGS__)
+#define editor_is_composing(...) DLL.editor_is_composing(__VA_ARGS__)
+#define editor_insert_text(...) DLL.editor_insert_text(__VA_ARGS__)
+#define editor_replace_text(...) DLL.editor_replace_text(__VA_ARGS__)
+#define editor_delete_text(...) DLL.editor_delete_text(__VA_ARGS__)
+#define editor_backspace(...) DLL.editor_backspace(__VA_ARGS__)
+#define editor_delete_forward(...) DLL.editor_delete_forward(__VA_ARGS__)
+#define editor_insert_snippet(...) DLL.editor_insert_snippet(__VA_ARGS__)
+#define editor_start_linked_editing(...) DLL.editor_start_linked_editing(__VA_ARGS__)
+#define editor_is_in_linked_editing(...) DLL.editor_is_in_linked_editing(__VA_ARGS__)
+#define editor_linked_editing_next(...) DLL.editor_linked_editing_next(__VA_ARGS__)
+#define editor_linked_editing_prev(...) DLL.editor_linked_editing_prev(__VA_ARGS__)
+#define editor_cancel_linked_editing(...) DLL.editor_cancel_linked_editing(__VA_ARGS__)
+#define editor_move_line_up(...) DLL.editor_move_line_up(__VA_ARGS__)
+#define editor_move_line_down(...) DLL.editor_move_line_down(__VA_ARGS__)
+#define editor_copy_line_up(...) DLL.editor_copy_line_up(__VA_ARGS__)
+#define editor_copy_line_down(...) DLL.editor_copy_line_down(__VA_ARGS__)
+#define editor_delete_line(...) DLL.editor_delete_line(__VA_ARGS__)
+#define editor_insert_line_above(...) DLL.editor_insert_line_above(__VA_ARGS__)
+#define editor_insert_line_below(...) DLL.editor_insert_line_below(__VA_ARGS__)
+#define editor_undo(...) DLL.editor_undo(__VA_ARGS__)
+#define editor_redo(...) DLL.editor_redo(__VA_ARGS__)
+#define editor_can_undo(...) DLL.editor_can_undo(__VA_ARGS__)
+#define editor_can_redo(...) DLL.editor_can_redo(__VA_ARGS__)
+#define editor_select_all(...) DLL.editor_select_all(__VA_ARGS__)
+#define editor_get_selected_text(...) DLL.editor_get_selected_text(__VA_ARGS__)
+#define editor_get_word_range_at_cursor(...) DLL.editor_get_word_range_at_cursor(__VA_ARGS__)
+#define editor_get_word_at_cursor(...) DLL.editor_get_word_at_cursor(__VA_ARGS__)
+#define editor_move_cursor_left(...) DLL.editor_move_cursor_left(__VA_ARGS__)
+#define editor_move_cursor_right(...) DLL.editor_move_cursor_right(__VA_ARGS__)
+#define editor_move_cursor_up(...) DLL.editor_move_cursor_up(__VA_ARGS__)
+#define editor_move_cursor_down(...) DLL.editor_move_cursor_down(__VA_ARGS__)
+#define editor_move_cursor_to_line_start(...) DLL.editor_move_cursor_to_line_start(__VA_ARGS__)
+#define editor_move_cursor_to_line_end(...) DLL.editor_move_cursor_to_line_end(__VA_ARGS__)
+#define editor_scroll_to_line(...) DLL.editor_scroll_to_line(__VA_ARGS__)
+#define editor_goto_position(...) DLL.editor_goto_position(__VA_ARGS__)
+#define editor_set_scroll(...) DLL.editor_set_scroll(__VA_ARGS__)
+#define editor_get_position_rect(...) DLL.editor_get_position_rect(__VA_ARGS__)
+#define editor_get_cursor_rect(...) DLL.editor_get_cursor_rect(__VA_ARGS__)
+#define editor_register_batch_text_styles(...) DLL.editor_register_batch_text_styles(__VA_ARGS__)
+#define editor_set_batch_line_spans(...) DLL.editor_set_batch_line_spans(__VA_ARGS__)
+#define editor_set_batch_line_inlay_hints(...) DLL.editor_set_batch_line_inlay_hints(__VA_ARGS__)
+#define editor_set_batch_line_phantom_texts(...) DLL.editor_set_batch_line_phantom_texts(__VA_ARGS__)
+#define editor_set_batch_line_gutter_icons(...) DLL.editor_set_batch_line_gutter_icons(__VA_ARGS__)
+#define editor_set_batch_line_diagnostics(...) DLL.editor_set_batch_line_diagnostics(__VA_ARGS__)
+#define editor_clear_inlay_hints(...) DLL.editor_clear_inlay_hints(__VA_ARGS__)
+#define editor_clear_phantom_texts(...) DLL.editor_clear_phantom_texts(__VA_ARGS__)
+#define editor_clear_gutter_icons(...) DLL.editor_clear_gutter_icons(__VA_ARGS__)
+#define editor_clear_diagnostics(...) DLL.editor_clear_diagnostics(__VA_ARGS__)
+#define editor_set_indent_guides(...) DLL.editor_set_indent_guides(__VA_ARGS__)
+#define editor_set_bracket_guides(...) DLL.editor_set_bracket_guides(__VA_ARGS__)
+#define editor_set_flow_guides(...) DLL.editor_set_flow_guides(__VA_ARGS__)
+#define editor_set_separator_guides(...) DLL.editor_set_separator_guides(__VA_ARGS__)
+#define editor_clear_guides(...) DLL.editor_clear_guides(__VA_ARGS__)
+#define editor_set_fold_regions(...) DLL.editor_set_fold_regions(__VA_ARGS__)
+#define editor_clear_all_decorations(...) DLL.editor_clear_all_decorations(__VA_ARGS__)
+#define editor_set_max_gutter_icons(...) DLL.editor_set_max_gutter_icons(__VA_ARGS__)
+#define create_document_from_utf16(...) DLL.create_document_from_utf16(__VA_ARGS__)
+#define create_document_from_file(...) DLL.create_document_from_file(__VA_ARGS__)
+#define free_document(...) DLL.free_document(__VA_ARGS__)
+#define get_document_line_count(...) DLL.get_document_line_count(__VA_ARGS__)
+#define get_document_line_utf16(...) DLL.get_document_line_utf16(__VA_ARGS__)
+#define free_binary_data(...) DLL.free_binary_data(__VA_ARGS__)
+#define free_u16_string(...) DLL.free_u16_string(__VA_ARGS__)
 
 namespace {
 JavaVM* g_java_vm = nullptr;
@@ -201,6 +302,18 @@ std::vector<uint8_t> read_byte_array(JNIEnv* env, jbyteArray data) {
 extern "C" jint JNI_OnLoad(JavaVM* vm, void*) {
     g_java_vm = vm;
     return JNI_VERSION_1_8;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_DesktopNativeBindings_nativeLoadLibraries(
+    JNIEnv* env,
+    jclass,
+    jstring coreLibraryPath
+) {
+    const char* path = env->GetStringUTFChars(coreLibraryPath, nullptr);
+    const bool success = SweetEditorDllLoader::instance().load(path);
+    env->ReleaseStringUTFChars(coreLibraryPath, path);
+    return success ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jlong JNICALL
