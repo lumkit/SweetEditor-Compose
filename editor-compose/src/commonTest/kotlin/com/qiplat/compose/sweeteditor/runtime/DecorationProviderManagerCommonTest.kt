@@ -6,7 +6,9 @@ import com.qiplat.compose.sweeteditor.DecorationSet
 import com.qiplat.compose.sweeteditor.DecorationUpdate
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -190,7 +192,7 @@ class DecorationProviderManagerCommonTest {
 
     @Test
     fun providerFailureDoesNotCrashRuntimeHelper() {
-        runBlocking {
+        CoroutineScope(Dispatchers.Default).launch {
             val completed = runDecorationProviderSafely {
                 error("boom")
             }
@@ -201,7 +203,7 @@ class DecorationProviderManagerCommonTest {
 
     @Test
     fun providerCancellationIsRethrown() {
-        runBlocking {
+        CoroutineScope(Dispatchers.Default).launch {
             assertFailsWith<CancellationException> {
                 runDecorationProviderSafely {
                     throw CancellationException("cancelled")
