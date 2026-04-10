@@ -1,19 +1,15 @@
 import com.android.build.api.dsl.LibraryExtension
-import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.MinimalExternalModuleDependency
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.provider.Provider
-import org.gradle.api.tasks.Copy
-import org.gradle.api.tasks.Exec
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-import java.util.*
 
 class SweetEditorEditorComposeConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
@@ -145,48 +141,9 @@ private fun Project.configureKotlin(
 }
 
 private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org.gradle.api.file.Directory) {
-    val osName = System.getProperty("os.name")
-    val osArch = System.getProperty("os.arch")
-    val desktopPlatformDir = when {
-        osName.contains("Mac", ignoreCase = true) -> "osx"
-        osName.contains("Linux", ignoreCase = true) -> "linux"
-        osName.contains("Windows", ignoreCase = true) -> "windows"
-        else -> "unsupported"
-    }
-    val desktopArchDir = when {
-        osArch.contains("aarch64", ignoreCase = true) -> "arm64"
-        osArch.contains("arm64", ignoreCase = true) -> "arm64"
-        else -> if (desktopPlatformDir == "windows") "x64" else "x86_64"
-    }
     val androidModuleNativeDir = layout.projectDirectory.dir("src/androidMain/jniLibs")
     val jvmModuleNativeDir = layout.projectDirectory.dir("src/jvmMain/resources/native")
     val iosModuleNativeDir = layout.projectDirectory.dir("src/nativeInterop/libs/ios")
-    val desktopBridgeOutputDir = layout.buildDirectory.dir("native/jvm/$desktopArchDir")
-    val desktopBridgeBuildDir = layout.buildDirectory.dir("native/jvm/cmake/$desktopArchDir")
-    val generatedJvmResourceDir = layout.buildDirectory.dir("generated/resources/jvm/main")
-    val generatedDesktopBridgeResourceDir = layout.buildDirectory.dir("generated/resources/jvm/main/native/$desktopPlatformDir/$desktopArchDir")
-    val desktopBridgeLibraryName = System.mapLibraryName("sweeteditor_desktop_bridge")
-    val javaHome = System.getenv("JAVA_HOME") ?: System.getProperty("java.home")
-    val localProperties = Properties().apply {
-        val localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localPropertiesFile.inputStream().use(::load)
-        }
-    }
-    val androidSdkDir = localProperties.getProperty("sdk.dir")
-        ?: System.getenv("ANDROID_SDK_ROOT")
-        ?: System.getenv("ANDROID_HOME")
-    val cmakeExecutable = androidSdkDir
-        ?.let { sdkDir ->
-            file(sdkDir)
-                .resolve("cmake")
-                .listFiles()
-                ?.sortedByDescending { it.name }
-                ?.firstOrNull()
-                ?.resolve("bin/cmake")
-                ?.absolutePath
-        }
-        ?: "cmake"
 
     val syncEditorComposeNativeLibraries = tasks.register("syncEditorComposeNativeLibraries") {
         group = "sweeteditor"
@@ -221,57 +178,8 @@ private fun Project.configureNativeSyncAndDesktopBridge(editorCoreDirectory: org
         }
     }
 
-    val configureDesktopBridge = tasks.register("configureDesktopBridge", Exec::class.java) {
-        onlyIf { desktopPlatformDir != "unsupported" }
-        dependsOn(syncEditorComposeNativeLibraries)
-        inputs.file(file("src/jvmMain/cpp/CMakeLists.txt"))
-        inputs.file(file("src/jvmMain/cpp/desktop_bridge.cpp"))
-        outputs.dir(desktopBridgeBuildDir)
-        doFirst {
-            desktopBridgeBuildDir.get().asFile.mkdirs()
-            commandLine(
-                cmakeExecutable,
-                "-S",
-                file("src/jvmMain/cpp").absolutePath,
-                "-B",
-                desktopBridgeBuildDir.get().asFile.absolutePath,
-                "-DSWEETEDITOR_ARCH_DIR=$desktopArchDir",
-                "-DJAVA_HOME=$javaHome",
-                "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${desktopBridgeOutputDir.get().asFile.absolutePath}",
-            )
-        }
-    }
-
-    val buildDesktopBridge = tasks.register("buildDesktopBridge", Exec::class.java) {
-        onlyIf { desktopPlatformDir != "unsupported" }
-        dependsOn(configureDesktopBridge)
-        outputs.dir(desktopBridgeOutputDir)
-        doFirst {
-            desktopBridgeOutputDir.get().asFile.mkdirs()
-            commandLine(
-                cmakeExecutable,
-                "--build",
-                desktopBridgeBuildDir.get().asFile.absolutePath,
-                "--target",
-                "sweeteditor_desktop_bridge",
-            )
-        }
-    }
-
-    val copyDesktopBridgeToJvmResources = tasks.register("copyDesktopBridgeToJvmResources", Copy::class.java) {
-        onlyIf { desktopPlatformDir != "unsupported" }
-        dependsOn(buildDesktopBridge)
-        from(desktopBridgeOutputDir)
-        include(desktopBridgeLibraryName)
-        into(generatedDesktopBridgeResourceDir)
-    }
-
-    // Windows DLL is now loaded at runtime, no .lib file needed
-
-    tasks.named("jvmProcessResources", ProcessResources::class.java).configure {
-        dependsOn(copyDesktopBridgeToJvmResources)
-        from(generatedJvmResourceDir)
-    }
+    // Desktop JNI bridge removed: FFM (Foreign Function & Memory) API is now used instead of JNI
+    // The native library is loaded directly via SymbolLookup.libraryLookup()
 
     tasks.withType(ProcessResources::class.java).configureEach {
         dependsOn(syncEditorComposeNativeLibraries)
