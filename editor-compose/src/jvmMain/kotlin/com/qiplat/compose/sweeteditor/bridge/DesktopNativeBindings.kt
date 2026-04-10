@@ -238,9 +238,7 @@ internal object DesktopNativeBindings {
     }
 
     fun nativeSetFoldArrowMode(editorHandle: Long, mode: Int) {
-        withEditorContext(editorHandle) {
-            EditorNative.setFoldArrowMode(editorHandle, mode)
-        }
+        EditorNative.setFoldArrowMode(editorHandle, mode)
     }
 
     fun nativeSetWrapMode(editorHandle: Long, mode: Int) {
@@ -1039,10 +1037,8 @@ internal object DesktopNativeBindings {
     }
 
     fun nativeSetFoldRegions(editorHandle: Long, data: ByteArray) {
-        withEditorContext(editorHandle) {
-            Arena.ofConfined().use { arena ->
-                EditorNative.setFoldRegions(editorHandle, data, arena)
-            }
+        Arena.ofConfined().use { arena ->
+            EditorNative.setFoldRegions(editorHandle, data, arena)
         }
     }
 
