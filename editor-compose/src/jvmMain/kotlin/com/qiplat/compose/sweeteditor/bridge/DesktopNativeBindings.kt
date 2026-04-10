@@ -1,118 +1,418 @@
 package com.qiplat.compose.sweeteditor.bridge
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
+import com.qiplat.compose.sweeteditor.core.EditorNative
+import java.lang.foreign.Arena
+import java.lang.foreign.Linker
+import java.lang.foreign.MemoryLayout
+import java.lang.foreign.MemorySegment
+import java.lang.foreign.ValueLayout
+import java.lang.invoke.MethodHandles
 
 internal object DesktopNativeBindings {
     init {
-        DesktopNativeLibraryLoader.load()
+        // EditorNative will automatically load the native library
+    }
+
+    // Map to store measurer references for each editor instance
+    private val editorMeasurers = mutableMapOf<Long, NativeTextMeasurer>()
+
+    // Map to store arena references for each editor instance (to keep callbacks alive)
+    private val editorArenas = mutableMapOf<Long, Arena>()
+
+    // Current editor handle to allow callbacks to find the correct measurer
+    @Volatile
+    @JvmStatic
+    var currentEditorHandle: Long = 0L
+
+    // Static measurer reference for fallback (for older implementations)
+    @Volatile
+    @JvmStatic
+    var currentMeasurer: NativeTextMeasurer? = null
+
+    // ThreadLocal as backup for cases where editor-specific measurer is not accessible
+    private val threadLocalMeasurer = ThreadLocal.withInitial<NativeTextMeasurer?> { null }
+
+    /**
+             * Helper function to resolve the current measurer for the active editor
+             * This mirrors the C++ get_current_measurer() function behavior with an important difference:
+             * In C++, get_current_measurer() only uses g_current_editor_handle to look up in g_measurers.
+             * In JVM, we also fall back to currentMeasurer to handle cases where the editor is being created
+             * or when the context hasn't been set yet (e.g., during editor initialization).
+             */
+            private fun resolveCurrentMeasurer(): NativeTextMeasurer? {
+                // First try to find the measurer by currentEditorHandle (matches C++ behavior)
+                val measurerByHandle = editorMeasurers[currentEditorHandle]
+                if (measurerByHandle != null) {
+                    return measurerByHandle
+                }
+
+                // Fall back to currentMeasurer for cases where the editor is being created
+                // or when the context hasn't been set yet (e.g., during editor initialization)
+                // This is necessary because JVM cannot set the context before create_editor returns
+                return currentMeasurer
+            }
+
+    /**
+     * Context function similar to iOS/Android implementation to ensure proper editor context
+     */
+    private inline fun <T> withEditorContext(editorHandle: Long, measurer: NativeTextMeasurer? = null, block: () -> T): T {
+        val previousEditorHandle = currentEditorHandle
+        val previousMeasurer = currentMeasurer
+        currentEditorHandle = editorHandle
+        if (measurer != null) {
+            currentMeasurer = measurer
+        }
+        return try {
+            block()
+        } finally {
+            currentEditorHandle = previousEditorHandle
+            if (measurer != null) {
+                currentMeasurer = previousMeasurer
+            }
+        }
+    }
+
+    // Static callback functions that will be called from native code
+    // These functions attempt to find the appropriate measurer for the current editor
+    @JvmStatic
+    fun measureTextWidthCallback(textPtr: MemorySegment, fontStyle: Int): Float {
+        val measurer = resolveCurrentMeasurer()
+        if (measurer == null) {
+            // If no measurer is set, return 0 to indicate measurement failure
+            // This will cause rendering issues but prevents crashes
+            return 0f
+        }
+
+        if (textPtr.equals(MemorySegment.NULL)) return 0f
+        val text = EditorNative.readUtf16String(textPtr) ?: ""
+        return measurer.measureTextWidth(text, fontStyle)
     }
 
     @JvmStatic
-    external fun nativeLoadLibraries(coreLibraryPath: String): Boolean
+    fun measureInlayHintWidthCallback(textPtr: MemorySegment): Float {
+        val measurer = resolveCurrentMeasurer()
+        if (measurer == null) {
+            // If no measurer is set, return 0 to indicate measurement failure
+            return 0f
+        }
+
+        if (textPtr.equals(MemorySegment.NULL)) return 0f
+        val text = EditorNative.readUtf16String(textPtr) ?: ""
+        return measurer.measureInlayHintWidth(text)
+    }
 
     @JvmStatic
-    external fun nativeCreateDocumentFromUtf16(text: String): Long
+    fun measureIconWidthCallback(iconId: Int): Float {
+        val measurer = resolveCurrentMeasurer()
+        if (measurer == null) {
+            // If no measurer is set, return 0 to indicate measurement failure
+            return 0f
+        }
+
+        return measurer.measureIconWidth(iconId)
+    }
 
     @JvmStatic
-    external fun nativeCreateDocumentFromFile(path: String): Long
+    fun getFontMetricsCallback(outPtr: MemorySegment, length: Long) {
+        val measurer = resolveCurrentMeasurer()
+        if (measurer == null) {
+            // If no measurer is set, return without writing to avoid corruption
+            return
+        }
 
-    @JvmStatic
-    external fun nativeFreeDocument(handle: Long)
+        if (outPtr.equals(MemorySegment.NULL) || length <= 0) return
 
-    @JvmStatic
-    external fun nativeGetDocumentLineCount(handle: Long): Int
+        // When called from native callbacks, the pointer may have byteSize=0
+        // We should use the length parameter as the guide for how much to write
+        try {
+            val actualSize = outPtr.byteSize()
 
-    @JvmStatic
-    external fun nativeGetDocumentLineText(handle: Long, line: Int): String
+            // Determine effective size: if byteSize is 0 (raw pointer from callback),
+            // use length * sizeof(float) as the effective size
+            val effectiveSize = if (actualSize == 0L) {
+                length * ValueLayout.JAVA_FLOAT.byteSize()
+            } else {
+                actualSize
+            }
 
-    @JvmStatic
-    external fun nativeCreateEditor(textMeasurer: NativeTextMeasurer, optionsData: ByteArray): Long
+            val metrics = measurer.getFontMetrics()
+            val maxFloats = (effectiveSize / ValueLayout.JAVA_FLOAT.byteSize()).toInt()
+            val copyLength = minOf(minOf(length.toInt(), metrics.size), maxFloats)
 
-    @JvmStatic
-    external fun nativeFreeEditor(handle: Long)
+            // Reinterpret the pointer with effective size if needed
+            val targetPtr = if (actualSize == 0L) {
+                outPtr.reinterpret(effectiveSize)
+            } else {
+                outPtr
+            }
 
-    @JvmStatic
-    external fun nativeSetEditorDocument(editorHandle: Long, documentHandle: Long)
+            for (i in 0 until copyLength) {
+                targetPtr.set(ValueLayout.JAVA_FLOAT, i * ValueLayout.JAVA_FLOAT.byteSize(), metrics[i])
+            }
+            // Fill remaining with zeros
+            for (i in copyLength until minOf(length.toInt(), maxFloats)) {
+                targetPtr.set(ValueLayout.JAVA_FLOAT, i * ValueLayout.JAVA_FLOAT.byteSize(), 0f)
+            }
+        } catch (e: Exception) {
+            // Catch any memory access exceptions
+            return
+        }
+    }
 
-    @JvmStatic
-    external fun nativeSetEditorViewport(editorHandle: Long, width: Int, height: Int)
+    fun nativeCreateDocumentFromUtf16(text: String): Long =
+        Arena.ofConfined().use { arena ->
+            EditorNative.createDocument(arena, text)
+        }
 
-    @JvmStatic
-    external fun nativeOnFontMetricsChanged(editorHandle: Long)
+    fun nativeCreateDocumentFromFile(path: String): Long =
+        Arena.ofConfined().use { arena ->
+            EditorNative.createDocumentFromFile(arena, path)
+        }
 
-    @JvmStatic
-    external fun nativeSetFoldArrowMode(editorHandle: Long, mode: Int)
+    fun nativeFreeDocument(handle: Long) {
+        if (handle == 0L) {
+            return
+        }
+        EditorNative.freeDocument(handle)
+    }
 
-    @JvmStatic
-    external fun nativeSetWrapMode(editorHandle: Long, mode: Int)
+    fun nativeGetDocumentLineCount(handle: Long): Int =
+        EditorNative.getDocumentLineCount(handle).toInt()
 
-    @JvmStatic
-    external fun nativeSetTabSize(editorHandle: Long, tabSize: Int)
+    fun nativeGetDocumentLineText(handle: Long, line: Int): String =
+        EditorNative.getDocumentLineText(handle, line)
 
-    @JvmStatic
-    external fun nativeSetScale(editorHandle: Long, scale: Float)
+    fun nativeCreateEditor(textMeasurer: NativeTextMeasurer, optionsData: ByteArray): Long {
+        // Use shared arena to keep callbacks alive
+        val arena = Arena.ofShared()
+        try {
+            // Create measurer callbacks - these will use the global state when called
+            val measurerSegment = createMeasurerCallbacks(arena, textMeasurer)
 
-    @JvmStatic
-    external fun nativeSetLineSpacing(editorHandle: Long, add: Float, mult: Float)
+            // Store the measurer in a temporary location for callbacks during creation
+            val previousMeasurer = currentMeasurer
+            currentMeasurer = textMeasurer
 
-    @JvmStatic
-    external fun nativeSetShowSplitLine(editorHandle: Long, show: Boolean)
+            // Create the editor with the measurer segment
+            // During creation, callbacks will use currentMeasurer (which we just set)
+            val handle = EditorNative.createEditor(measurerSegment, optionsData, arena)
 
-    @JvmStatic
-    external fun nativeSetCurrentLineRenderMode(editorHandle: Long, mode: Int)
+            // Restore previous measurer
+            currentMeasurer = previousMeasurer
 
-    @JvmStatic
-    external fun nativeSetGutterSticky(editorHandle: Long, sticky: Boolean)
+            if (handle != 0L) {
+                // Store the measurer and arena for this editor instance
+                editorMeasurers[handle] = textMeasurer
+                editorArenas[handle] = arena
+            } else {
+                // If editor creation failed, close the arena
+                arena.close()
+            }
 
-    @JvmStatic
-    external fun nativeSetGutterVisible(editorHandle: Long, visible: Boolean)
+            return handle
+        } catch (e: Exception) {
+            arena.close()
+            throw e
+        }
+    }
 
-    @JvmStatic
-    external fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean)
+    fun nativeFreeEditor(handle: Long) {
+        if (handle == 0L) {
+            return
+        }
+        withEditorContext(handle) {
+            EditorNative.freeEditor(handle)
+        }
 
-    @JvmStatic
-    external fun nativeIsReadOnly(editorHandle: Long): Boolean
+        // Remove the measurer for this editor instance
+        editorMeasurers.remove(handle)
 
-    @JvmStatic
-    external fun nativeSetCompositionEnabled(editorHandle: Long, enabled: Boolean)
+        // Close and remove the arena for this editor instance
+        editorArenas.remove(handle)?.close()
+    }
 
-    @JvmStatic
-    external fun nativeIsCompositionEnabled(editorHandle: Long): Boolean
+    fun nativeSetEditorDocument(editorHandle: Long, documentHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.setEditorDocument(editorHandle, documentHandle)
+        }
+    }
 
-    @JvmStatic
-    external fun nativeSetAutoIndentMode(editorHandle: Long, mode: Int)
+    fun nativeSetEditorViewport(editorHandle: Long, width: Int, height: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setViewport(editorHandle, width, height)
+        }
+    }
 
-    @JvmStatic
-    external fun nativeGetAutoIndentMode(editorHandle: Long): Int
+    fun nativeOnFontMetricsChanged(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.onFontMetricsChanged(editorHandle)
+        }
+    }
 
-    @JvmStatic
-    external fun nativeSetCursorPosition(editorHandle: Long, line: Int, column: Int)
+    fun nativeSetFoldArrowMode(editorHandle: Long, mode: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setFoldArrowMode(editorHandle, mode)
+        }
+    }
 
-    @JvmStatic
-    external fun nativeSetSelection(
+    fun nativeSetWrapMode(editorHandle: Long, mode: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setWrapMode(editorHandle, mode)
+        }
+    }
+
+    fun nativeSetTabSize(editorHandle: Long, tabSize: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setTabSize(editorHandle, tabSize)
+        }
+    }
+
+    fun nativeSetScale(editorHandle: Long, scale: Float) {
+        withEditorContext(editorHandle) {
+            EditorNative.setScale(editorHandle, scale)
+        }
+    }
+
+    fun nativeSetLineSpacing(editorHandle: Long, add: Float, mult: Float) {
+        withEditorContext(editorHandle) {
+            EditorNative.setLineSpacing(editorHandle, add, mult)
+        }
+    }
+
+    fun nativeSetShowSplitLine(editorHandle: Long, show: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.setShowSplitLine(editorHandle, show)
+        }
+    }
+
+    fun nativeSetCurrentLineRenderMode(editorHandle: Long, mode: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setCurrentLineRenderMode(editorHandle, mode)
+        }
+    }
+
+    fun nativeSetGutterSticky(editorHandle: Long, sticky: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.setGutterSticky(editorHandle, sticky)
+        }
+    }
+
+    fun nativeSetGutterVisible(editorHandle: Long, visible: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.setGutterVisible(editorHandle, visible)
+        }
+    }
+
+    fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.setReadOnly(editorHandle, readOnly)
+        }
+    }
+
+    fun nativeIsReadOnly(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.isReadOnly(editorHandle)
+        }
+
+    fun nativeSetCompositionEnabled(editorHandle: Long, enabled: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.setCompositionEnabled(editorHandle, enabled)
+        }
+    }
+
+    fun nativeIsCompositionEnabled(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.isCompositionEnabled(editorHandle)
+        }
+
+    fun nativeSetAutoIndentMode(editorHandle: Long, mode: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setAutoIndentMode(editorHandle, mode)
+        }
+    }
+
+    fun nativeGetAutoIndentMode(editorHandle: Long): Int =
+        withEditorContext(editorHandle) {
+            EditorNative.getAutoIndentMode(editorHandle)
+        }
+
+    fun nativeSetCursorPosition(editorHandle: Long, line: Int, column: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setCursorPosition(editorHandle, line, column)
+        }
+    }
+
+    fun nativeSetSelection(
         editorHandle: Long,
         startLine: Int,
         startColumn: Int,
         endLine: Int,
         endColumn: Int,
-    )
+    ) {
+        withEditorContext(editorHandle) {
+            EditorNative.setSelection(editorHandle, startLine, startColumn, endLine, endColumn)
+        }
+    }
 
-    @JvmStatic
-    external fun nativeGetCursorPosition(editorHandle: Long): IntArray
+    fun nativeGetCursorPosition(editorHandle: Long): IntArray =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.getCursorPosition(editorHandle, arena)
+            }
+        }
 
-    @JvmStatic
-    external fun nativeGetSelection(editorHandle: Long): IntArray?
+    fun nativeGetSelection(editorHandle: Long): IntArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.getSelection(editorHandle, arena)
+            }
+        }
 
-    @JvmStatic
-    external fun nativeBuildRenderModel(editorHandle: Long): ByteArray?
+    fun nativeBuildRenderModel(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.buildRenderModel(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
 
-    @JvmStatic
-    external fun nativeGetScrollMetrics(editorHandle: Long): ByteArray?
+    fun nativeGetScrollMetrics(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.getScrollMetrics(editorHandle, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
 
-    @JvmStatic
-    external fun nativeHandleGesture(
+    fun nativeHandleGesture(
         editorHandle: Long,
         type: Int,
         points: FloatArray,
@@ -120,301 +420,795 @@ internal object DesktopNativeBindings {
         wheelDeltaX: Float,
         wheelDeltaY: Float,
         directScale: Float,
-    ): ByteArray?
+    ): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.handleGestureEventEx(
+                    editorHandle, type, points.size / 2, arena, points,
+                    modifiers, wheelDeltaX, wheelDeltaY, directScale
+                )
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
 
-    @JvmStatic
-    external fun nativeTickAnimations(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeHandleKeyEvent(
+    fun nativeHandleKeyEvent(
         editorHandle: Long,
         keyCode: Int,
         text: String?,
         modifiers: Int,
-    ): ByteArray?
+    ): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.handleKeyEvent(editorHandle, keyCode, text, modifiers, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
 
-    @JvmStatic
-    external fun nativeCompositionStart(editorHandle: Long)
+    fun nativeInsertText(editorHandle: Long, text: String): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.insertText(editorHandle, text, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
 
-    @JvmStatic
-    external fun nativeCompositionUpdate(editorHandle: Long, text: String)
-
-    @JvmStatic
-    external fun nativeCompositionEnd(editorHandle: Long, committedText: String?): ByteArray?
-
-    @JvmStatic
-    external fun nativeCompositionCancel(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeIsComposing(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeInsertText(editorHandle: Long, text: String): ByteArray?
-
-    @JvmStatic
-    external fun nativeReplaceText(
+    fun nativeReplaceText(
         editorHandle: Long,
         startLine: Int,
         startColumn: Int,
         endLine: Int,
         endColumn: Int,
         text: String,
-    ): ByteArray?
+    ): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.replaceText(editorHandle, startLine, startColumn, endLine, endColumn, text, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
 
-    @JvmStatic
-    external fun nativeDeleteText(
+    fun nativeDeleteText(
         editorHandle: Long,
         startLine: Int,
         startColumn: Int,
         endLine: Int,
         endColumn: Int,
-    ): ByteArray?
-
-    @JvmStatic
-    external fun nativeBackspace(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeDeleteForward(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeInsertSnippet(editorHandle: Long, template: String): ByteArray?
-
-    @JvmStatic
-    external fun nativeStartLinkedEditing(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeIsInLinkedEditing(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeLinkedEditingNext(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeLinkedEditingPrev(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeCancelLinkedEditing(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeMoveLineUp(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeMoveLineDown(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeCopyLineUp(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeCopyLineDown(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeDeleteLine(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeInsertLineAbove(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeInsertLineBelow(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeUndo(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeRedo(editorHandle: Long): ByteArray?
-
-    @JvmStatic
-    external fun nativeCanUndo(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeCanRedo(editorHandle: Long): Boolean
-
-    @JvmStatic
-    external fun nativeSelectAll(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeGetSelectedText(editorHandle: Long): String?
-
-    @JvmStatic
-    external fun nativeGetWordRangeAtCursor(editorHandle: Long): IntArray
-
-    @JvmStatic
-    external fun nativeGetWordAtCursor(editorHandle: Long): String?
-
-    @JvmStatic
-    external fun nativeMoveCursorLeft(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeMoveCursorRight(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeMoveCursorUp(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeMoveCursorDown(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeMoveCursorToLineStart(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeMoveCursorToLineEnd(editorHandle: Long, extendSelection: Boolean)
-
-    @JvmStatic
-    external fun nativeScrollToLine(editorHandle: Long, line: Int, behavior: Int)
-
-    @JvmStatic
-    external fun nativeGotoPosition(editorHandle: Long, line: Int, column: Int)
-
-    @JvmStatic
-    external fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float)
-
-    @JvmStatic
-    external fun nativeGetPositionRect(editorHandle: Long, line: Int, column: Int): FloatArray
-
-    @JvmStatic
-    external fun nativeGetCursorRect(editorHandle: Long): FloatArray
-
-    @JvmStatic
-    external fun nativeRegisterBatchTextStyles(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBatchLineSpans(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBatchLineInlayHints(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBatchLinePhantomTexts(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBatchLineGutterIcons(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBatchLineDiagnostics(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeClearInlayHints(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeClearPhantomTexts(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeClearGutterIcons(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeClearDiagnostics(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeSetIndentGuides(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetBracketGuides(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetFlowGuides(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeSetSeparatorGuides(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeClearGuides(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeSetFoldRegions(editorHandle: Long, data: ByteArray)
-
-    @JvmStatic
-    external fun nativeClearAllDecorations(editorHandle: Long)
-
-    @JvmStatic
-    external fun nativeSetMaxGutterIcons(editorHandle: Long, count: Int)
-}
-
-private object DesktopNativeLibraryLoader {
-    private var loaded: Boolean = false
-
-    @Synchronized
-    fun load() {
-        if (loaded) {
-            return
+    ): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.deleteText(editorHandle, startLine, startColumn, endLine, endColumn, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
         }
-        val platformDirectory = currentPlatformDirectory()
-        val archDirectory = currentArchDirectory(platformDirectory)
-        
-        // Extract and load bridge library first
-        val bridgeLibrary = extractResourceToTemp(
-            "native/$platformDirectory/$archDirectory/${System.mapLibraryName("sweeteditor_desktop_bridge")}",
+
+    fun nativeBackspace(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.backspace(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeDeleteForward(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.deleteForward(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeInsertSnippet(editorHandle: Long, template: String): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.insertSnippet(editorHandle, template, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
+
+    fun nativeStartLinkedEditing(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.startLinkedEditing(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeIsInLinkedEditing(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.isInLinkedEditing(editorHandle)
+        }
+
+    fun nativeLinkedEditingNext(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.linkedEditingNext(editorHandle)
+        }
+
+    fun nativeLinkedEditingPrev(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.linkedEditingPrev(editorHandle)
+        }
+
+    fun nativeCancelLinkedEditing(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.cancelLinkedEditing(editorHandle)
+        }
+    }
+
+    fun nativeMoveLineUp(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.moveLineUp(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeMoveLineDown(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.moveLineDown(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeCopyLineUp(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.copyLineUp(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeCopyLineDown(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.copyLineDown(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeDeleteLine(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.deleteLine(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeInsertLineAbove(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.insertLineAbove(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeInsertLineBelow(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.insertLineBelow(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeUndo(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.undo(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeRedo(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.redo(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeCanUndo(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.canUndo(editorHandle)
+        }
+
+    fun nativeCanRedo(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.canRedo(editorHandle)
+        }
+
+    fun nativeSelectAll(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.selectAll(editorHandle)
+        }
+    }
+
+    fun nativeGetSelectedText(editorHandle: Long): String? =
+        withEditorContext(editorHandle) {
+            EditorNative.getSelectedText(editorHandle)
+        }
+
+    fun nativeGetWordRangeAtCursor(editorHandle: Long): IntArray =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.getWordRangeAtCursor(editorHandle, arena)
+            }
+        }
+
+    fun nativeGetWordAtCursor(editorHandle: Long): String? =
+        withEditorContext(editorHandle) {
+            EditorNative.getWordAtCursor(editorHandle)
+        }
+
+    fun nativeMoveCursorLeft(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorLeft(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeMoveCursorRight(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorRight(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeMoveCursorUp(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorUp(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeMoveCursorDown(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorDown(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeMoveCursorToLineStart(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorToLineStart(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeMoveCursorToLineEnd(editorHandle: Long, extendSelection: Boolean) {
+        withEditorContext(editorHandle) {
+            EditorNative.moveCursorToLineEnd(editorHandle, extendSelection)
+        }
+    }
+
+    fun nativeScrollToLine(editorHandle: Long, line: Int, behavior: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.scrollToLine(editorHandle, line, behavior)
+        }
+    }
+
+    fun nativeGotoPosition(editorHandle: Long, line: Int, column: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.gotoPosition(editorHandle, line, column)
+        }
+    }
+
+    fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float) {
+        withEditorContext(editorHandle) {
+            EditorNative.setScroll(editorHandle, scrollX, scrollY)
+        }
+    }
+
+    fun nativeGetPositionRect(editorHandle: Long, line: Int, column: Int): FloatArray =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.getPositionRect(editorHandle, line, column, arena)
+            }
+        }
+
+    fun nativeGetCursorRect(editorHandle: Long): FloatArray =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.getCursorRect(editorHandle, arena)
+            }
+        }
+
+    fun nativeRegisterBatchTextStyles(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.registerBatchTextStyles(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBatchLineSpans(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBatchLineSpans(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBatchLineInlayHints(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBatchLineInlayHints(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBatchLinePhantomTexts(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBatchLinePhantomTexts(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBatchLineGutterIcons(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBatchLineGutterIcons(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBatchLineDiagnostics(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBatchLineDiagnostics(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeClearInlayHints(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearInlayHints(editorHandle)
+        }
+    }
+
+    fun nativeClearPhantomTexts(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearPhantomTexts(editorHandle)
+        }
+    }
+
+    fun nativeClearGutterIcons(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearGutterIcons(editorHandle)
+        }
+    }
+
+    fun nativeClearDiagnostics(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearDiagnostics(editorHandle)
+        }
+    }
+
+    fun nativeSetIndentGuides(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setIndentGuides(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetBracketGuides(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setBracketGuides(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetFlowGuides(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setFlowGuides(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeSetSeparatorGuides(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setSeparatorGuides(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeClearGuides(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearGuides(editorHandle)
+        }
+    }
+
+    fun nativeSetFoldRegions(editorHandle: Long, data: ByteArray) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.setFoldRegions(editorHandle, data, arena)
+            }
+        }
+    }
+
+    fun nativeClearAllDecorations(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.clearAllDecorations(editorHandle)
+        }
+    }
+
+    fun nativeSetMaxGutterIcons(editorHandle: Long, count: Int) {
+        withEditorContext(editorHandle) {
+            EditorNative.setMaxGutterIcons(editorHandle, count)
+        }
+    }
+
+    fun nativeTickAnimations(editorHandle: Long): ByteArray? =
+        withEditorContext(editorHandle) {
+            val result = EditorNative.tickAnimations(editorHandle)
+            try {
+                if (result.hasData()) {
+                    val buffer = result.asByteBuffer()
+                    if (buffer != null) {
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        bytes
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } finally {
+                result.free()
+            }
+        }
+
+    fun nativeCompositionStart(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.compositionStart(editorHandle)
+        }
+    }
+
+    fun nativeCompositionUpdate(editorHandle: Long, text: String) {
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                EditorNative.compositionUpdate(editorHandle, text, arena)
+            }
+        }
+    }
+
+    fun nativeCompositionEnd(editorHandle: Long, text: String?): ByteArray? =
+        withEditorContext(editorHandle) {
+            Arena.ofConfined().use { arena ->
+                val result = EditorNative.compositionEnd(editorHandle, text, arena)
+                try {
+                    if (result.hasData()) {
+                        val buffer = result.asByteBuffer()
+                        if (buffer != null) {
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            bytes
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } finally {
+                    result.free()
+                }
+            }
+        }
+
+    fun nativeCompositionCancel(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.compositionCancel(editorHandle)
+        }
+    }
+
+    fun nativeIsComposing(editorHandle: Long): Boolean =
+        withEditorContext(editorHandle) {
+            EditorNative.isComposing(editorHandle)
+        }
+
+    // Helper function to create measurer callbacks
+    private fun createMeasurerCallbacks(arena: Arena, textMeasurer: NativeTextMeasurer): MemorySegment {
+        // We no longer set currentMeasurer here since callbacks will use editorMeasurers mapping
+        // The callback functions will use resolveCurrentMeasurer() which looks up by currentEditorHandle
+
+        // Create upcall stubs using static method handles with findStatic
+        val measureTextWidthHandle = MethodHandles.lookup().findStatic(
+            DesktopNativeBindings::class.java,
+            "measureTextWidthCallback",
+            java.lang.invoke.MethodType.methodType(
+                java.lang.Float.TYPE,
+                MemorySegment::class.java,
+                java.lang.Integer.TYPE
+            )
         )
-        loadLibrary(bridgeLibrary)
-        
-        // Extract core library and let C++ code load it dynamically
-        val coreLibrary = extractResourceToTemp(
-            "native/$platformDirectory/$archDirectory/${currentCoreLibraryName(platformDirectory)}"
+        val measureTextWidthStub = Linker.nativeLinker().upcallStub(
+            measureTextWidthHandle,
+            EditorNative.MEASURE_TEXT_WIDTH_DESC,
+            arena
         )
-        val success = DesktopNativeBindings.nativeLoadLibraries(coreLibrary.toString())
-        require(success) {
-            "Failed to load core library: $coreLibrary"
-        }
-        
-        loaded = true
-    }
 
-    private fun loadLibrary(path: Path) {
-        require(path.toFile().exists()) {
-            "Native library not found: $path"
-        }
-        System.load(path.toString())
-    }
+        val measureInlayHintWidthHandle = MethodHandles.lookup().findStatic(
+            DesktopNativeBindings::class.java,
+            "measureInlayHintWidthCallback",
+            java.lang.invoke.MethodType.methodType(
+                java.lang.Float.TYPE,
+                MemorySegment::class.java
+            )
+        )
+        val measureInlayHintWidthStub = Linker.nativeLinker().upcallStub(
+            measureInlayHintWidthHandle,
+            EditorNative.MEASURE_INLAY_HINT_WIDTH_DESC,
+            arena
+        )
 
-    private fun extractResourceToTemp(resourcePath: String): Path {
-        val fileName = resourcePath.substringAfterLast('/')
-        val targetPath = extractedLibraryDir.resolve(fileName)
-        if (Files.notExists(targetPath)) {
-            val inputStream = DesktopNativeBindings::class.java.classLoader.getResourceAsStream(resourcePath)
-                ?: throw IllegalArgumentException("Native library resource not found: $resourcePath")
-            inputStream.use { stream ->
-                Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING)
-            }
-            targetPath.toFile().deleteOnExit()
-        }
-        return targetPath
-    }
+        val measureIconWidthHandle = MethodHandles.lookup().findStatic(
+            DesktopNativeBindings::class.java,
+            "measureIconWidthCallback",
+            java.lang.invoke.MethodType.methodType(
+                java.lang.Float.TYPE,
+                java.lang.Integer.TYPE
+            )
+        )
+        val measureIconWidthStub = Linker.nativeLinker().upcallStub(
+            measureIconWidthHandle,
+            EditorNative.MEASURE_ICON_WIDTH_DESC,
+            arena
+        )
 
-    private fun currentPlatformDirectory(): String {
-        val osName = System.getProperty("os.name")
-        return when {
-            osName.contains("Mac", ignoreCase = true) -> "osx"
-            osName.contains("Linux", ignoreCase = true) -> "linux"
-            osName.contains("Windows", ignoreCase = true) -> "windows"
-            else -> error("Unsupported desktop platform: $osName")
-        }
-    }
+        val getFontMetricsHandle = MethodHandles.lookup().findStatic(
+            DesktopNativeBindings::class.java,
+            "getFontMetricsCallback",
+            java.lang.invoke.MethodType.methodType(
+                Void.TYPE,
+                MemorySegment::class.java,
+                java.lang.Long.TYPE
+            )
+        )
+        val getFontMetricsStub = Linker.nativeLinker().upcallStub(
+            getFontMetricsHandle,
+            EditorNative.GET_FONT_METRICS_DESC,
+            arena
+        )
 
-    private fun currentArchDirectory(platformDirectory: String): String {
-        val arch = System.getProperty("os.arch")
-        return when (platformDirectory) {
-            "windows" -> "x64"
-            "osx" -> when {
-                arch.contains("aarch64", ignoreCase = true) -> "arm64"
-                arch.contains("arm64", ignoreCase = true) -> "arm64"
-                else -> "x86_64"
-            }
-
-            else -> when {
-                arch.contains("x86_64", ignoreCase = true) -> "x86_64"
-                arch.contains("amd64", ignoreCase = true) -> "x86_64"
-                else -> error("Unsupported desktop arch for $platformDirectory: $arch")
-            }
-        }
-    }
-
-    private fun currentCoreLibraryName(platformDirectory: String): String = when (platformDirectory) {
-        "osx" -> "libsweeteditor.dylib"
-        "linux" -> "libsweeteditor.so"
-        "windows" -> "sweeteditor.dll"
-        else -> error("Unsupported desktop platform: $platformDirectory")
-    }
-
-    private val extractedLibraryDir: Path by lazy {
-        Files.createTempDirectory("sweeteditor-desktop-native").also {
-            it.toFile().deleteOnExit()
-        }
+        // Create struct with function pointers
+        val struct = arena.allocate(EditorNative.MEASURER_LAYOUT)
+        struct.set(ValueLayout.ADDRESS, 0, measureTextWidthStub)
+        struct.set(ValueLayout.ADDRESS, ValueLayout.ADDRESS.byteSize(), measureInlayHintWidthStub)
+        struct.set(ValueLayout.ADDRESS, ValueLayout.ADDRESS.byteSize() * 2, measureIconWidthStub)
+        struct.set(ValueLayout.ADDRESS, ValueLayout.ADDRESS.byteSize() * 3, getFontMetricsStub)
+        return struct
     }
 }
