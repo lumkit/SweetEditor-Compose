@@ -3,7 +3,6 @@ package com.qiplat.compose.sweeteditor.bridge
 import com.qiplat.compose.sweeteditor.core.EditorNative
 import java.lang.foreign.Arena
 import java.lang.foreign.Linker
-import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
@@ -29,28 +28,25 @@ internal object DesktopNativeBindings {
     @JvmStatic
     var currentMeasurer: NativeTextMeasurer? = null
 
-    // ThreadLocal as backup for cases where editor-specific measurer is not accessible
-    private val threadLocalMeasurer = ThreadLocal.withInitial<NativeTextMeasurer?> { null }
-
     /**
-             * Helper function to resolve the current measurer for the active editor
-             * This mirrors the C++ get_current_measurer() function behavior with an important difference:
-             * In C++, get_current_measurer() only uses g_current_editor_handle to look up in g_measurers.
-             * In JVM, we also fall back to currentMeasurer to handle cases where the editor is being created
-             * or when the context hasn't been set yet (e.g., during editor initialization).
-             */
-            private fun resolveCurrentMeasurer(): NativeTextMeasurer? {
-                // First try to find the measurer by currentEditorHandle (matches C++ behavior)
-                val measurerByHandle = editorMeasurers[currentEditorHandle]
-                if (measurerByHandle != null) {
-                    return measurerByHandle
-                }
+     * Helper function to resolve the current measurer for the active editor
+     * This mirrors the C++ get_current_measurer() function behavior with an important difference:
+     * In C++, get_current_measurer() only uses g_current_editor_handle to look up in g_measurers.
+     * In JVM, we also fall back to currentMeasurer to handle cases where the editor is being created
+     * or when the context hasn't been set yet (e.g., during editor initialization).
+     */
+    private fun resolveCurrentMeasurer(): NativeTextMeasurer? {
+        // First try to find the measurer by currentEditorHandle (matches C++ behavior)
+        val measurerByHandle = editorMeasurers[currentEditorHandle]
+        if (measurerByHandle != null) {
+            return measurerByHandle
+        }
 
-                // Fall back to currentMeasurer for cases where the editor is being created
-                // or when the context hasn't been set yet (e.g., during editor initialization)
-                // This is necessary because JVM cannot set the context before create_editor returns
-                return currentMeasurer
-            }
+        // Fall back to currentMeasurer for cases where the editor is being created
+        // or when the context hasn't been set yet (e.g., during editor initialization)
+        // This is necessary because JVM cannot set the context before create_editor returns
+        return currentMeasurer
+    }
 
     /**
      * Context function similar to iOS/Android implementation to ensure proper editor context
@@ -76,51 +72,43 @@ internal object DesktopNativeBindings {
     // These functions attempt to find the appropriate measurer for the current editor
     @JvmStatic
     fun measureTextWidthCallback(textPtr: MemorySegment, fontStyle: Int): Float {
-        val measurer = resolveCurrentMeasurer()
-        if (measurer == null) {
-            // If no measurer is set, return 0 to indicate measurement failure
-            // This will cause rendering issues but prevents crashes
-            return 0f
-        }
+        val measurer = resolveCurrentMeasurer() ?:
+        // If no measurer is set, return 0 to indicate measurement failure
+        // This will cause rendering issues but prevents crashes
+        return 0f
 
-        if (textPtr.equals(MemorySegment.NULL)) return 0f
+        if (textPtr == MemorySegment.NULL) return 0f
         val text = EditorNative.readUtf16String(textPtr) ?: ""
         return measurer.measureTextWidth(text, fontStyle)
     }
 
     @JvmStatic
     fun measureInlayHintWidthCallback(textPtr: MemorySegment): Float {
-        val measurer = resolveCurrentMeasurer()
-        if (measurer == null) {
-            // If no measurer is set, return 0 to indicate measurement failure
-            return 0f
-        }
+        val measurer = resolveCurrentMeasurer() ?:
+        // If no measurer is set, return 0 to indicate measurement failure
+        return 0f
 
-        if (textPtr.equals(MemorySegment.NULL)) return 0f
+        if (textPtr == MemorySegment.NULL) return 0f
         val text = EditorNative.readUtf16String(textPtr) ?: ""
         return measurer.measureInlayHintWidth(text)
     }
 
     @JvmStatic
     fun measureIconWidthCallback(iconId: Int): Float {
-        val measurer = resolveCurrentMeasurer()
-        if (measurer == null) {
-            // If no measurer is set, return 0 to indicate measurement failure
-            return 0f
-        }
+        val measurer = resolveCurrentMeasurer() ?:
+        // If no measurer is set, return 0 to indicate measurement failure
+        return 0f
 
         return measurer.measureIconWidth(iconId)
     }
 
     @JvmStatic
     fun getFontMetricsCallback(outPtr: MemorySegment, length: Long) {
-        val measurer = resolveCurrentMeasurer()
-        if (measurer == null) {
-            // If no measurer is set, return without writing to avoid corruption
-            return
-        }
+        val measurer = resolveCurrentMeasurer() ?:
+        // If no measurer is set, return without writing to avoid corruption
+        return
 
-        if (outPtr.equals(MemorySegment.NULL) || length <= 0) return
+        if (outPtr == MemorySegment.NULL || length <= 0) return
 
         // When called from native callbacks, the pointer may have byteSize=0
         // We should use the length parameter as the guide for how much to write
@@ -153,7 +141,7 @@ internal object DesktopNativeBindings {
             for (i in copyLength until minOf(length.toInt(), maxFloats)) {
                 targetPtr.set(ValueLayout.JAVA_FLOAT, i * ValueLayout.JAVA_FLOAT.byteSize(), 0f)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Catch any memory access exceptions
             return
         }
@@ -187,7 +175,7 @@ internal object DesktopNativeBindings {
         val arena = Arena.ofShared()
         try {
             // Create measurer callbacks - these will use the global state when called
-            val measurerSegment = createMeasurerCallbacks(arena, textMeasurer)
+            val measurerSegment = createMeasurerCallbacks(arena)
 
             // Store the measurer in a temporary location for callbacks during creation
             val previousMeasurer = currentMeasurer
@@ -855,7 +843,7 @@ internal object DesktopNativeBindings {
         }
     }
 
-    fun nativeGetSelectedText(editorHandle: Long): String? =
+    fun nativeGetSelectedText(editorHandle: Long): String =
         withEditorContext(editorHandle) {
             EditorNative.getSelectedText(editorHandle)
         }
@@ -867,7 +855,7 @@ internal object DesktopNativeBindings {
             }
         }
 
-    fun nativeGetWordAtCursor(editorHandle: Long): String? =
+    fun nativeGetWordAtCursor(editorHandle: Long): String =
         withEditorContext(editorHandle) {
             EditorNative.getWordAtCursor(editorHandle)
         }
@@ -1140,7 +1128,7 @@ internal object DesktopNativeBindings {
         }
 
     // Helper function to create measurer callbacks
-    private fun createMeasurerCallbacks(arena: Arena, textMeasurer: NativeTextMeasurer): MemorySegment {
+    private fun createMeasurerCallbacks(arena: Arena): MemorySegment {
         // We no longer set currentMeasurer here since callbacks will use editorMeasurers mapping
         // The callback functions will use resolveCurrentMeasurer() which looks up by currentEditorHandle
 
@@ -1151,7 +1139,7 @@ internal object DesktopNativeBindings {
             java.lang.invoke.MethodType.methodType(
                 java.lang.Float.TYPE,
                 MemorySegment::class.java,
-                java.lang.Integer.TYPE
+                Integer.TYPE
             )
         )
         val measureTextWidthStub = Linker.nativeLinker().upcallStub(
@@ -1179,7 +1167,7 @@ internal object DesktopNativeBindings {
             "measureIconWidthCallback",
             java.lang.invoke.MethodType.methodType(
                 java.lang.Float.TYPE,
-                java.lang.Integer.TYPE
+                Integer.TYPE
             )
         )
         val measureIconWidthStub = Linker.nativeLinker().upcallStub(

@@ -6,37 +6,37 @@ import java.nio.file.Path
 import kotlin.io.path.*
 
 /**
- * 提取本地库文件的工具类
+ * Utility class for extracting native library files.
  */
 object NativeLibraryExtractor {
 
     private const val NATIVE_RESOURCE_ROOT = "/native/"
 
     /**
-     * 从资源路径提取本地库到临时目录
+     * Extract native library from resource path to temporary directory.
      *
-     * @param resourcePath 资源路径（相对于 classpath）
-     * @param targetDir 目标目录，如果为 null，则使用系统临时目录
-     * @return 提取后的库文件路径
+     * @param resourcePath Resource path (relative to classpath)
+     * @param targetDir Target directory, if null uses system temp directory
+     * @return Path to the extracted library file
      */
     fun extractLibrary(resourcePath: String, targetDir: File?): File {
         val actualTargetDir = targetDir ?: createTempDirectory("sweet-editor-compose").toFile()
         val resourceName = extractFileNameFromPath(resourcePath)
         val targetFile = File(actualTargetDir, resourceName)
 
-        // 如果目标文件已存在且大小不为0，直接返回
+        // If target file already exists and size > 0, return directly
         if (targetFile.exists() && targetFile.length() > 0) {
             return targetFile
         }
 
-        // 确保目标目录存在
+        // Ensure target directory exists
         if (!actualTargetDir.exists()) {
             actualTargetDir.mkdirs()
         }
 
-        // 从资源中读取并写入目标文件
+        // Read from resource and write to target file
         val inputStream = Thread.currentThread().contextClassLoader.getResourceAsStream(resourcePath.substring(1))
-            ?: throw IOException("无法找到资源: $resourcePath")
+            ?: throw IOException("Resource not found: $resourcePath")
 
         inputStream.use { input ->
             FileOutputStream(targetFile).use { output ->
@@ -48,13 +48,13 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * 从资源路径提取当前平台的本地库到指定目录，并自动设置 `sweeteditor.lib.path`。
+     * Extract native library for current platform to specified directory and set `sweeteditor.lib.path`.
      * <p>
-     * 如果目标目录中已存在相同大小的本地库文件，则跳过提取，仅设置系统属性。
+     * If a native library file with the same size already exists, extraction is skipped.
      *
-     * @param targetDir 提取目标目录（如果不存在会自动创建）
-     * @return 提取的本地库文件路径
-     * @throws IOException 如果提取失败或在 JAR 中找不到当前平台的本地库
+     * @param targetDir Target directory for extraction (created automatically if it doesn't exist)
+     * @return Path to the extracted native library file
+     * @throws IOException If extraction fails or native library not found in JAR
      */
     fun extract(targetDir: Path): Path {
         val libName = System.mapLibraryName("sweeteditor")
@@ -64,17 +64,17 @@ object NativeLibraryExtractor {
         targetDir.createDirectories()
         val targetFile = targetDir.resolve(libName)
 
-        // 检查是否已经提取（文件存在且大小匹配）
+        // Check if already extracted (file exists and size matches)
         if (!needsExtraction(targetFile, resourcePath)) {
-            // 大小匹配，跳过提取，仅注册路径
+            // Size matches, skip extraction, only register path
             registerLibraryPath(targetDir)
             return targetFile
         }
 
-        // 执行提取
+        // Perform extraction
         val inputStream = NativeLibraryExtractor::class.java.classLoader.getResourceAsStream(resourcePath.substring(1))
             ?: throw FileNotFoundException(
-                "在 JAR 中找不到当前平台的本地库: $resourcePath " +
+                "Native library not found in JAR: $resourcePath " +
                 "(platform=$platform, libName=$libName)"
             )
 
@@ -84,23 +84,23 @@ object NativeLibraryExtractor {
             }
         }
 
-        // 注册路径
+        // Register path
         registerLibraryPath(targetDir)
         return targetFile
     }
 
     /**
-     * 提取当前平台的本地库到默认目录，并自动设置 `sweeteditor.lib.path`。
+     * Extract native library for current platform to default directory and set `sweeteditor.lib.path`.
      * <p>
-     * 默认目录因操作系统而异：
+     * Default directories vary by operating system:
      * <ul>
-     *   <li><b>Windows</b>: {@code %LOCALAPPDATA%\SweetEditor\native\} (例如 {@code C:\Users\xxx\AppData\Local\SweetEditor\native\})</li>
+     *   <li><b>Windows</b>: {@code %LOCALAPPDATA%\SweetEditor\native\} (e.g., {@code C:\Users\xxx\AppData\Local\SweetEditor\native\})</li>
      *   <li><b>macOS</b>: {@code ~/Library/Application Support/SweetEditor/native/}</li>
-     *   <li><b>Linux</b>: {@code $XDG_DATA_HOME/sweeteditor/native/} (默认 {@code ~/.local/share/sweeteditor/native/})</li>
+     *   <li><b>Linux</b>: {@code $XDG_DATA_HOME/sweeteditor/native/} (defaults to {@code ~/.local/share/sweeteditor/native/})</li>
      * </ul>
      *
-     * @return 提取的本地库文件路径
-     * @throws IOException 如果提取失败
+     * @return Path to the extracted native library file
+     * @throws IOException If extraction fails
      */
     fun extractToDefaultDir(): Path {
         val defaultDir = getDefaultNativeDir()
@@ -108,10 +108,10 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * 检查指定目录中是否已存在当前平台的本地库。
+     * Check if native library for current platform already exists in specified directory.
      *
-     * @param targetDir 目标目录
-     * @return 如果本地库已存在则返回 {@code true}
+     * @param targetDir Target directory
+     * @return {@code true} if native library already exists
      */
     fun isExtracted(targetDir: Path): Boolean {
         val libName = System.mapLibraryName("sweeteditor")
@@ -119,7 +119,7 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * 从路径中提取文件名
+     * Extract file name from path.
      */
     private fun extractFileNameFromPath(path: String): String {
         val lastSeparatorIndex = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
@@ -131,7 +131,7 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * 获取当前平台的默认本地库存储目录。
+     * Get default native library storage directory for current platform.
      */
     private fun getDefaultNativeDir(): Path {
         val os = System.getProperty("os.name", "").lowercase()
@@ -139,7 +139,7 @@ object NativeLibraryExtractor {
 
         return when {
             os.contains("win") -> {
-                // Windows: 优先使用 LOCALAPPDATA 环境变量
+                // Windows: Prefer LOCALAPPDATA environment variable
                 val localAppData = System.getenv("LOCALAPPDATA")
                 if (!localAppData.isNullOrEmpty()) {
                     Path.of(localAppData).resolve("SweetEditor").resolve("native")
@@ -152,7 +152,7 @@ object NativeLibraryExtractor {
                 Path.of(userHome, "Library", "Application Support", "SweetEditor", "native")
             }
             else -> {
-                // Linux: 遵循 XDG 基目录规范
+                // Linux: Follow XDG Base Directory Specification
                 val xdgDataHome = System.getenv("XDG_DATA_HOME")
                 if (!xdgDataHome.isNullOrEmpty()) {
                     Path.of(xdgDataHome, "sweeteditor", "native")
@@ -164,52 +164,48 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * 确定是否需要重新提取。
-     * 如果目标文件不存在，或者其大小与 JAR 资源不匹配，则需要提取。
+     * Determine whether re-extraction is needed.
+     * If target file doesn't exist, or its size doesn't match JAR resource, extraction is needed.
      */
     private fun needsExtraction(targetFile: Path, resourcePath: String): Boolean {
         if (!targetFile.exists()) {
             return true
         }
 
-        // 获取 JAR 资源的大小
+        // Get JAR resource size
         val resourceSize = getResourceSize(resourcePath)
         if (resourceSize < 0) {
-            // 无法获取资源大小（资源不存在），提取时会报告错误
+            // Can't get resource size (resource doesn't exist), extraction will report error
             return true
         }
 
-        // 比较大小
+        // Compare sizes
         val existingSize = targetFile.fileSize()
         return existingSize != resourceSize
     }
 
     /**
-     * 获取 JAR 资源的大小（以字节为单位）。
-     * @return 资源大小，如果资源不存在则返回 -1
+     * Get JAR resource size in bytes.
+     * @return Resource size, returns -1 if resource doesn't exist
      */
     private fun getResourceSize(resourcePath: String): Long {
         val inputStream = NativeLibraryExtractor::class.java.classLoader.getResourceAsStream(resourcePath.substring(1))
-        return if (inputStream != null) {
-            inputStream.use { input ->
-                input.readAllBytes().size.toLong()
-            }
-        } else {
-            -1
-        }
+        return inputStream?.use { input ->
+            input.readAllBytes().size.toLong()
+        } ?: -1
     }
 
     /**
-     * 将目标目录设置为系统属性 `sweeteditor.lib.path`，
-     * 以便 `EditorNative` 静态初始化时优先使用此路径加载本地库。
+     * Set target directory as system property `sweeteditor.lib.path`,
+     * so that `EditorNative` static initialization can prioritize this path to load native library.
      */
     private fun registerLibraryPath(targetDir: Path) {
         System.setProperty("sweeteditor.lib.path", targetDir.toAbsolutePath().toString())
     }
 
     /**
-     * 自动检测当前平台，返回资源子目录名称。
-     * 格式为 `<os>-<arch>`，例如 `macos-aarch64`, `windows-x86_64`。
+     * Auto-detect current platform, return resource subdirectory name.
+     * Format is `<os>-<arch>`, e.g., `macos-aarch64`, `windows-x86_64`.
      */
     private fun detectPlatform(): String {
         val os = System.getProperty("os.name", "").lowercase()
@@ -224,45 +220,45 @@ object NativeLibraryExtractor {
         val archName = when {
             arch.contains("aarch64") || arch.contains("arm64") -> "aarch64"
             arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64") -> "x86_64"
-            else -> arch // 后备，使用原始值
+            else -> arch // Fallback, use original value
         }
 
         return "${osName}-${archName}"
     }
 
     /**
-     * 从资源路径提取本地库到默认临时目录
+     * Extract native library from resource path to default temp directory.
      *
-     * @param resourcePath 资源路径（相对于 classpath）
-     * @return 提取后的库文件路径
+     * @param resourcePath Resource path (relative to classpath)
+     * @return Path to the extracted library file
      */
     fun extractLibrary(resourcePath: String): File {
         return extractLibrary(resourcePath, null)
     }
 
     /**
-     * 从资源路径批量提取本地库
+     * Batch extract native libraries from resource paths.
      *
-     * @param resourcePaths 资源路径列表
-     * @param targetDir 目标目录，如果为 null，则使用系统临时目录
-     * @return 提取后的库文件路径列表
+     * @param resourcePaths List of resource paths
+     * @param targetDir Target directory, if null uses system temp directory
+     * @return List of extracted library file paths
      */
     fun extractLibraries(resourcePaths: List<String>, targetDir: File?): List<File> {
         return resourcePaths.map { extractLibrary(it, targetDir) }
     }
 
     /**
-     * 从资源路径批量提取本地库到默认临时目录
+     * Batch extract native libraries from resource paths to default temp directory.
      *
-     * @param resourcePaths 资源路径列表
-     * @return 提取后的库文件路径列表
+     * @param resourcePaths List of resource paths
+     * @return List of extracted library file paths
      */
     fun extractLibraries(resourcePaths: List<String>): List<File> {
         return extractLibraries(resourcePaths, null)
     }
 
     /**
-     * 将输入流写入 Path
+     * Write input stream to Path.
      */
     private fun Path.writeStream(inputStream: InputStream) {
         outputStream().use { output ->

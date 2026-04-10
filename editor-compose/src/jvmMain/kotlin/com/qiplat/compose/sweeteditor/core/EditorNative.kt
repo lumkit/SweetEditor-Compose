@@ -2,8 +2,6 @@ package com.qiplat.compose.sweeteditor.core
 
 import java.lang.foreign.*
 import java.lang.invoke.MethodHandle
-import java.lang.invoke.MethodHandles
-import java.lang.invoke.MethodType
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
@@ -131,7 +129,7 @@ object EditorNative {
         try {
             System.loadLibrary("sweeteditor")
             return SymbolLookup.loaderLookup()
-        } catch (e: UnsatisfiedLinkError) {
+        } catch (_: UnsatisfiedLinkError) {
             throw UnsatisfiedLinkError(LOAD_LIBRARY_ERROR)
         }
     }
@@ -227,7 +225,7 @@ object EditorNative {
             // 先获取 size 值，防止 native 函数修改 outSize 内存
             val sizeValue = outSize.get(ValueLayout.JAVA_LONG, 0)
 
-            var resultPtr = ptr
+            var resultPtr: MemorySegment
             if (ptr != MemorySegment.NULL && sizeValue > 0 && sizeValue <= Int.MAX_VALUE) {
                 resultPtr = ptr.reinterpret(sizeValue)
             } else {
@@ -833,7 +831,7 @@ object EditorNative {
         try {
             val ptr = GET_DOCUMENT_LINE_TEXT.invokeExact(documentHandle, line.toLong()) as MemorySegment
             val text = readUtf16String(ptr)
-            if (ptr != null && !ptr.equals(MemorySegment.NULL)) {
+            if (ptr != MemorySegment.NULL) {
                 freeU16String(ptr.address())
             }
             return text ?: ""
@@ -1357,7 +1355,7 @@ object EditorNative {
      * Read the null-terminated UTF-16LE string returned by C++
      */
     fun readUtf16String(ptr: MemorySegment): String? {
-        if (ptr.equals(MemorySegment.NULL)) return null
+        if (ptr == MemorySegment.NULL) return null
 
         // Additional safety check: verify segment validity
         try {
