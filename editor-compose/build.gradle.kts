@@ -41,7 +41,12 @@ plugins.withId("signing") {
 
 mavenPublishing {
     publishToMavenCentral(automaticRelease = true, DeploymentValidation.PUBLISHED)
-    signAllPublications()
+    val isLocalPublish = gradle.startParameter.taskNames.any {
+        it.contains("publishToMavenLocal", ignoreCase = true)
+    }
+    if (!isLocalPublish) {
+        signAllPublications()
+    }
 
     configure(
         KotlinMultiplatform(

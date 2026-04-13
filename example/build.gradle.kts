@@ -11,19 +11,23 @@ plugins {
 }
 
 kotlin {
+    val desktopOnly = (findProperty("desktopOnly") as? String)?.toBoolean() == true
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
+    if (!desktopOnly) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64()
+        ).forEach { iosTarget ->
+            iosTarget.binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
+            }
         }
     }
 
@@ -57,6 +61,7 @@ kotlin {
 
             implementation(libs.material.icons.extended)
 
+            // implementation(libs.sweet.editor)
             implementation(project(":editor-compose"))
         }
         commonTest.dependencies {

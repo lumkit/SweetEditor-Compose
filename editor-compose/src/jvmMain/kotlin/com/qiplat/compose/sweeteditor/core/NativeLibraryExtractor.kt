@@ -58,8 +58,7 @@ object NativeLibraryExtractor {
      */
     fun extract(targetDir: Path): Path {
         val libName = System.mapLibraryName("sweeteditor")
-        val platform = detectPlatform()
-        val resourcePath = "$NATIVE_RESOURCE_ROOT$platform/$libName"
+        val resourcePath = resolveNativeResourcePath(libName)
 
         targetDir.createDirectories()
         val targetFile = targetDir.resolve(libName)
@@ -75,7 +74,7 @@ object NativeLibraryExtractor {
         val inputStream = NativeLibraryExtractor::class.java.classLoader.getResourceAsStream(resourcePath.substring(1))
             ?: throw FileNotFoundException(
                 "Native library not found in JAR: $resourcePath " +
-                "(platform=$platform, libName=$libName)"
+                "(libName=$libName)"
             )
 
         inputStream.use { input ->
@@ -204,26 +203,38 @@ object NativeLibraryExtractor {
     }
 
     /**
-     * Auto-detect current platform, return resource subdirectory name.
-     * Format is `<os>-<arch>`, e.g., `macos-aarch64`, `windows-x86_64`.
+     * Resolve native library resource path based on current OS/arch.
+     * Matches project resource layout: native/<os>/<arch>/<libName>.
      */
-    private fun detectPlatform(): String {
+    private fun resolveNativeResourcePath(libName: String): String {
         val os = System.getProperty("os.name", "").lowercase()
         val arch = System.getProperty("os.arch", "").lowercase()
 
-        val osName = when {
+        val osDir = when {
             os.contains("win") -> "windows"
-            os.contains("mac") || os.contains("darwin") -> "macos"
-            else -> "linux"
+            os.contains("mac") || os.contains("darwin") -> "osx"
+            os.contains("linux") -> "linux"
+            else -> throw UnsupportedOperationException("Unsupported OS for SweetEditor native library: $os")
         }
 
-        val archName = when {
-            arch.contains("aarch64") || arch.contains("arm64") -> "aarch64"
-            arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64") -> "x86_64"
-            else -> arch // Fallback, use original value
+        val archDir = when (osDir) {
+            "windows" -> when {
+                arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64") -> "x64"
+                else -> throw UnsupportedOperationException("Unsupported Windows arch for SweetEditor: $arch")
+            }
+            "osx" -> when {
+                arch.contains("aarch64") || arch.contains("arm64") -> "arm64"
+                arch.contains("amd64") || arch.contains("x86_64") -> "x86_64"
+                else -> throw UnsupportedOperationException("Unsupported macOS arch for SweetEditor: $arch")
+            }
+            "linux" -> when {
+                arch.contains("amd64") || arch.contains("x86_64") -> "x86_64"
+                else -> throw UnsupportedOperationException("Unsupported Linux arch for SweetEditor: $arch")
+            }
+            else -> throw UnsupportedOperationException("Unsupported OS dir for SweetEditor: $osDir")
         }
 
-        return "${osName}-${archName}"
+        return "$NATIVE_RESOURCE_ROOT$osDir/$archDir/$libName"
     }
 
     /**

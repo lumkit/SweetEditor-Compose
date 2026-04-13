@@ -33,11 +33,6 @@ object EditorNative {
         if (lookup != null) {
             return lookup
         }
-        // Try loading from editor-core directory (development mode)
-        val coreLookup = tryLoadFromEditorCore(libName)
-        if (coreLookup != null) {
-            return coreLookup
-        }
         // Try auto-extracting from JAR resources to default directory and load
         val jarLookup = tryLoadFromJarResources()
         if (jarLookup != null) {
@@ -45,52 +40,6 @@ object EditorNative {
         }
         // Fallback to system path (java.library.path)
         return loadLibraryFromSystem()
-    }
-
-    /**
-     * Try loading native library from editor-core directory (development mode).
-     * This looks for the library in editor-core/windows/x64, editor-core/osx, etc.
-     */
-    private fun tryLoadFromEditorCore(libName: String): SymbolLookup? {
-        try {
-            val os = System.getProperty("os.name", "").lowercase()
-            val arch = System.getProperty("os.arch", "").lowercase()
-
-            val platformDir = when {
-                os.contains("win") -> "windows"
-                os.contains("mac") || os.contains("darwin") -> "osx"
-                else -> "linux"
-            }
-
-            val archDir = when (platformDir) {
-                "windows" -> "x64"
-                "osx" -> when {
-                    arch.contains("aarch64") || arch.contains("arm64") -> "arm64"
-                    else -> "x86_64"
-                }
-                else -> when {
-                    arch.contains("x86_64") || arch.contains("amd64") -> "x86_64"
-                    else -> arch
-                }
-            }
-
-            // Try multiple possible locations
-            val possiblePaths = listOf(
-                Path.of("editor-core", platformDir, archDir, libName),
-                Path.of("editor-core", platformDir, libName),
-                Path.of("..", "editor-core", platformDir, archDir, libName),
-                Path.of("..", "editor-core", platformDir, libName),
-            )
-
-            for (path in possiblePaths) {
-                if (Files.exists(path)) {
-                    return SymbolLookup.libraryLookup(path.toAbsolutePath(), Arena.global())
-                }
-            }
-        } catch (_: Exception) {
-            // Silently skip if any error occurs
-        }
-        return null
     }
 
     /**
