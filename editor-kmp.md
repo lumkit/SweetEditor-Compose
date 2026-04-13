@@ -1505,6 +1505,168 @@ KMP 重构中，`RenderModelBuilder` 是替换 binary protocol 的核心节点�
 验证结果：
 
 - `:editor-core-shared:compileKotlinJvm` 通过
+
+### 40.26 主线继续前推到 Basic Gesture Interaction
+
+这轮继续按主线推进，直接补 shared 核心里另一个真正的缺口：`handleGesture()`。
+
+本轮把基础手势交互接到现有主路径上了：
+
+- 单击 / 触摸按下：
+  - 命中位置
+  - 更新 cursor
+  - `Shift` 下走扩选主路径
+- 拖拽：
+  - 复用 `SelectionState`
+  - 实时更新选区
+- 鼠标滚轮 / 直接滚动：
+  - 复用 `ViewportState`
+  - 直接更新 scroll
+- 直接缩放：
+  - 进入 shared 层最小可用 scale 主路径
+
+这次推进后的直接收益：
+
+- shared 主线不再只有 keyboard-driven interaction，也开始具备 pointer / gesture 入口
+- `LayoutQuery + SelectionState + ViewportState` 开始同时承接键盘和手势两条交互主线
+- 后续继续补复杂 interaction 时，已经不需要再从空的 `handleGesture()` 起步
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+### 40.29 主线继续前推到 Linked Placeholder Mirroring
+
+这轮继续按主线推进，把 snippet / linked editing 再往前补了一层：同组 placeholder 的镜像编辑。
+
+本轮推进后的主线路径：
+
+- active linked editing group 不再只是“能切换 tab stop”
+- 当前主 placeholder 编辑后：
+  - 同组其他 ranges 会同步应用相同编辑
+  - 后续 group 与 exit position 会继续更新偏移
+- 这条能力已经接到了现有 edit 主路径：
+  - `replaceText()`
+  - `insertText()`
+  - snippet 插入后的 linked editing
+
+同时，本轮继续把 snippet 主线往前补到更接近真实可用：
+
+- snippet parser 继续支撑：
+  - `$1`
+  - `${1:default}`
+  - `$0`
+- `insertSnippet()` 现在不仅能进入 linked editing
+- 同 index placeholder 已开始具备真正的同步编辑语义
+
+这次推进后的直接收益：
+
+- shared 主线从“placeholder 导航”进入“placeholder 同步编辑”
+- snippet / linked editing 已经不只是导航骨架，而开始具备真实编辑语义
+- 后续继续做 completion / snippet / command 更高层整合时，可直接复用这条 shared 核心能力
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 snippet / linked editing / command 主线再收敛一层
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+### 40.28 主线继续前推到 Snippet Insertion
+
+这轮继续沿 shared 主线往前推，把 linked editing 再向 snippet / placeholder 主线路径推进了一层。
+
+本轮补上的主线路径：
+
+- `insertSnippet(template)` 不再只是退化成普通 `insertText`
+- shared 层现在已有最小可用 snippet parser
+- 当前已支持：
+  - `$1`
+  - `${1:default}`
+  - `$0`
+
+同时，这条主线已经和 linked editing 状态真正接起来了：
+
+- snippet 插入后会生成 tab stop group
+- 自动进入 linked editing
+- `Tab / Shift+Tab` 在 placeholder 间导航
+- 最后退出时落到 `$0` 位置
+
+这次推进后的直接收益：
+
+- shared 主线不再只有独立的 linked editing 状态，而是开始具备 snippet → placeholder → tab navigation 的完整链路
+- 上层如果继续推进 completion / snippet / command 整合，已经有了可复用的 shared 核心
+- 后续继续做更完整的 snippet 语义时，不需要再从“普通字符串插入”起步
+
+当前这一轮先完成的是最小可用 snippet 主线：
+
+- placeholder 解析
+- 默认文本插入
+- linked editing 接管
+- final tab stop 落点
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 snippet / linked editing / command 主线再收敛一层
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+### 40.27 主线继续前推到 Linked Editing
+
+这轮继续按主线推进，没有回去打磨局部，而是把 shared 核心里另一个明确缺口补到可用：linked editing。
+
+本轮补上的主线路径：
+
+- `startLinkedEditing(model)`
+- `isInLinkedEditing()`
+- `linkedEditingNext()`
+- `linkedEditingPrev()`
+- `cancelLinkedEditing()`
+
+同时，这条主线已经开始和统一键盘入口收敛：
+
+- `Tab` → `linkedEditingNext()`
+- `Shift + Tab` → `linkedEditingPrev()`
+- `Escape` → `cancelLinkedEditing()`
+
+这次推进后的直接收益：
+
+- shared 主线不再只有 keyboard / gesture / line command / selection command
+- snippet / placeholder / tab stop 这一层已经开始有了真正的核心状态能力
+- 后续继续往 snippet、completion、higher-level API 前推时，已经不需要再从空的 linked editing 状态起步
+
+当前这一轮先完成的是“状态与导航主线”：
+
+- 进入 linked editing
+- 在 tab stop group 间切换
+- 编辑后继续维持后续 group 的位置更新
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 linked editing 与 selection / command / snippet 主线往前推
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+下一步建议顺序：
+
+1. 继续把 gesture interaction 往 selection-level / viewport-level 行为前推
+2. 继续补 command-level / interaction-level 主线能力
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
 - `:editor-compose:compileKotlinJvm` 通过
 - `:editor-compose:jvmTest` 未完全通过，但失败点位于现有测试文件 `DecorationProviderManagerCommonTest.kt` 的 `runBlocking` 相关编译问题，不是本轮抽象切换引入的新错误
 
@@ -1542,6 +1704,251 @@ KMP 重构中，`RenderModelBuilder` 是替换 binary protocol 的核心节点�
 
 - `:editor-core-shared:jvmTest` 通过
 - `:editor-core-shared:compileKotlinJvm` 通过
+
+### 40.25 主线继续前推到 Selection-Level Command
+
+这轮继续直接推 shared 主线，把 command 收敛从 line-level 再往前推进到 selection-level。
+
+本轮新增主线路径：
+
+- `EditorCore` 新增：
+  - `selectCurrentLine()`
+  - `duplicateSelectionOrLine()`
+- `EditorCoreImpl` 已实现：
+  - 当前行整行选择
+  - 当前 selection 复制
+  - 无 selection 时退化为整行复制
+
+同时，这批能力已经接入统一键盘命令入口：
+
+- `Ctrl/Meta + L` → `selectCurrentLine()`
+- `Ctrl/Meta + D` → `duplicateSelectionOrLine()`
+
+这次推进后的直接收益：
+
+- command 主线不再只覆盖 cursor movement 和 line-level editing
+- selection-level command 已经开始进入统一 keyboard-driven interaction 主路径
+- 后续继续推进 command palette / shortcut binding / higher-level API 时，已有可复用核心能力
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 selection-level / command-level 编辑能力补齐
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+### 40.24 主线继续前推到 Keyboard Command Convergence
+
+这轮继续按主线推进，没有再抠局部行为，而是把已经补上的 editing / navigation 能力继续向统一键盘命令入口收敛。
+
+本轮新增收敛点：
+
+- `handleKeyEvent()` 现在不只处理基础方向键与文本输入，还开始承接 line-level command
+- 当前已接入：
+  - `Alt + Up / Down` → `moveLineUp()` / `moveLineDown()`
+  - `Alt + Shift + Up / Down` → `copyLineUp()` / `copyLineDown()`
+  - `Ctrl/Meta + Enter` → `insertLineBelow()`
+  - `Ctrl/Meta + Shift + Enter` → `insertLineAbove()`
+  - `Ctrl/Meta + Shift + K` → `deleteLine()`
+
+同时，本轮把 line-level editing 继续补成 shared 主线能力：
+
+- `deleteLine()`
+- `insertLineAbove()`
+- `insertLineBelow()`
+- `copyLineUp()`
+- `copyLineDown()`
+- `moveLineUp()`
+- `moveLineDown()`
+
+这次推进后的直接收益：
+
+- shared 主线开始具备真正可复用的 line-level command
+- keyboard-driven interaction 不再只是 cursor movement，而是开始驱动真实编辑命令
+- 后续继续做 selection-level / command-level 收敛时，已经有清晰主路径可接
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 keyboard command 往 selection-level / command-level 收敛
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+### 40.23 主线补到 Line-Level Editing
+
+这轮直接往主线推，没有再纠结局部细节，把 shared 核心里一个明显缺口补上了：line-level editing。
+
+`EditorCoreImpl` 本轮已接入：
+
+- `deleteLine()`
+- `insertLineAbove()`
+- `insertLineBelow()`
+- `copyLineUp()`
+- `copyLineDown()`
+- `moveLineUp()`
+- `moveLineDown()`
+
+这批能力已经开始走现有主路径协同：
+
+- 复用 `replaceText()` / 结构化 edit result
+- 复用现有 undo / redo
+- 复用 selection / cursor 主路径
+- 复用 viewport 跟随
+
+这次推进后的直接收益：
+
+- shared 主线不再只停留在 cursor movement / word navigation
+- 已开始具备真正可用的一批行级编辑操作
+- 后续 keyboard-driven interaction 可以继续直接挂接这些 line-level command
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 keyboard-driven interaction 往 line-level / selection-level command 收敛
+2. 继续让 interaction 与 viewport / scroll 协同前推
+3. 再评估哪些 shared 主线模型适合最终抬到更高层 API
+
+### 40.22 Keyboard Navigation 主线推进
+
+本轮继续沿 shared 主线推进，把 interaction / navigation 从“暴露方法”继续推进到“有最小可用键盘入口”：
+
+- `EditorCoreImpl.handleKeyEvent()` 已接入最小可用键盘导航主路径
+- 当前已支持：
+  - 方向键移动
+  - Home / End
+  - PageUp / PageDown
+  - Ctrl/Meta + Left/Right 词级移动
+  - Shift 扩展 selection
+  - Ctrl/Meta + A / Z / Y
+  - Enter / Tab / Backspace / Delete
+  - 普通文本输入
+
+这次推进后的直接收益：
+
+- shared 主线不再只是“提供导航 API”，而是开始具备真实键盘驱动入口
+- navigation、selection、viewport、edit 已开始通过同一套核心路径协同
+- 后续继续做 interaction 语义时，可以围绕 `handleKeyEvent()` 继续前推
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续补更完整的 interaction / navigation 语义
+2. 继续让 interaction 与 viewport / scroll 策略协同收敛
+3. 再评估哪些 query / geometry / interaction 模型适合最终公开到更高层 API
+
+### 40.21 Word-Level Navigation 进度
+
+本轮继续沿 shared 主线推进，把 interaction / navigation 再往前补一层，先补最基础也最可复用的 word-level 行为：
+
+- `EditorCore` 新增：
+  - `moveCursorToPreviousWord(extendSelection)`
+  - `moveCursorToNextWord(extendSelection)`
+- `EditorCoreImpl` 已实现：
+  - `getWordRangeAtCursor()`
+  - `getWordAtCursor()`
+  - `moveCursorToPreviousWord()`
+  - `moveCursorToNextWord()`
+- 当前词边界规则：
+  - 连续字母 / 数字 / `_`
+  - 光标位于词尾时可回看前一个词
+
+同时本轮补齐了更符合编辑器直觉的 selection collapse 行为：
+
+- 存在 selection 且 `extendSelection = false` 时：
+  - `moveCursorLeft()` 会先折叠到 `selection.start`
+  - `moveCursorRight()` 会先折叠到 `selection.end`
+  - `moveCursorToPreviousWord()` 会先折叠到 `selection.start`
+  - `moveCursorToNextWord()` 会先折叠到 `selection.end`
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续补更完整的 interaction / navigation 语义
+2. 让 interaction 与 viewport / scroll 协同策略继续前推
+3. 再评估哪些 query / geometry / interaction 模型适合最终公开到更高层 API
+
+### 40.20 Interaction / Navigation 主线推进
+
+本轮继续沿 shared 主线推进，把 interaction / navigation 补到了更接近编辑器基础可用的程度：
+
+- `EditorCoreImpl` 新增：
+  - `getWordRangeAtCursor()`
+  - `getWordAtCursor()`
+- word range 现在支持：
+  - 字母 / 数字 / `_` 的连续词边界识别
+  - 光标位于单词结尾时回看前一个词
+- 水平光标移动现在补上了更符合编辑器语义的行为：
+  - 存在 selection 时
+  - `moveCursorLeft(false)` 会先折叠到 selection start
+  - `moveCursorRight(false)` 会先折叠到 selection end
+
+这次推进后的直接收益：
+
+- shared 主线不再只有 geometry / viewport，开始补基础编辑交互语义
+- 词边界查询已经能为后续 double-click、word navigation、selection 扩展复用
+- 水平移动行为更贴近真实编辑器，而不是单纯按 cursor 继续移动
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续补 word-level navigation 与更完整的 interaction 语义
+2. 再把 viewport / scroll 与 interaction 协同策略继续前推
+3. 再开始评估哪些 query / geometry / interaction 模型适合最终公开到更高层 API
+
+### 40.19 Viewport / Scroll 主线推进
+
+本轮继续沿 shared 主线推进，把 viewport / scroll 策略开始真正挂到 geometry 主路径上：
+
+- `LayoutQuery` 新增：
+  - `queryLogicalLine(logicalLine, preferredWrapIndex)`
+- `ViewportState` 新增：
+  - `ensureGeometryVisible(geometry, ...)`
+  - `scrollToLine(lineQuery, ...)`
+- `EditorCoreImpl` 现在在以下主路径开始直接消费 geometry / line query：
+  - `ensureCursorVisible`
+  - `scrollToLine`
+  - `moveCursorVertically`
+
+这次推进后的直接收益：
+
+- `scrollToLine` 不再只靠 `line * lineHeight` 的粗略策略
+- wrapped line 下的垂直移动开始保留更稳定的 wrap index 语义
+- viewport 策略开始基于统一 geometry / line query，而不是零散 rect 计算
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 viewport / scroll 策略再向统一 geometry 结果模型收敛
+2. 评估哪些 layout / geometry 查询模型适合最终公开到更高层 API
+3. 再开始补更完整的 interaction / navigation 语义
 - `:editor-compose:compileKotlinJvm` 回归通过
 
 ### 40.3 第三批编码 - 已完成
@@ -1707,3 +2114,273 @@ KMP 重构中，`RenderModelBuilder` 是替换 binary protocol 的核心节点�
 1. 细化 selection anchor / extent 语义
 2. 增加 point -> visual line / wrap segment 命中能力
 3. 补充 viewport scroll 跟随与 ensure cursor visible
+
+### 40.10 主线对齐进度
+
+为了继续沿主线推进，而不是停留在局部优化，本轮补了三项更接近“可用核心”的能力：
+
+- `EditorCore` 新增公共能力：
+  - `ensureCursorVisible()`
+  - `getPositionForPoint(x, y)`
+- `EditorCoreImpl` 已接入：
+  - 基础 selection anchor
+  - 基础 ensure cursor visible
+  - 基础 point -> position 查询
+- `editor-core-shared` 现在已经具备独立 Gradle 模块配置，可直接跑：
+  - `:editor-core-shared:jvmTest`
+  - `:editor-core-shared:compileKotlinJvm`
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 selection anchor / extent 正式模型化
+2. 增加 visual line 级 hit-test 与 wrap segment 反查
+3. 补 `ensureCursorVisible` 与 `scrollToLine` 的 viewport 策略细化
+
+### 40.11 State 收敛进度
+
+本轮继续沿 shared 主线推进，把原本散落在 `EditorCoreImpl` 里的部分交互状态开始收敛成独立状态模型：
+
+- 新增 `SelectionState`
+- 新增 `ViewportState`
+- `EditorCoreImpl` 已改为使用：
+  - `SelectionState` 管理 anchor / cursor / range
+  - `ViewportState` 管理 viewport size / scroll / 可见区策略
+
+这次收敛后的直接收益：
+
+- 选择语义不再依赖多个松散字段拼接
+- viewport 跟随策略不再散落在多个方法中
+- `EditorCoreImpl` 更接近“协调层”而不是“大而全状态桶”
+
+本轮同时修复：
+
+- `settings.gradle.kts` 中重复 include `:editor-core-shared`
+- `editor-core-shared` 构建脚本中不必要的 Compose 插件依赖，避免 shared 核心模块被 Compose runtime 约束
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 增加 visual line / wrap segment 级 hit-test
+2. 把 position rect / cursor rect / selection rect 继续收敛到更明确的布局查询接口
+3. 再开始补更完整的 viewport 与 scroll 策略
+
+### 40.12 Layout Query 主线进度
+
+本轮继续沿 shared 主线推进，把布局查询从“只有 point -> logical position”推进到“感知 visual line / wrap segment”的层级：
+
+- `LayoutEngine` 新增 `LayoutVisualLine`
+- `LayoutHitTestResult` 现在会返回命中的 `visualLine`
+- `LayoutEngine.hitTest()` 已按 visual line 处理 wrapped line 命中
+- `LayoutEngine.measurePositionRect()` 已按 visual line 处理 wrapped position 定位
+- `EditorCoreImpl` 已接入新的 visual line 感知布局查询路径
+
+这次推进后的直接收益：
+
+- wrap 模式下 point -> position 不再只按 logical line 粗略定位
+- wrap 模式下 cursor rect 已开始具备正确的 visual line 垂直定位
+- 后续抽 layout query API 时，不需要再推翻当前主路径
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 把 visual line 查询正式抽成明确的 layout query 接口
+2. 继续收敛 position rect / selection rect / cursor rect 查询入口
+3. 再把 viewport 与 scroll 策略继续前推
+
+### 40.13 LayoutQuery 收敛进度
+
+本轮继续沿 shared 主线推进，把此前分散在 `LayoutEngine` 与 `EditorCoreImpl` 之间的布局查询能力收敛成一个明确入口：
+
+- 新增 `LayoutQuery`
+- `LayoutQuery` 统一负责：
+  - `findVisualLineForPosition`
+  - `getVisualLineForPoint`
+  - `measurePositionRect`
+  - `buildSelectionRects`
+  - `hitTest`
+  - `toSnapshot`
+- `LayoutEngine` 现在负责构建 `LayoutQuery`
+- `EditorCoreImpl` 现在优先通过 `LayoutQuery` 访问布局查询能力
+
+这次收敛后的直接收益：
+
+- visual line 查询不再散落在多个辅助函数里
+- rect 查询和 hit-test 已开始共用同一套布局结果
+- 后续继续抽 layout API 时，主路径已经稳定
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 rect/query 结果模型从 `EditorCoreImpl` 中再向上抽一层
+2. 细化 visual line / wrap segment 的命中与列映射策略
+3. 再把 viewport 与 scroll 策略继续前推
+
+### 40.14 Layout Query Result API 进度
+
+本轮继续沿 shared 主线推进，把布局查询从“有统一查询入口”继续推进到“有统一结果模型”：
+
+- 新增 `LayoutPositionQueryResult`
+- 新增 `LayoutSelectionQueryResult`
+- `LayoutQuery` 现在统一提供：
+  - `queryPosition`
+  - `querySelection`
+  - `hitTest`
+  - `toSnapshot`
+- `EditorCoreImpl` 现在更明确地通过这些结果模型读取：
+  - cursor rect
+  - selection rects
+  - point -> position
+
+这次推进后的直接收益：
+
+- position / cursor / hit-test 开始共享同一套查询结果模型
+- selection rect 输出不再只是“裸 rect 列表”
+- `EditorCoreImpl` 离布局细节又退后了一层，更接近协调层职责
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续细化 visual line / wrap segment 的列映射与命中策略
+2. 继续把布局查询结果往更稳定的公开模型收敛
+3. 再把 viewport 与 scroll 策略继续前推
+
+### 40.15 Wrap Segment 命中与列映射进度
+
+本轮继续沿 shared 主线推进，把此前偏粗粒度的 hit-test 继续细化到 wrap segment 上的列映射语义：
+
+- 新增 `LayoutColumnAffinity`
+- 新增 `LayoutColumnMappingResult`
+- `LayoutHitTestResult` 现在会携带 `columnMapping`
+- `LayoutQuery` 新增 `queryColumn`
+- `hitTest()` 现在不只是返回 position，也会返回命中的 visual line 列映射结果
+
+这次推进后的直接收益：
+
+- wrap segment 上的 point -> column 映射开始有了明确结果模型
+- hit-test 不再只有最终 position，后续可以继续承接更细的 caret / selection 判定
+- 继续前推时，不需要再回头重做 hit-test 结果结构
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续细化多宽字符 / tab / wrap edge 下的列映射策略
+2. 继续把布局查询结果往更稳定的公开模型收敛
+3. 再把 viewport 与 scroll 策略继续前推
+
+### 40.16 Column Mapping 策略细化进度
+
+本轮继续沿 shared 主线推进，把列映射从“基础可用”继续推进到能覆盖更多真实布局语义：
+
+- `LayoutVisualLine` 新增 `columnBoundaries`
+- `LayoutQuery` 现在优先基于 `columnBoundaries` 做：
+  - `queryPosition`
+  - `queryColumn`
+  - `querySelection`
+  - `hitTest`
+- tab 宽度不再是简单固定替换，而是按当前 visual column 对齐到下一个 tab stop
+- wrap edge 场景下，`queryPosition` 已优先落到下一个 visual line 的起点
+- 多宽字符场景下，列映射开始真正依赖测量结果，而不是仅依赖字符数量
+
+这次推进后的直接收益：
+
+- point -> column 映射开始具备 tab / wide char / wrap edge 语义
+- visual line 查询结果更接近稳定公开模型，而不是临时算法产物
+- 后续做 caret、selection、scroll 跟随时可以复用同一套边界数据
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续把 boundary / query result 模型往更稳定的公开 API 推
+2. 让 selection / cursor / hit-test 继续共享更统一的布局结果模型
+3. 再把 viewport 与 scroll 策略继续前推
+
+### 40.17 Query Result 公共模型收敛进度
+
+本轮继续沿 shared 主线推进，把布局查询结果进一步往更稳定的公开模型收敛：
+
+- `LayoutPositionQueryResult` 新增：
+  - `localColumn`
+  - `boundary`
+- `LayoutSelectionQueryResult` 不再只暴露平行数组，新增：
+  - `fragments`
+- 新增 `LayoutSelectionFragment`
+- `LayoutHitTestResult` 新增：
+  - `positionResult`
+
+这次推进后的直接收益：
+
+- position / selection / hit-test 的结果模型开始更明确地表达边界与片段信息
+- selection 结果不再依赖 `rects` 与 `visualLines` 的隐式一一对应
+- 后续如果要把这些结果公开给上层使用，模型已经更稳定、也更可扩展
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过
+
+下一步建议顺序：
+
+1. 继续让 selection / cursor / hit-test 共用更统一的 geometry 结果模型
+2. 再把 viewport 与 scroll 策略继续前推
+3. 再开始评估哪些 layout query 模型适合最终公开到更高层 API
+
+### 40.18 Geometry 结果模型推进
+
+本轮继续沿 shared 主线推进，把此前已经开始收敛的查询结果再向统一 geometry 结果模型推进一步：
+
+- 新增 `LayoutGeometryQueryResult`
+- `LayoutQuery` 新增 `queryGeometry(cursor, selection)`
+- `EditorCoreImpl` 在以下主路径开始优先复用统一 geometry 结果：
+  - `buildRenderModel`
+  - `ensureCursorVisible`
+  - `getPositionRect`
+
+同时本轮继续把结果模型往更稳定的公开结构收敛：
+
+- `LayoutPositionQueryResult` 新增：
+  - `localColumn`
+  - `boundary`
+- `LayoutSelectionQueryResult` 新增：
+  - `fragments`
+- `LayoutHitTestResult` 新增：
+  - `positionResult`
+
+这次推进后的直接收益：
+
+- cursor / selection / hit-test 的 geometry 信息开始真正共享一套结果结构
+- `EditorCoreImpl` 再次后退一层，更接近协调层
+- 后续往 viewport / scroll 策略推进时，可以直接消费 geometry 结果而不是重复拼 rect
+
+本轮验证结果：
+
+- `:editor-core-shared:jvmTest` 通过
+- `:editor-core-shared:compileKotlinJvm` 通过

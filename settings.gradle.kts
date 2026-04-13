@@ -35,3 +35,4 @@ plugins {
 
 include(":example")
 include(":editor-compose")
+include(":editor-core-shared")

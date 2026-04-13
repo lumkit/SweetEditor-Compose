@@ -1,12 +1,6 @@
 package com.qiplat.compose.sweeteditor.core.layout
 
-import com.qiplat.compose.sweeteditor.core.EditorCoreRect
-import com.qiplat.compose.sweeteditor.core.EditorCoreRenderLine
-import com.qiplat.compose.sweeteditor.core.EditorCoreRenderRun
-import com.qiplat.compose.sweeteditor.core.EditorCoreTextMeasurer
-import com.qiplat.compose.sweeteditor.core.EditorCoreTextPosition
-import com.qiplat.compose.sweeteditor.core.EditorCoreTextRange
-import com.qiplat.compose.sweeteditor.core.EditorCoreWrapMode
+import com.qiplat.compose.sweeteditor.core.*
 import com.qiplat.compose.sweeteditor.core.document.DocumentStore
 
 data class LayoutSettings(
@@ -24,213 +18,265 @@ data class LayoutSnapshot(
     val contentHeight: Float,
 )
 
+data class LayoutPositionQueryResult(
+    val position: EditorCoreTextPosition,
+    val rect: EditorCoreRect,
+    val visualLine: LayoutVisualLine,
+    val localColumn: Int,
+    val boundary: LayoutColumnBoundary,
+)
+
+data class LayoutSelectionQueryResult(
+    val range: EditorCoreTextRange?,
+    val fragments: List<LayoutSelectionFragment>,
+) {
+    val rects: List<EditorCoreRect>
+        get() = fragments.map { fragment -> fragment.rect }
+
+    val visualLines: List<LayoutVisualLine>
+        get() = fragments.map { fragment -> fragment.visualLine }
+}
+
+data class LayoutSelectionFragment(
+    val visualLine: LayoutVisualLine,
+    val startColumn: Int,
+    val endColumn: Int,
+    val rect: EditorCoreRect,
+)
+
+data class LayoutGeometryQueryResult(
+    val cursor: LayoutPositionQueryResult,
+    val selection: LayoutSelectionQueryResult,
+)
+
+data class LayoutLineQueryResult(
+    val logicalLine: Int,
+    val visualLine: LayoutVisualLine,
+    val rect: EditorCoreRect,
+)
+
+enum class LayoutColumnAffinity {
+    Leading,
+    Trailing,
+}
+
+data class LayoutColumnMappingResult(
+    val visualLine: LayoutVisualLine,
+    val x: Float,
+    val localColumn: Int,
+    val column: Int,
+    val affinity: LayoutColumnAffinity,
+)
+
 data class LayoutHitTestResult(
     val position: EditorCoreTextPosition,
     val rect: EditorCoreRect,
+    val visualLine: LayoutVisualLine,
+    val positionResult: LayoutPositionQueryResult,
+    val columnMapping: LayoutColumnMappingResult,
+)
+
+data class LayoutColumnBoundary(
+    val sourceColumn: Int,
+    val x: Float,
+)
+
+data class LayoutVisualLine(
+    val logicalLine: Int,
+    val wrapIndex: Int,
+    val startColumn: Int,
+    val endColumn: Int,
+    val top: Float,
+    val height: Float,
+    val width: Float,
+    val text: String,
+    val columnBoundaries: List<LayoutColumnBoundary>,
 )
 
 class LayoutEngine(
     private val textMeasurer: EditorCoreTextMeasurer,
 ) {
+    fun createQuery(
+        documentStore: DocumentStore,
+        viewportWidth: Int,
+        settings: LayoutSettings,
+    ): LayoutQuery {
+        val lineHeight = resolveLineHeight(settings)
+        val visualLines = resolveVisualLines(
+            documentStore = documentStore,
+            viewportWidth = viewportWidth,
+            settings = settings,
+        )
+        return LayoutQuery(
+            visualLines = visualLines,
+            lineHeight = lineHeight,
+            contentWidth = visualLines.maxOfOrNull { visualLine -> visualLine.width } ?: 0f,
+            contentHeight = visualLines.size * lineHeight,
+        )
+    }
+
     fun layout(
         documentStore: DocumentStore,
         viewportWidth: Int,
         viewportHeight: Int,
         scrollY: Float,
         settings: LayoutSettings,
-    ): LayoutSnapshot {
-        val lineHeight = resolveLineHeight(settings)
-        val segmentsByLine = (0 until documentStore.getLineCount()).map { line ->
-            wrapLine(
-                text = documentStore.getLineText(line),
-                viewportWidth = viewportWidth,
-                settings = settings,
-            )
-        }
-        val totalVisualLines = segmentsByLine.sumOf { it.size }
-        val contentHeight = totalVisualLines * lineHeight
-        val contentWidth = segmentsByLine
-            .flatten()
-            .maxOfOrNull { segment -> segment.width }
-            ?: 0f
-        val firstVisibleIndex = (scrollY / lineHeight).toInt().coerceAtLeast(0)
-        val visibleLineCapacity = (viewportHeight / lineHeight).toInt().coerceAtLeast(1) + 1
-        val lastVisibleIndex = (firstVisibleIndex + visibleLineCapacity).coerceAtMost(totalVisualLines)
-        val lines = ArrayList<EditorCoreRenderLine>()
-        var visualIndex = 0
-        segmentsByLine.forEachIndexed { logicalLine, segments ->
-            segments.forEachIndexed { wrapIndex, segment ->
-                if (visualIndex in firstVisibleIndex until lastVisibleIndex) {
-                    lines += EditorCoreRenderLine(
-                        logicalLine = logicalLine,
-                        wrapIndex = wrapIndex,
-                        top = visualIndex * lineHeight,
-                        height = lineHeight,
-                        text = segment.text,
-                        runs = listOf(
-                            EditorCoreRenderRun(
-                                text = segment.text,
-                                x = 0f,
-                                width = segment.width,
-                            ),
-                        ),
-                    )
-                }
-                visualIndex += 1
-            }
-        }
-        return LayoutSnapshot(
+    ): LayoutSnapshot =
+        createQuery(
+            documentStore = documentStore,
+            viewportWidth = viewportWidth,
+            settings = settings,
+        ).toSnapshot(
             documentVersion = documentStore.version,
-            lines = lines,
-            lineHeight = lineHeight,
-            contentWidth = contentWidth,
-            contentHeight = contentHeight,
+            viewportHeight = viewportHeight,
+            scrollY = scrollY,
         )
-    }
 
     fun measurePositionRect(
         documentStore: DocumentStore,
         position: EditorCoreTextPosition,
+        viewportWidth: Int,
         settings: LayoutSettings,
-    ): EditorCoreRect {
-        val lineHeight = resolveLineHeight(settings)
-        val lineText = documentStore.getLineText(position.line)
-        val x = measureTextWidth(
-            text = lineText.take(position.column.coerceAtMost(lineText.length)),
+    ): EditorCoreRect =
+        createQuery(
+            documentStore = documentStore,
+            viewportWidth = viewportWidth,
             settings = settings,
-        )
-        val y = position.line * lineHeight
-        return EditorCoreRect(
-            x = x,
-            y = y,
-            width = 0f,
-            height = lineHeight,
-        )
-    }
+        ).measurePositionRect(position)
 
     fun buildSelectionRects(
         documentStore: DocumentStore,
         range: EditorCoreTextRange?,
+        viewportWidth: Int,
         settings: LayoutSettings,
-    ): List<EditorCoreRect> {
-        val activeRange = range ?: return emptyList()
-        if (activeRange.start == activeRange.end) {
-            return emptyList()
-        }
-        val lineHeight = resolveLineHeight(settings)
-        val rects = ArrayList<EditorCoreRect>()
-        for (line in activeRange.start.line..activeRange.end.line) {
-            val lineText = documentStore.getLineText(line)
-            val startColumn = if (line == activeRange.start.line) activeRange.start.column else 0
-            val endColumn = if (line == activeRange.end.line) activeRange.end.column else lineText.length
-            if (endColumn <= startColumn) {
-                continue
-            }
-            val startX = measureTextWidth(
-                text = lineText.take(startColumn.coerceAtMost(lineText.length)),
-                settings = settings,
-            )
-            val endX = measureTextWidth(
-                text = lineText.take(endColumn.coerceAtMost(lineText.length)),
-                settings = settings,
-            )
-            rects += EditorCoreRect(
-                x = startX,
-                y = line * lineHeight,
-                width = (endX - startX).coerceAtLeast(0f),
-                height = lineHeight,
-            )
-        }
-        return rects
-    }
+    ): List<EditorCoreRect> =
+        createQuery(
+            documentStore = documentStore,
+            viewportWidth = viewportWidth,
+            settings = settings,
+        ).buildSelectionRects(range)
 
     fun hitTest(
         documentStore: DocumentStore,
         x: Float,
         y: Float,
+        viewportWidth: Int,
         settings: LayoutSettings,
-    ): LayoutHitTestResult {
-        val lineHeight = resolveLineHeight(settings)
-        val targetLine = (y / lineHeight).toInt().coerceIn(
-            minimumValue = 0,
-            maximumValue = (documentStore.getLineCount() - 1).coerceAtLeast(0),
-        )
-        val lineText = documentStore.getLineText(targetLine)
-        val normalized = normalizeText(lineText, settings.tabSize)
-        val targetX = x.coerceAtLeast(0f)
-        val column = findClosestColumn(
-            text = normalized,
-            x = targetX,
-        )
-        val resolvedPosition = EditorCoreTextPosition(
-            line = targetLine,
-            column = column.coerceAtMost(lineText.length),
-        )
-        val rect = measurePositionRect(
+    ): LayoutHitTestResult =
+        createQuery(
             documentStore = documentStore,
-            position = resolvedPosition,
+            viewportWidth = viewportWidth,
             settings = settings,
-        )
-        return LayoutHitTestResult(
-            position = resolvedPosition,
-            rect = rect,
-        )
-    }
+        ).hitTest(x = x, y = y)
+
+    fun getVisualLineForPoint(
+        documentStore: DocumentStore,
+        y: Float,
+        viewportWidth: Int,
+        settings: LayoutSettings,
+    ): LayoutVisualLine =
+        createQuery(
+            documentStore = documentStore,
+            viewportWidth = viewportWidth,
+            settings = settings,
+        ).getVisualLineForPoint(y)
 
     private fun wrapLine(
         text: String,
         viewportWidth: Int,
         settings: LayoutSettings,
     ): List<MeasuredSegment> {
-        val normalized = normalizeText(text, settings.tabSize)
-        if (normalized.isEmpty()) {
-            return listOf(MeasuredSegment(text = "", width = 0f))
+        val lineMeasurement = measureLine(
+            text = text,
+            tabSize = settings.tabSize,
+        )
+        if (lineMeasurement.sourceText.isEmpty()) {
+            return listOf(
+                createMeasuredSegment(
+                    lineMeasurement = lineMeasurement,
+                    startColumn = 0,
+                    endColumn = 0,
+                ),
+            )
         }
         if (settings.wrapMode == EditorCoreWrapMode.None || viewportWidth <= 0) {
             return listOf(
-                MeasuredSegment(
-                    text = normalized,
-                    width = measureNormalizedTextWidth(normalized),
+                createMeasuredSegment(
+                    lineMeasurement = lineMeasurement,
+                    startColumn = 0,
+                    endColumn = lineMeasurement.sourceText.length,
                 ),
             )
         }
         val maxWidth = viewportWidth.toFloat()
         val segments = ArrayList<MeasuredSegment>()
         var startIndex = 0
-        while (startIndex < normalized.length) {
+        while (startIndex < lineMeasurement.sourceText.length) {
             var bestEnd = findLongestFittingEnd(
-                text = normalized,
+                lineMeasurement = lineMeasurement,
                 startIndex = startIndex,
                 maxWidth = maxWidth,
             )
             if (settings.wrapMode == EditorCoreWrapMode.WordBreak) {
                 bestEnd = findWordBreakEnd(
-                    text = normalized,
+                    text = lineMeasurement.sourceText,
                     startIndex = startIndex,
                     fittedEnd = bestEnd,
                 )
             }
-            val segmentText = normalized.substring(startIndex, bestEnd)
-            segments += MeasuredSegment(
-                text = segmentText,
-                width = measureNormalizedTextWidth(segmentText),
+            segments += createMeasuredSegment(
+                lineMeasurement = lineMeasurement,
+                startColumn = startIndex,
+                endColumn = bestEnd,
             )
             startIndex = bestEnd
         }
         return segments
     }
 
+    private fun resolveVisualLines(
+        documentStore: DocumentStore,
+        viewportWidth: Int,
+        settings: LayoutSettings,
+    ): List<LayoutVisualLine> {
+        val lineHeight = resolveLineHeight(settings)
+        val visualLines = ArrayList<LayoutVisualLine>()
+        var visualIndex = 0
+        for (logicalLine in 0 until documentStore.getLineCount()) {
+            val segments = wrapLine(
+                text = documentStore.getLineText(logicalLine),
+                viewportWidth = viewportWidth,
+                settings = settings,
+            )
+            segments.forEachIndexed { wrapIndex, segment ->
+                visualLines += LayoutVisualLine(
+                    logicalLine = logicalLine,
+                    wrapIndex = wrapIndex,
+                    startColumn = segment.startColumn,
+                    endColumn = segment.endColumn,
+                    top = visualIndex * lineHeight,
+                    height = lineHeight,
+                    width = segment.width,
+                    text = segment.text,
+                    columnBoundaries = segment.columnBoundaries,
+                )
+                visualIndex += 1
+            }
+        }
+        return visualLines
+    }
+
     private fun findLongestFittingEnd(
-        text: String,
+        lineMeasurement: LineMeasurement,
         startIndex: Int,
         maxWidth: Float,
     ): Int {
         var low = startIndex + 1
-        var high = text.length
+        var high = lineMeasurement.sourceText.length
         var bestEnd = low
         while (low <= high) {
             val mid = (low + high).ushr(1)
-            val candidateWidth = measureNormalizedTextWidth(text.substring(startIndex, mid))
+            val candidateWidth = lineMeasurement.boundaries[mid].x - lineMeasurement.boundaries[startIndex].x
             if (candidateWidth <= maxWidth || mid == startIndex + 1) {
                 bestEnd = mid
                 low = mid + 1
@@ -260,64 +306,108 @@ class LayoutEngine(
         return (baseLineHeight * settings.lineSpacingMultiplier + settings.lineSpacingExtra).coerceAtLeast(1f)
     }
 
-    private fun measureTextWidth(
-        text: String,
-        settings: LayoutSettings,
-    ): Float = measureNormalizedTextWidth(normalizeText(text, settings.tabSize))
-
     private fun measureNormalizedTextWidth(text: String): Float =
         textMeasurer.measureTextWidth(
             text = text,
             fontStyle = 0,
         )
 
-    private fun findClosestColumn(
+    private fun measureLine(
         text: String,
-        x: Float,
-    ): Int {
+        tabSize: Int,
+    ): LineMeasurement {
         if (text.isEmpty()) {
-            return 0
+            return LineMeasurement(
+                sourceText = "",
+                renderedPieces = emptyList(),
+                boundaries = listOf(
+                    MeasuredBoundary(
+                        sourceColumn = 0,
+                        x = 0f,
+                    ),
+                ),
+            )
         }
-        var low = 0
-        var high = text.length
-        var best = 0
-        while (low <= high) {
-            val mid = (low + high).ushr(1)
-            val width = measureNormalizedTextWidth(text.substring(0, mid))
-            if (width <= x) {
-                best = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
+        val renderedPieces = ArrayList<String>(text.length)
+        val boundaries = ArrayList<MeasuredBoundary>(text.length + 1)
+        var renderedText = ""
+        var visualColumn = 0
+        boundaries += MeasuredBoundary(
+            sourceColumn = 0,
+            x = 0f,
+        )
+        text.forEachIndexed { index, char ->
+            val piece = expandChar(
+                char = char,
+                visualColumn = visualColumn,
+                tabSize = tabSize,
+            )
+            renderedPieces += piece
+            renderedText += piece
+            visualColumn += piece.length
+            boundaries += MeasuredBoundary(
+                sourceColumn = index + 1,
+                x = measureNormalizedTextWidth(renderedText),
+            )
         }
-        if (best >= text.length) {
-            return text.length
-        }
-        val leftWidth = measureNormalizedTextWidth(text.substring(0, best))
-        val rightWidth = measureNormalizedTextWidth(text.substring(0, best + 1))
-        return if (x - leftWidth <= rightWidth - x) best else best + 1
+        return LineMeasurement(
+            sourceText = text,
+            renderedPieces = renderedPieces,
+            boundaries = boundaries,
+        )
     }
 
-    private fun normalizeText(text: String, tabSize: Int): String =
-        if ('\t' !in text) {
-            text
-        } else {
-            buildString(text.length) {
-                text.forEach { char ->
-                    if (char == '\t') {
-                        repeat(tabSize.coerceAtLeast(1)) {
-                            append(' ')
-                        }
-                    } else {
-                        append(char)
-                    }
-                }
-            }
-        }
+    private fun expandChar(
+        char: Char,
+        visualColumn: Int,
+        tabSize: Int,
+    ): String = if (char != '\t') {
+        char.toString()
+    } else {
+        " ".repeat((tabSize - (visualColumn % tabSize)).coerceAtLeast(1))
+    }
+
+    private fun createMeasuredSegment(
+        lineMeasurement: LineMeasurement,
+        startColumn: Int,
+        endColumn: Int,
+    ): MeasuredSegment {
+        val startBoundary = lineMeasurement.boundaries[startColumn]
+        val endBoundary = lineMeasurement.boundaries[endColumn]
+        return MeasuredSegment(
+            text = lineMeasurement.renderedPieces
+                .subList(startColumn, endColumn)
+                .joinToString(separator = ""),
+            width = endBoundary.x - startBoundary.x,
+            startColumn = startColumn,
+            endColumn = endColumn,
+            columnBoundaries = lineMeasurement.boundaries
+                .subList(startColumn, endColumn + 1)
+                .map { boundary ->
+                    LayoutColumnBoundary(
+                        sourceColumn = boundary.sourceColumn,
+                        x = boundary.x - startBoundary.x,
+                    )
+                },
+        )
+    }
 }
 
 private data class MeasuredSegment(
     val text: String,
     val width: Float,
+    val startColumn: Int,
+    val endColumn: Int,
+    val columnBoundaries: List<LayoutColumnBoundary>,
+)
+
+private data class LineMeasurement(
+    val sourceText: String,
+    val renderedPieces: List<String>,
+    val boundaries: List<MeasuredBoundary>,
+)
+
+private data class MeasuredBoundary(
+    val sourceColumn: Int,
+    val x: Float,
 )

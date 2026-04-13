@@ -59,6 +59,7 @@ class LayoutEngineCommonTest {
                 start = EditorCoreTextPosition(0, 1),
                 end = EditorCoreTextPosition(1, 2),
             ),
+            viewportWidth = 200,
             settings = LayoutSettings(),
         )
 
@@ -77,11 +78,50 @@ class LayoutEngineCommonTest {
             documentStore = store,
             x = 2.6f,
             y = 11f,
+            viewportWidth = 200,
             settings = LayoutSettings(),
         )
 
         assertEquals(EditorCoreTextPosition(1, 3), hit.position)
         assertEquals(10f, hit.rect.y)
+    }
+
+    @Test
+    fun hitTestResolvesWrappedVisualLine() {
+        val engine = LayoutEngine(FakeTextMeasurer())
+        val store = DocumentStore("abcdef")
+
+        val hit = engine.hitTest(
+            documentStore = store,
+            x = 1.2f,
+            y = 12f,
+            viewportWidth = 3,
+            settings = LayoutSettings(
+                wrapMode = EditorCoreWrapMode.CharBreak,
+            ),
+        )
+
+        assertEquals(EditorCoreTextPosition(0, 4), hit.position)
+        assertEquals(1, hit.visualLine.wrapIndex)
+        assertEquals("def", hit.visualLine.text)
+    }
+
+    @Test
+    fun measurePositionRectUsesWrappedVisualLineTop() {
+        val engine = LayoutEngine(FakeTextMeasurer())
+        val store = DocumentStore("abcdef")
+
+        val rect = engine.measurePositionRect(
+            documentStore = store,
+            position = EditorCoreTextPosition(0, 4),
+            viewportWidth = 3,
+            settings = LayoutSettings(
+                wrapMode = EditorCoreWrapMode.CharBreak,
+            ),
+        )
+
+        assertEquals(10f, rect.y)
+        assertEquals(1f, rect.x)
     }
 }
 

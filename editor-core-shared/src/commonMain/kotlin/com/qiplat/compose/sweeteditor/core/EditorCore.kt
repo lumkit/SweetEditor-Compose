@@ -268,6 +268,10 @@ interface EditorCore {
 
     fun selectAll()
 
+    fun selectCurrentLine()
+
+    fun duplicateSelectionOrLine(): EditorCoreTextEditResult
+
     fun getSelectedText(): String?
 
     fun getWordRangeAtCursor(): EditorCoreTextRange
@@ -286,11 +290,19 @@ interface EditorCore {
 
     fun moveCursorToLineEnd(extendSelection: Boolean)
 
+    fun moveCursorToPreviousWord(extendSelection: Boolean)
+
+    fun moveCursorToNextWord(extendSelection: Boolean)
+
     fun scrollToLine(line: Int, behavior: EditorCoreScrollBehavior)
 
     fun gotoPosition(line: Int, column: Int)
 
     fun setScroll(scrollX: Float, scrollY: Float)
+
+    fun ensureCursorVisible()
+
+    fun getPositionForPoint(x: Float, y: Float): EditorCoreTextPosition
 
     fun getPositionRect(line: Int, column: Int): EditorCoreCursorRect
 
