@@ -56,7 +56,7 @@
 ## Contributors
 
 <a href="https://github.com/lumkit/SweetEditor-Compose/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=/lumkit/SweetEditor-Compose" />
+  <img src="https://contrib.rocks/image?repo=lumkit/SweetEditor-Compose" />
 </a>
 
 ## License
