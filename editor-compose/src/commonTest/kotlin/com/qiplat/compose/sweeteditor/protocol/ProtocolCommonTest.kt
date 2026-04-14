@@ -162,6 +162,101 @@ class ProtocolCommonTest {
     }
 
     @Test
+    fun decodeRenderModelFallsBackToLegacyLineLayout() {
+        val writer = BinaryWriter()
+        writer.writeFloat(1f)
+        writer.writeBooleanAsInt(true)
+        writer.writeFloat(2f)
+        writer.writeFloat(3f)
+        writer.writeFloat(100f)
+        writer.writeFloat(200f)
+        writer.writeFloat(4f)
+        writer.writeFloat(5f)
+        writer.writeInt(0)
+
+        writer.writeInt(1)
+        writer.writeInt(7)
+        writer.writeInt(0)
+        writer.writeFloat(10f)
+        writer.writeFloat(20f)
+        writer.writeBooleanAsInt(false)
+        writer.writeInt(1)
+        writer.writeInt(1)
+        writer.writeInt(4)
+        writer.writeFloat(11f)
+        writer.writeFloat(22f)
+        writer.writeUtf8("fold")
+        writer.writeInt(3)
+        writer.writeInt(0xFFAA00)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeFloat(50f)
+        writer.writeFloat(1f)
+        writer.writeFloat(2f)
+
+        writer.writeInt(0)
+        writer.writeInt(0)
+
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeBooleanAsInt(false)
+        writer.writeBooleanAsInt(false)
+
+        writer.writeInt(0)
+
+        repeat(2) {
+            writer.writeFloat(0f)
+            writer.writeFloat(0f)
+            writer.writeFloat(0f)
+            writer.writeBooleanAsInt(false)
+        }
+
+        writer.writeBooleanAsInt(false)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeBooleanAsInt(true)
+        writer.writeFloat(0.7f)
+        writer.writeBooleanAsInt(true)
+        repeat(2) {
+            writer.writeFloat(1f)
+            writer.writeFloat(2f)
+            writer.writeFloat(3f)
+            writer.writeFloat(4f)
+        }
+        writer.writeBooleanAsInt(false)
+        writer.writeFloat(0.1f)
+        writer.writeBooleanAsInt(false)
+        repeat(2) {
+            writer.writeFloat(5f)
+            writer.writeFloat(6f)
+            writer.writeFloat(7f)
+            writer.writeFloat(8f)
+        }
+        writer.writeBooleanAsInt(true)
+        writer.writeBooleanAsInt(false)
+
+        val model = ProtocolDecoder.decodeRenderModel(writer.toByteArray())
+        assertNotNull(model)
+        assertEquals(1, model.lines.size)
+        assertEquals(VisualLineKind.Content, model.lines.single().kind)
+        assertTrue(model.lines.single().ownsGutterSemantics)
+        assertFalse(model.lines.single().runs.single().active)
+        assertTrue(model.verticalScrollbar.thumbActive)
+        assertEquals(PointerCursorType.Default, model.pointerCursorType)
+    }
+
+    @Test
     fun decodeGestureResultReadsPointerCursorType() {
         val writer = BinaryWriter()
         writer.writeInt(1)

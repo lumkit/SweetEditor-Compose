@@ -1,11 +1,7 @@
 package com.qiplat.compose.sweeteditor
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
@@ -25,6 +21,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qiplat.compose.sweeteditor.model.decoration.*
+import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
 import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
@@ -61,11 +58,18 @@ fun App() {
             textMeasurer = editorAppearance.textMeasurer,
             state = editorState,
         )
+        val fps by rememberFps()
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
-        var wrapEnabled by remember { mutableStateOf(false) }
-        var readOnly by remember { mutableStateOf(false) }
-        var compositionEnabled by remember { mutableStateOf(true) }
+        var wrapModeOrdinal by rememberSaveable { mutableIntStateOf(WrapMode.None.ordinal) }
+        var currentLineRenderModeOrdinal by rememberSaveable {
+            mutableIntStateOf(CurrentLineRenderMode.Background.ordinal)
+        }
+        var readOnly by rememberSaveable { mutableStateOf(false) }
+        var compositionEnabled by rememberSaveable { mutableStateOf(true) }
+        var gutterVisible by rememberSaveable { mutableStateOf(true) }
+        var gutterSticky by rememberSaveable { mutableStateOf(true) }
+        var showSplitLine by rememberSaveable { mutableStateOf(true) }
 
         val sampleSpecs = remember {
             listOf(
@@ -83,18 +87,36 @@ fun App() {
             )
         }
         val completionProvider = remember { ExampleDemoCompletionProvider() }
-        val editorSettings = remember(wrapEnabled, readOnly, compositionEnabled) {
+        val wrapMode = WrapMode.entries[wrapModeOrdinal.coerceIn(0, WrapMode.entries.lastIndex)]
+        val currentLineRenderMode = CurrentLineRenderMode.entries[
+            currentLineRenderModeOrdinal.coerceIn(0, CurrentLineRenderMode.entries.lastIndex)
+        ]
+        val editorSettings = remember(
+            wrapMode,
+            readOnly,
+            compositionEnabled,
+            gutterVisible,
+            gutterSticky,
+            currentLineRenderMode,
+        ) {
             EditorSettings(
-                wrapMode = if (wrapEnabled) WrapMode.WordBreak else WrapMode.None,
+                wrapMode = wrapMode,
                 tabSize = 4,
-                gutterVisible = true,
-                gutterSticky = true,
+                gutterVisible = gutterVisible,
+                gutterSticky = gutterSticky,
+                currentLineRenderMode = currentLineRenderMode,
                 readOnly = readOnly,
                 compositionEnabled = compositionEnabled,
             )
         }
         val activeSample =
             loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
+        val scale by editorController.scaleState
+        val cursorPosition by editorController.cursorPositionState
+        val visibleLineRange by editorController.visibleLineRangeState
+        val selectedText by editorController.selectedTextState
+        val canUndo by editorController.canUndoState
+        val canRedo by editorController.canRedoState
 
         LaunchedEffect(sampleSpecs) {
             val configurationCache = mutableMapOf<String, LanguageConfiguration>()
@@ -116,8 +138,12 @@ fun App() {
             val sampleText = Res.readBytes(sample.spec.samplePath).decodeToString()
             editorController.setLanguageConfiguration(sample.configuration)
             editorController.loadText(sampleText)
-            editorController.setShowSplitLine(true)
+            editorController.setShowSplitLine(showSplitLine)
             editorController.onFontMetricsChanged()
+        }
+
+        LaunchedEffect(editorController, showSplitLine) {
+            editorController.setShowSplitLine(showSplitLine)
         }
 
         DisposableEffect(editorController, completionProvider) {
@@ -138,15 +164,40 @@ fun App() {
                         actionIconContentColor = Color(editorAppearance.theme.textColor),
                     ),
                     title = {
-                        Text("Sweet Editor")
+                        Text(activeSample?.spec?.title?.let { "Sweet Editor · $it" } ?: "Sweet Editor")
                     },
                     actions = {
                         Actions(
-                            editorController,
-                            darkThemeState,
-                            onDarkThemeChanged = {
-                                darkThemeState = it
-                            }
+                            editorController = editorController,
+                            darkThemeState = darkThemeState,
+                            wrapMode = wrapMode,
+                            readOnly = readOnly,
+                            compositionEnabled = compositionEnabled,
+                            gutterVisible = gutterVisible,
+                            showSplitLine = showSplitLine,
+                            currentLineRenderMode = currentLineRenderMode,
+                            canUndo = canUndo,
+                            canRedo = canRedo,
+                            onDarkThemeChanged = { darkThemeState = it },
+                            onCycleWrapMode = {
+                                wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
+                            },
+                            onToggleReadOnly = {
+                                readOnly = !readOnly
+                            },
+                            onToggleComposition = {
+                                compositionEnabled = !compositionEnabled
+                            },
+                            onToggleGutterVisible = {
+                                gutterVisible = !gutterVisible
+                            },
+                            onToggleSplitLine = {
+                                showSplitLine = !showSplitLine
+                            },
+                            onCycleCurrentLineRenderMode = {
+                                currentLineRenderModeOrdinal =
+                                    (currentLineRenderModeOrdinal + 1) % CurrentLineRenderMode.entries.size
+                            },
                         )
                     }
                 )
@@ -156,20 +207,34 @@ fun App() {
                     LocalContentColor provides Color(editorAppearance.theme.textColor),
                 ) {
                     ProvideTextStyle(value = MaterialTheme.typography.labelMedium) {
-                        val scale by editorController.scaleState
                         Row(
                             Modifier.fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.navigationBars)
-                                .height(56.dp)
+                                .height(72.dp)
                                 .padding(horizontal = 16.dp)
                                 .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "Scale: ${scale.toString().take(4)}",
-                                modifier = Modifier.width(80.dp)
+                                text = "Ln ${cursorPosition.line + 1}, Col ${cursorPosition.column + 1}",
+                                modifier = Modifier.width(120.dp),
                             )
-
+                            Text(
+                                text = visibleLineRange?.let { "Visible ${it.first + 1}-${it.last + 1}" } ?: "Visible -",
+                                modifier = Modifier.width(128.dp),
+                            )
+                            Text(
+                                text = if (selectedText.isNullOrEmpty()) "Selection 0" else "Selection ${selectedText!!.length}",
+                                modifier = Modifier.width(110.dp),
+                            )
+                            Text(
+                                text = "FPS ${fps.toInt()}",
+                                modifier = Modifier.width(70.dp),
+                            )
+                            Text(
+                                text = "Scale: ${scale.toString().take(4)}",
+                                modifier = Modifier.width(80.dp),
+                            )
                             Slider(
                                 value = scale,
                                 onValueChange = {
@@ -181,63 +246,158 @@ fun App() {
                         }
                     }
                 }
-            }
-        ) {
-            SweetEditor(
-                controller = editorController,
-                modifier = Modifier.padding(it).fillMaxSize(),
-                theme = editorAppearance.theme,
-                settings = editorSettings,
-                decorationProviders = decorationProviders,
-                onGestureResult = { result ->
-
-                },
-                onHitTarget = { hitTarget ->
-
-                },
-                onContextMenuRequest = { request ->
-
-                },
-                onSelectionHandleDragStateChange = { dragState ->
-
-                },
-                completions = { selectedIndex, items, renderer ->
-                    val theme = editorAppearance.theme
-                    val backgroundColor = theme.gutterBackgroundColor.toComposeColor()
-                    val borderColor = theme.scrollbarThumbColor.toComposeColor()
-                    val selectedColor = theme.selectionColor.toComposeColor()
-                    val textColor = theme.textColor.toComposeColor()
-
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        Column(
+            },
+        ) { paddingValues ->
+            ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = Color(editorAppearance.theme.textColor))) {
+                Column(
+                    modifier = Modifier.padding(paddingValues).fillMaxSize(),
+                ) {
+                    if (loadedSamples.isNotEmpty()) {
+                        Row(
                             modifier = Modifier
-                                .background(backgroundColor)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, borderColor, RoundedCornerShape(8.dp))
-                                .padding(vertical = 4.dp),
+                                .fillMaxWidth()
+                                .background(Color(editorAppearance.theme.gutterBackgroundColor))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items.forEachIndexed { index, item ->
-                                val isSelected = index == selectedIndex
-                                Text(
-                                    text = renderer?.render(item) ?: item.detail?.let { "${item.label}  $it" } ?: item.label,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .background(if (isSelected) selectedColor else Color.Transparent)
-                                        .clickable {
-                                            editorController.selectCompletionItem(index)
-                                            editorController.applySelectedCompletionItem()
-                                            editorController.dismissCompletion()
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = textColor
+                            loadedSamples.forEachIndexed { index, sample ->
+                                FilterChip(
+                                    selected = index == selectedSampleIndex,
+                                    onClick = {
+                                        selectedSampleIndex = index
+                                    },
+                                    label = {
+                                        Text(
+                                            sample.spec.title,
+                                        )
+                                    },
                                 )
                             }
                         }
                     }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(editorAppearance.theme.backgroundColor))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AssistChip(
+                            onClick = {
+                                wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
+                            },
+                            label = {
+                                Text("Wrap: ${wrapMode.name}")
+                            },
+                        )
+                        AssistChip(
+                            onClick = {
+                                currentLineRenderModeOrdinal =
+                                    (currentLineRenderModeOrdinal + 1) % CurrentLineRenderMode.entries.size
+                            },
+                            label = {
+                                Text("CurrentLine: ${currentLineRenderMode.name}")
+                            },
+                        )
+                        FilterChip(
+                            selected = !readOnly,
+                            onClick = {
+                                readOnly = !readOnly
+                            },
+                            label = {
+                                Text(if (readOnly) "ReadOnly" else "Editable")
+                            },
+                        )
+                        FilterChip(
+                            selected = compositionEnabled,
+                            onClick = {
+                                compositionEnabled = !compositionEnabled
+                            },
+                            label = {
+                                Text(if (compositionEnabled) "IME On" else "IME Off")
+                            },
+                        )
+                        FilterChip(
+                            selected = gutterVisible,
+                            onClick = {
+                                gutterVisible = !gutterVisible
+                            },
+                            label = {
+                                Text(if (gutterVisible) "Gutter On" else "Gutter Off")
+                            },
+                        )
+                        FilterChip(
+                            selected = gutterSticky,
+                            onClick = {
+                                gutterSticky = !gutterSticky
+                            },
+                            label = {
+                                Text(if (gutterSticky) "Sticky Gutter" else "Scrolling Gutter")
+                            },
+                        )
+                        FilterChip(
+                            selected = showSplitLine,
+                            onClick = {
+                                showSplitLine = !showSplitLine
+                            },
+                            label = {
+                                Text(if (showSplitLine) "SplitLine On" else "SplitLine Off")
+                            },
+                        )
+                    }
+
+                    SweetEditor(
+                        controller = editorController,
+                        modifier = Modifier.fillMaxSize(),
+                        theme = editorAppearance.theme,
+                        settings = editorSettings,
+                        decorationProviders = decorationProviders,
+                        onGestureResult = {},
+                        onHitTarget = {},
+                        onContextMenuRequest = {},
+                        onSelectionHandleDragStateChange = {},
+                        completions = { selectedIndex, items, renderer ->
+                            val theme = editorAppearance.theme
+                            val backgroundColor = theme.gutterBackgroundColor.toComposeColor()
+                            val borderColor = theme.scrollbarThumbColor.toComposeColor()
+                            val selectedColor = theme.selectionColor.toComposeColor()
+                            val textColor = theme.textColor.toComposeColor()
+
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .background(backgroundColor)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                                        .padding(vertical = 4.dp),
+                                ) {
+                                    items.forEachIndexed { index, item ->
+                                        val isSelected = index == selectedIndex
+                                        Text(
+                                            text = renderer?.render(item) ?: item.detail?.let { "${item.label}  $it" } ?: item.label,
+                                            modifier = Modifier.fillMaxWidth()
+                                                .background(if (isSelected) selectedColor else Color.Transparent)
+                                                .clickable {
+                                                    editorController.selectCompletionItem(index)
+                                                    editorController.applySelectedCompletionItem()
+                                                    editorController.dismissCompletion()
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = textColor,
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                    )
                 }
-            )
+            }
         }
     }
 }
@@ -247,16 +407,29 @@ fun App() {
 private fun RowScope.Actions(
     editorController: SweetEditorController,
     darkThemeState: Boolean,
+    wrapMode: WrapMode,
+    readOnly: Boolean,
+    compositionEnabled: Boolean,
+    gutterVisible: Boolean,
+    showSplitLine: Boolean,
+    currentLineRenderMode: CurrentLineRenderMode,
+    canUndo: Boolean,
+    canRedo: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
+    onCycleWrapMode: () -> Unit,
+    onToggleReadOnly: () -> Unit,
+    onToggleComposition: () -> Unit,
+    onToggleGutterVisible: () -> Unit,
+    onToggleSplitLine: () -> Unit,
+    onCycleCurrentLineRenderMode: () -> Unit,
 ) {
     var menuState by rememberSaveable { mutableStateOf(false) }
-    val wrapMode by editorController.wrapModeState
 
     IconButton(
         {
             editorController.undo()
         },
-        enabled = editorController.canUndoState.value,
+        enabled = canUndo,
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Outlined.Undo,
@@ -268,7 +441,7 @@ private fun RowScope.Actions(
         {
             editorController.redo()
         },
-        enabled = editorController.canRedoState.value,
+        enabled = canRedo,
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Outlined.Redo,
@@ -303,10 +476,7 @@ private fun RowScope.Actions(
                     )
                 },
                 onClick = {
-                    val nextMode = (wrapMode.ordinal + 1).let {
-                        if (it >= WrapMode.entries.size) 0 else it
-                    }
-                    editorController.setWrapMode(WrapMode.entries[nextMode])
+                    onCycleWrapMode()
                     menuState = false
                 }
             )
@@ -323,6 +493,56 @@ private fun RowScope.Actions(
                 },
                 onClick = {
                     onDarkThemeChanged(!darkThemeState)
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (readOnly) "Switch To Editable" else "Switch To ReadOnly")
+                },
+                onClick = {
+                    onToggleReadOnly()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (compositionEnabled) "Disable IME Composition" else "Enable IME Composition")
+                },
+                onClick = {
+                    onToggleComposition()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (gutterVisible) "Hide Gutter" else "Show Gutter")
+                },
+                onClick = {
+                    onToggleGutterVisible()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (showSplitLine) "Hide Split Line" else "Show Split Line")
+                },
+                onClick = {
+                    onToggleSplitLine()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text("CurrentLine: ${currentLineRenderMode.name}")
+                },
+                onClick = {
+                    onCycleCurrentLineRenderMode()
                     menuState = false
                 }
             )

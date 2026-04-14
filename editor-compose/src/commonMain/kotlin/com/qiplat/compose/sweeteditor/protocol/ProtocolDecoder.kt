@@ -146,70 +146,8 @@ object ProtocolDecoder {
         if (data == null) {
             return null
         }
-        val reader = BinaryReader(data)
-        val splitX = reader.readFloat()
-        val splitLineVisible = reader.readBooleanAsInt()
-        val scrollX = reader.readFloat()
-        val scrollY = reader.readFloat()
-        val viewportWidth = reader.readFloat()
-        val viewportHeight = reader.readFloat()
-        val currentLine = readPoint(reader)
-        val currentLineRenderMode = reader.readInt().toCurrentLineRenderMode()
-        val lines = readVisualLines(reader)
-        val gutterIcons = readGutterIconRenderItems(reader)
-        val foldMarkers = readFoldMarkerRenderItems(reader)
-        val cursor = readCursor(reader)
-        val selectionRects = readSelectionRects(reader)
-        val selectionStartHandle = readSelectionHandle(reader)
-        val selectionEndHandle = readSelectionHandle(reader)
-        val compositionDecoration = readCompositionDecoration(reader)
-        val guideSegments = readGuideSegments(reader)
-        val diagnosticDecorations = readDiagnosticDecorations(reader)
-        val maxGutterIcons = reader.readInt()
-        val linkedEditingRects = readLinkedEditingRects(reader)
-        val bracketHighlightRects = readBracketHighlightRects(reader)
-
-        var verticalScrollbar = ScrollbarModel()
-        var horizontalScrollbar = ScrollbarModel()
-        if (reader.canRead(44)) {
-            verticalScrollbar = readScrollbarModel(reader)
-        }
-        if (reader.canRead(44)) {
-            horizontalScrollbar = readScrollbarModel(reader)
-        }
-
-        val gutterSticky = if (reader.canRead(4)) reader.readBooleanAsInt() else true
-        val gutterVisible = if (reader.canRead(4)) reader.readBooleanAsInt() else true
-        val pointerCursorType = if (reader.canRead(4)) reader.readInt().toPointerCursorType() else PointerCursorType.Default
-
-        return EditorRenderModel(
-            splitX = splitX,
-            splitLineVisible = splitLineVisible,
-            scrollX = scrollX,
-            scrollY = scrollY,
-            viewportWidth = viewportWidth,
-            viewportHeight = viewportHeight,
-            currentLine = currentLine,
-            currentLineRenderMode = currentLineRenderMode,
-            lines = lines,
-            cursor = cursor,
-            selectionRects = selectionRects,
-            selectionStartHandle = selectionStartHandle,
-            selectionEndHandle = selectionEndHandle,
-            compositionDecoration = compositionDecoration,
-            guideSegments = guideSegments,
-            diagnosticDecorations = diagnosticDecorations,
-            maxGutterIcons = maxGutterIcons,
-            linkedEditingRects = linkedEditingRects,
-            bracketHighlightRects = bracketHighlightRects,
-            gutterIcons = gutterIcons,
-            foldMarkers = foldMarkers,
-            verticalScrollbar = verticalScrollbar,
-            horizontalScrollbar = horizontalScrollbar,
-            gutterSticky = gutterSticky,
-            gutterVisible = gutterVisible,
-            pointerCursorType = pointerCursorType,
-        )
+        return decodeRenderModel(data, RenderModelLayout.Current)
+            ?: decodeRenderModel(data, RenderModelLayout.Legacy)
     }
 
     private fun decodeTextEditResultForReader(reader: BinaryReader): TextEditResult {
@@ -248,7 +186,7 @@ object ProtocolDecoder {
         fontStyle = reader.readInt(),
     )
 
-    private fun readVisualRun(reader: BinaryReader): VisualRun = VisualRun(
+    private fun readVisualRun(reader: BinaryReader, layout: RenderModelLayout): VisualRun = VisualRun(
         type = reader.readInt().toVisualRunType(),
         x = reader.readFloat(),
         y = reader.readFloat(),
@@ -259,33 +197,62 @@ object ProtocolDecoder {
         width = reader.readFloat(),
         padding = reader.readFloat(),
         margin = reader.readFloat(),
-        active = reader.readBooleanAsInt(),
+        active = if (layout == RenderModelLayout.Current) reader.readBooleanAsInt() else false,
     )
 
-    private fun readVisualRuns(reader: BinaryReader): List<VisualRun> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+    private fun readVisualRuns(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): List<VisualRun> {
+        val minBytesPerItem = if (layout == RenderModelLayout.Current) 48 else 44
+        val count = readCount(reader, minBytesPerItem = minBytesPerItem, label = "visual runs")
+        return buildList(count) {
             repeat(count) {
-                add(readVisualRun(reader))
+                add(readVisualRun(reader, layout))
             }
         }
     }
 
-    private fun readVisualLine(reader: BinaryReader): VisualLine = VisualLine(
-        logicalLine = reader.readInt(),
-        wrapIndex = reader.readInt(),
-        lineNumberPosition = readPoint(reader),
-        kind = reader.readInt().toVisualLineKind(),
-        ownsGutterSemantics = reader.readBooleanAsInt(),
-        foldState = reader.readInt().toFoldState(),
-        runs = readVisualRuns(reader),
-    )
+    private fun readVisualLine(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): VisualLine {
+        val logicalLine = reader.readInt()
+        val wrapIndex = reader.readInt()
+        val lineNumberPosition = readPoint(reader)
+        return if (layout == RenderModelLayout.Current) {
+            VisualLine(
+                logicalLine = logicalLine,
+                wrapIndex = wrapIndex,
+                lineNumberPosition = lineNumberPosition,
+                kind = reader.readInt().toVisualLineKind(),
+                ownsGutterSemantics = reader.readBooleanAsInt(),
+                foldState = reader.readInt().toFoldState(),
+                runs = readVisualRuns(reader, layout),
+            )
+        } else {
+            val isPhantomLine = reader.readBooleanAsInt()
+            VisualLine(
+                logicalLine = logicalLine,
+                wrapIndex = wrapIndex,
+                lineNumberPosition = lineNumberPosition,
+                kind = if (isPhantomLine) VisualLineKind.Phantom else VisualLineKind.Content,
+                ownsGutterSemantics = wrapIndex == 0 && !isPhantomLine,
+                foldState = reader.readInt().toFoldState(),
+                runs = readVisualRuns(reader, layout),
+            )
+        }
+    }
 
-    private fun readVisualLines(reader: BinaryReader): List<VisualLine> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+    private fun readVisualLines(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): List<VisualLine> {
+        val minBytesPerItem = if (layout == RenderModelLayout.Current) 24 else 20
+        val count = readCount(reader, minBytesPerItem = minBytesPerItem, label = "visual lines")
+        return buildList(count) {
             repeat(count) {
-                add(readVisualLine(reader))
+                add(readVisualLine(reader, layout))
             }
         }
     }
@@ -299,8 +266,8 @@ object ProtocolDecoder {
     )
 
     private fun readGutterIconRenderItems(reader: BinaryReader): List<GutterIconRenderItem> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 24, label = "gutter icon render items")
+        return buildList(count) {
             repeat(count) {
                 add(readGutterIconRenderItem(reader))
             }
@@ -316,8 +283,8 @@ object ProtocolDecoder {
     )
 
     private fun readFoldMarkerRenderItems(reader: BinaryReader): List<FoldMarkerRenderItem> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 24, label = "fold marker render items")
+        return buildList(count) {
             repeat(count) {
                 add(readFoldMarkerRenderItem(reader))
             }
@@ -339,8 +306,8 @@ object ProtocolDecoder {
     )
 
     private fun readSelectionRects(reader: BinaryReader): List<SelectionRect> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 16, label = "selection rects")
+        return buildList(count) {
             repeat(count) {
                 add(readSelectionRect(reader))
             }
@@ -370,26 +337,34 @@ object ProtocolDecoder {
     )
 
     private fun readGuideSegments(reader: BinaryReader): List<GuideSegment> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 28, label = "guide segments")
+        return buildList(count) {
             repeat(count) {
                 add(readGuideSegment(reader))
             }
         }
     }
 
-    private fun readDiagnosticDecoration(reader: BinaryReader): DiagnosticDecoration = DiagnosticDecoration(
+    private fun readDiagnosticDecoration(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): DiagnosticDecoration = DiagnosticDecoration(
         origin = readPoint(reader),
         width = reader.readFloat(),
         height = reader.readFloat(),
         severity = reader.readInt(),
+        color = if (layout == RenderModelLayout.Legacy) reader.readInt() else 0,
     )
 
-    private fun readDiagnosticDecorations(reader: BinaryReader): List<DiagnosticDecoration> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+    private fun readDiagnosticDecorations(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): List<DiagnosticDecoration> {
+        val minBytesPerItem = if (layout == RenderModelLayout.Current) 16 else 20
+        val count = readCount(reader, minBytesPerItem = minBytesPerItem, label = "diagnostic decorations")
+        return buildList(count) {
             repeat(count) {
-                add(readDiagnosticDecoration(reader))
+                add(readDiagnosticDecoration(reader, layout))
             }
         }
     }
@@ -402,8 +377,8 @@ object ProtocolDecoder {
     )
 
     private fun readLinkedEditingRects(reader: BinaryReader): List<LinkedEditingRect> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 20, label = "linked editing rects")
+        return buildList(count) {
             repeat(count) {
                 add(readLinkedEditingRect(reader))
             }
@@ -417,8 +392,8 @@ object ProtocolDecoder {
     )
 
     private fun readBracketHighlightRects(reader: BinaryReader): List<BracketHighlightRect> {
-        val count = reader.readInt()
-        return buildList(count.coerceAtLeast(0)) {
+        val count = readCount(reader, minBytesPerItem = 16, label = "bracket highlight rects")
+        return buildList(count) {
             repeat(count) {
                 add(readBracketHighlightRect(reader))
             }
@@ -431,10 +406,114 @@ object ProtocolDecoder {
         height = reader.readFloat(),
     )
 
-    private fun readScrollbarModel(reader: BinaryReader): ScrollbarModel = ScrollbarModel(
+    private fun readScrollbarModel(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): ScrollbarModel = ScrollbarModel(
         visible = reader.readBooleanAsInt(),
         alpha = reader.readFloat(),
+        thumbActive = if (layout == RenderModelLayout.Legacy) reader.readBooleanAsInt() else false,
         track = readScrollbarRect(reader),
         thumb = readScrollbarRect(reader),
     )
+
+    private fun decodeRenderModel(
+        data: ByteArray,
+        layout: RenderModelLayout,
+    ): EditorRenderModel? = try {
+        val reader = BinaryReader(data)
+        val splitX = reader.readFloat()
+        val splitLineVisible = reader.readBooleanAsInt()
+        val scrollX = reader.readFloat()
+        val scrollY = reader.readFloat()
+        val viewportWidth = reader.readFloat()
+        val viewportHeight = reader.readFloat()
+        val currentLine = readPoint(reader)
+        val currentLineRenderMode = reader.readInt().toCurrentLineRenderMode()
+        val lines = readVisualLines(reader, layout)
+        val gutterIcons = readGutterIconRenderItems(reader)
+        val foldMarkers = readFoldMarkerRenderItems(reader)
+        val cursor = readCursor(reader)
+        val selectionRects = readSelectionRects(reader)
+        val selectionStartHandle = readSelectionHandle(reader)
+        val selectionEndHandle = readSelectionHandle(reader)
+        val compositionDecoration = readCompositionDecoration(reader)
+        val guideSegments = readGuideSegments(reader)
+        val diagnosticDecorations = readDiagnosticDecorations(reader, layout)
+        val maxGutterIcons = reader.readInt()
+        val linkedEditingRects = readLinkedEditingRects(reader)
+        val bracketHighlightRects = readBracketHighlightRects(reader)
+
+        var verticalScrollbar = ScrollbarModel()
+        var horizontalScrollbar = ScrollbarModel()
+        val scrollbarSize = if (layout == RenderModelLayout.Current) 40 else 44
+        if (reader.canRead(scrollbarSize)) {
+            verticalScrollbar = readScrollbarModel(reader, layout)
+        }
+        if (reader.canRead(scrollbarSize)) {
+            horizontalScrollbar = readScrollbarModel(reader, layout)
+        }
+
+        val gutterSticky = if (reader.canRead(4)) reader.readBooleanAsInt() else true
+        val gutterVisible = if (reader.canRead(4)) reader.readBooleanAsInt() else true
+        val pointerCursorType = if (layout == RenderModelLayout.Current && reader.canRead(4)) {
+            reader.readInt().toPointerCursorType()
+        } else {
+            PointerCursorType.Default
+        }
+
+        EditorRenderModel(
+            splitX = splitX,
+            splitLineVisible = splitLineVisible,
+            scrollX = scrollX,
+            scrollY = scrollY,
+            viewportWidth = viewportWidth,
+            viewportHeight = viewportHeight,
+            currentLine = currentLine,
+            currentLineRenderMode = currentLineRenderMode,
+            lines = lines,
+            cursor = cursor,
+            selectionRects = selectionRects,
+            selectionStartHandle = selectionStartHandle,
+            selectionEndHandle = selectionEndHandle,
+            compositionDecoration = compositionDecoration,
+            guideSegments = guideSegments,
+            diagnosticDecorations = diagnosticDecorations,
+            maxGutterIcons = maxGutterIcons,
+            linkedEditingRects = linkedEditingRects,
+            bracketHighlightRects = bracketHighlightRects,
+            gutterIcons = gutterIcons,
+            foldMarkers = foldMarkers,
+            verticalScrollbar = verticalScrollbar,
+            horizontalScrollbar = horizontalScrollbar,
+            gutterSticky = gutterSticky,
+            gutterVisible = gutterVisible,
+            pointerCursorType = pointerCursorType,
+        )
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+    private fun readCount(
+        reader: BinaryReader,
+        minBytesPerItem: Int,
+        label: String,
+    ): Int {
+        val count = reader.readInt()
+        require(count >= 0) {
+            "Negative $label count: $count"
+        }
+        if (count == 0) {
+            return 0
+        }
+        require(minBytesPerItem <= 0 || count <= reader.remaining / minBytesPerItem) {
+            "Invalid $label count: $count remaining=${reader.remaining}"
+        }
+        return count
+    }
+
+    private enum class RenderModelLayout {
+        Current,
+        Legacy,
+    }
 }
