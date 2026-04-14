@@ -61,8 +61,8 @@ kotlin {
 
             implementation(libs.material.icons.extended)
 
-            // implementation(libs.sweet.editor)
-            implementation(project(":editor-compose"))
+             implementation(libs.sweet.editor)
+//            implementation(project(":editor-compose"))
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
