@@ -97,6 +97,7 @@ object ProtocolDecoder {
         val needsFling = if (reader.canRead(4)) reader.readBooleanAsInt() else false
         val needsAnimation = if (reader.canRead(4)) reader.readBooleanAsInt() else false
         val isHandleDrag = if (reader.canRead(4)) reader.readBooleanAsInt() else false
+        val pointerCursorType = if (reader.canRead(4)) reader.readInt().toPointerCursorType() else PointerCursorType.Default
 
         return GestureResult(
             type = type,
@@ -112,6 +113,7 @@ object ProtocolDecoder {
             needsFling = needsFling,
             needsAnimation = needsAnimation,
             isHandleDrag = isHandleDrag,
+            pointerCursorType = pointerCursorType,
         )
     }
 
@@ -178,6 +180,7 @@ object ProtocolDecoder {
 
         val gutterSticky = if (reader.canRead(4)) reader.readBooleanAsInt() else true
         val gutterVisible = if (reader.canRead(4)) reader.readBooleanAsInt() else true
+        val pointerCursorType = if (reader.canRead(4)) reader.readInt().toPointerCursorType() else PointerCursorType.Default
 
         return EditorRenderModel(
             splitX = splitX,
@@ -205,6 +208,7 @@ object ProtocolDecoder {
             horizontalScrollbar = horizontalScrollbar,
             gutterSticky = gutterSticky,
             gutterVisible = gutterVisible,
+            pointerCursorType = pointerCursorType,
         )
     }
 
@@ -255,6 +259,7 @@ object ProtocolDecoder {
         width = reader.readFloat(),
         padding = reader.readFloat(),
         margin = reader.readFloat(),
+        active = reader.readBooleanAsInt(),
     )
 
     private fun readVisualRuns(reader: BinaryReader): List<VisualRun> {
@@ -270,7 +275,8 @@ object ProtocolDecoder {
         logicalLine = reader.readInt(),
         wrapIndex = reader.readInt(),
         lineNumberPosition = readPoint(reader),
-        isPhantomLine = reader.readBooleanAsInt(),
+        kind = reader.readInt().toVisualLineKind(),
+        ownsGutterSemantics = reader.readBooleanAsInt(),
         foldState = reader.readInt().toFoldState(),
         runs = readVisualRuns(reader),
     )
@@ -377,7 +383,6 @@ object ProtocolDecoder {
         width = reader.readFloat(),
         height = reader.readFloat(),
         severity = reader.readInt(),
-        color = reader.readInt(),
     )
 
     private fun readDiagnosticDecorations(reader: BinaryReader): List<DiagnosticDecoration> {
@@ -429,7 +434,6 @@ object ProtocolDecoder {
     private fun readScrollbarModel(reader: BinaryReader): ScrollbarModel = ScrollbarModel(
         visible = reader.readBooleanAsInt(),
         alpha = reader.readFloat(),
-        thumbActive = reader.readBooleanAsInt(),
         track = readScrollbarRect(reader),
         thumb = readScrollbarRect(reader),
     )

@@ -6,7 +6,7 @@ import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 
 object ProtocolEncoder {
     fun encodeEditorOptions(options: EditorOptions): ByteArray {
-        val writer = BinaryWriter(initialCapacity = 40)
+        val writer = BinaryWriter(initialCapacity = 48)
         writer.writeFloat(options.touchSlop)
         writer.writeLong(options.doubleTapTimeout)
         writer.writeLong(options.longPressMs)
@@ -14,6 +14,7 @@ object ProtocolEncoder {
         writer.writeFloat(options.flingMinVelocity)
         writer.writeFloat(options.flingMaxVelocity)
         writer.writeLong(options.maxUndoStackSize)
+        writer.writeLong(options.keyChordTimeoutMs)
         return writer.toByteArray()
     }
 

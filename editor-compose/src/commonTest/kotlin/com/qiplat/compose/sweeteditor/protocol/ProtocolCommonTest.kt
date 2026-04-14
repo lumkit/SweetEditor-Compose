@@ -1,6 +1,8 @@
 package com.qiplat.compose.sweeteditor.protocol
 
 import com.qiplat.compose.sweeteditor.model.foundation.EditorOptions
+import com.qiplat.compose.sweeteditor.model.foundation.PointerCursorType
+import com.qiplat.compose.sweeteditor.model.visual.VisualLineKind
 import kotlin.test.*
 
 class ProtocolCommonTest {
@@ -25,7 +27,7 @@ class ProtocolCommonTest {
     @Test
     fun editorOptionsEncodingMatchesNativeLayoutSize() {
         val payload = ProtocolEncoder.encodeEditorOptions(EditorOptions())
-        assertEquals(40, payload.size)
+        assertEquals(48, payload.size)
 
         val reader = BinaryReader(payload)
         assertEquals(10f, reader.readFloat())
@@ -35,6 +37,7 @@ class ProtocolCommonTest {
         assertEquals(50f, reader.readFloat())
         assertEquals(8000f, reader.readFloat())
         assertEquals(512L, reader.readLong())
+        assertEquals(1000L, reader.readLong())
     }
 
     @Test
@@ -68,9 +71,33 @@ class ProtocolCommonTest {
         writer.writeFloat(4f)
         writer.writeFloat(5f)
         writer.writeInt(0)
+
+        writer.writeInt(1)
+        writer.writeInt(7)
+        writer.writeInt(0)
+        writer.writeFloat(10f)
+        writer.writeFloat(20f)
+        writer.writeInt(2)
+        writer.writeBooleanAsInt(false)
+        writer.writeInt(1)
+        writer.writeInt(1)
+        writer.writeInt(4)
+        writer.writeFloat(11f)
+        writer.writeFloat(22f)
+        writer.writeUtf8("fold")
+        writer.writeInt(3)
+        writer.writeInt(0xFFAA00)
         writer.writeInt(0)
         writer.writeInt(0)
         writer.writeInt(0)
+        writer.writeFloat(50f)
+        writer.writeFloat(1f)
+        writer.writeFloat(2f)
+        writer.writeBooleanAsInt(true)
+
+        writer.writeInt(0)
+        writer.writeInt(0)
+
         writer.writeInt(0)
         writer.writeInt(0)
         writer.writeFloat(0f)
@@ -78,20 +105,22 @@ class ProtocolCommonTest {
         writer.writeFloat(0f)
         writer.writeBooleanAsInt(false)
         writer.writeBooleanAsInt(false)
+
         writer.writeInt(0)
-        writer.writeFloat(0f)
-        writer.writeFloat(0f)
-        writer.writeFloat(0f)
+
+        repeat(2) {
+            writer.writeFloat(0f)
+            writer.writeFloat(0f)
+            writer.writeFloat(0f)
+            writer.writeBooleanAsInt(false)
+        }
+
         writer.writeBooleanAsInt(false)
         writer.writeFloat(0f)
         writer.writeFloat(0f)
         writer.writeFloat(0f)
-        writer.writeBooleanAsInt(false)
-        writer.writeBooleanAsInt(false)
         writer.writeFloat(0f)
-        writer.writeFloat(0f)
-        writer.writeFloat(0f)
-        writer.writeFloat(0f)
+
         writer.writeInt(0)
         writer.writeInt(0)
         writer.writeInt(0)
@@ -99,7 +128,6 @@ class ProtocolCommonTest {
         writer.writeInt(0)
         writer.writeBooleanAsInt(true)
         writer.writeFloat(0.7f)
-        writer.writeBooleanAsInt(true)
         repeat(2) {
             writer.writeFloat(1f)
             writer.writeFloat(2f)
@@ -108,7 +136,6 @@ class ProtocolCommonTest {
         }
         writer.writeBooleanAsInt(false)
         writer.writeFloat(0.1f)
-        writer.writeBooleanAsInt(false)
         repeat(2) {
             writer.writeFloat(5f)
             writer.writeFloat(6f)
@@ -117,14 +144,51 @@ class ProtocolCommonTest {
         }
         writer.writeBooleanAsInt(true)
         writer.writeBooleanAsInt(false)
+        writer.writeInt(2)
 
         val model = ProtocolDecoder.decodeRenderModel(writer.toByteArray())
         assertNotNull(model)
         assertEquals(1f, model.splitX)
+        assertEquals(1, model.lines.size)
+        assertEquals(VisualLineKind.CodeLens, model.lines.single().kind)
+        assertFalse(model.lines.single().ownsGutterSemantics)
+        assertTrue(model.lines.single().runs.single().active)
         assertTrue(model.verticalScrollbar.visible)
-        assertTrue(model.verticalScrollbar.thumbActive)
+        assertFalse(model.verticalScrollbar.thumbActive)
         assertFalse(model.horizontalScrollbar.visible)
         assertTrue(model.gutterSticky)
         assertFalse(model.gutterVisible)
+        assertEquals(PointerCursorType.Hand, model.pointerCursorType)
+    }
+
+    @Test
+    fun decodeGestureResultReadsPointerCursorType() {
+        val writer = BinaryWriter()
+        writer.writeInt(1)
+        writer.writeFloat(12f)
+        writer.writeFloat(24f)
+        writer.writeInt(3)
+        writer.writeInt(4)
+        writer.writeBooleanAsInt(false)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeInt(0)
+        writer.writeBooleanAsInt(false)
+        writer.writeBooleanAsInt(false)
+        writer.writeBooleanAsInt(false)
+        writer.writeBooleanAsInt(false)
+        writer.writeInt(1)
+
+        val result = ProtocolDecoder.decodeGestureResult(writer.toByteArray())
+        assertEquals(PointerCursorType.Text, result.pointerCursorType)
     }
 }

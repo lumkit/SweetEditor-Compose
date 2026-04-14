@@ -2,6 +2,7 @@ package com.qiplat.compose.sweeteditor.model.visual
 
 import com.qiplat.compose.sweeteditor.model.decoration.TextStyle
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
+import com.qiplat.compose.sweeteditor.model.foundation.PointerCursorType
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 
 data class PointF(
@@ -30,6 +31,7 @@ data class VisualRun(
     val width: Float = 0f,
     val padding: Float = 0f,
     val margin: Float = 0f,
+    val active: Boolean = false,
 )
 
 enum class FoldState {
@@ -38,14 +40,24 @@ enum class FoldState {
     Collapsed,
 }
 
+enum class VisualLineKind {
+    Content,
+    Phantom,
+    CodeLens,
+}
+
 data class VisualLine(
     val logicalLine: Int = 0,
     val wrapIndex: Int = 0,
     val lineNumberPosition: PointF = PointF(),
     val runs: List<VisualRun> = emptyList(),
-    val isPhantomLine: Boolean = false,
+    val kind: VisualLineKind = VisualLineKind.Content,
+    val ownsGutterSemantics: Boolean = true,
     val foldState: FoldState = FoldState.None,
-)
+) {
+    val isPhantomLine: Boolean
+        get() = kind == VisualLineKind.Phantom
+}
 
 data class Cursor(
     val textPosition: TextPosition = TextPosition.Zero,
@@ -201,4 +213,5 @@ data class EditorRenderModel(
     val horizontalScrollbar: ScrollbarModel = ScrollbarModel(),
     val gutterSticky: Boolean = true,
     val gutterVisible: Boolean = true,
+    val pointerCursorType: PointerCursorType = PointerCursorType.Default,
 )

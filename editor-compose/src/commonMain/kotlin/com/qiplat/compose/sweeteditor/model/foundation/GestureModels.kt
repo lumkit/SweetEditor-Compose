@@ -14,6 +14,7 @@ data class GestureResult(
     val needsFling: Boolean = false,
     val needsAnimation: Boolean = false,
     val isHandleDrag: Boolean = false,
+    val pointerCursorType: PointerCursorType = PointerCursorType.Default,
 )
 
 data class GesturePoint(
@@ -70,4 +71,10 @@ enum class HitTargetType {
     FoldPlaceholder,
     FoldGutter,
     InlayHintColor,
+}
+
+enum class PointerCursorType {
+    Default,
+    Text,
+    Hand,
 }

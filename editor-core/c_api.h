@@ -208,7 +208,8 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///            - i32 logical_line
 ///            - i32 wrap_index
 ///            - PointF line_number_position
-///            - i32 is_phantom_line
+///            - i32 kind (0=CONTENT, 1=PHANTOM, 2=CODELENS)
+///            - i32 owns_gutter_semantics
 ///            - i32 fold_state
 ///            - i32 run_count
 ///            - VisualRun[run_count] runs
@@ -227,6 +228,7 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///            - f32 width
 ///            - f32 padding
 ///            - f32 margin
+///            - i32 active
 ///         11. i32 gutter_icon_render_count
 ///         12. GutterIconRenderItem[gutter_icon_render_count] gutter_icons
 ///             GutterIconRenderItem layout:
@@ -284,7 +286,6 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///             - f32 width
 ///             - f32 height
 ///             - i32 severity
-///             - i32 color
 ///         25. i32 max_gutter_icons
 ///         26. i32 linked_editing_rect_count
 ///         27. LinkedEditingRect[linked_editing_rect_count] linked_editing_rects
@@ -311,6 +312,8 @@ EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
 ///             - f32 width
 ///             - f32 height
 ///         32. i32 gutter_sticky (0=scrolls with content, 1=fixed)
+///         33. i32 gutter_visible (0=hidden, 1=visible)
+///         34. i32 pointer_cursor_type (0=DEFAULT, 1=TEXT, 2=HAND)
 ///         Call free_binary_data after use; returns NULL on failure
 EDITOR_API const uint8_t* build_editor_render_model(intptr_t editor_handle, size_t* out_size);
 
@@ -358,6 +361,8 @@ EDITOR_API const uint8_t* get_layout_metrics(intptr_t editor_handle, size_t* out
 ///        editor_tick_fling; 0 = platform should stop the callback)
 ///    i32 needs_animation (1 = any animation still active; platform can use a single
 ///        frame callback calling editor_tick_animations instead of separate tick calls)
+///    i32 is_handle_drag
+///    i32 pointer_cursor_type (0=DEFAULT, 1=TEXT, 2=HAND)
 ///
 /// Handle gesture event
 /// @param type Event type
@@ -797,17 +802,35 @@ EDITOR_API void editor_set_max_gutter_icons(intptr_t editor_handle, uint32_t cou
 /// Clear all gutter icons
 EDITOR_API void editor_clear_gutter_icons(intptr_t editor_handle);
 
+/// Set CodeLens items for specified line (compact binary)
+/// @param data payload(LE):
+///             u32 line, u32 item_count, then repeat for item_count groups:
+///             [i32 command_id, u32 text_len, u8[text_len] text_utf8]
+/// @param size payload byte length
+EDITOR_API void editor_set_line_codelens(intptr_t editor_handle, const uint8_t* data, size_t size);
+
+/// Batch set CodeLens items for multiple lines (compact binary)
+/// @param data payload(LE):
+///             u32 entry_count,
+///             [u32 line, u32 item_count,
+///              [i32 command_id, u32 text_len, u8[text_len] text_utf8] x item_count] x entry_count
+/// @param size payload byte length
+EDITOR_API void editor_set_batch_line_codelens(intptr_t editor_handle, const uint8_t* data, size_t size);
+
+/// Clear all CodeLens items
+EDITOR_API void editor_clear_codelens(intptr_t editor_handle);
+
 /// Set diagnostic decoration ranges for specified line (compact binary)
 /// @param data payload(LE):
 ///             u32 line, u32 diag_count, then repeat for diag_count groups
-///             [u32 column, u32 length, i32 severity, i32 color]
+///             [u32 column, u32 length, i32 severity]
 /// @param size payload byte length
 EDITOR_API void editor_set_line_diagnostics(intptr_t editor_handle, const uint8_t* data, size_t size);
 
 /// Batch set diagnostic decorations for multiple lines (compact binary, fixed length)
 /// @param data payload(LE):
 ///             u32 entry_count,
-///             [u32 line, u32 diag_count, [u32 column, u32 length, i32 severity, i32 color] x diag_count] x entry_count
+///             [u32 line, u32 diag_count, [u32 column, u32 length, i32 severity] x diag_count] x entry_count
 /// @param size payload byte length
 EDITOR_API void editor_set_batch_line_diagnostics(intptr_t editor_handle, const uint8_t* data, size_t size);
 

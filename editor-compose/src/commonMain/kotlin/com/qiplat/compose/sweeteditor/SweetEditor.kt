@@ -559,7 +559,7 @@ private fun DrawScope.drawEditorSurface(
 
     renderModel.diagnosticDecorations.forEach { decoration ->
         if (viewportBounds.intersects(decoration.origin.x, decoration.origin.y, decoration.width, decoration.height)) {
-            drawDiagnostic(decoration)
+            drawDiagnostic(decoration, theme)
         }
     }
 
@@ -634,7 +634,7 @@ private fun DrawScope.drawEditorSurface(
     val foldMarkerByLine = renderModel.foldMarkers.associateBy { it.logicalLine }
     var currentDrawingLineNumber = -1
     renderModel.lines.forEach { line ->
-        if (line.wrapIndex != 0 || line.isPhantomLine) {
+        if (!line.ownsGutterSemantics) {
             return@forEach
         }
         if (!viewportBounds.intersectsLine(line, estimatedLineHeight)) {
@@ -853,8 +853,18 @@ private fun DrawScope.drawGuide(
 
 private fun DrawScope.drawDiagnostic(
     decoration: DiagnosticDecoration,
+    theme: EditorTheme,
 ) {
-    val color = decoration.color.toComposeColor()
+    val color = if (decoration.color != 0) {
+        decoration.color.toComposeColor()
+    } else {
+        when (decoration.severity) {
+            0 -> theme.diagnosticErrorColor.toComposeColor()
+            1 -> theme.diagnosticWarningColor.toComposeColor()
+            2 -> theme.diagnosticInfoColor.toComposeColor()
+            else -> theme.diagnosticHintColor.toComposeColor()
+        }
+    }
     val startX = decoration.origin.x
     val endX = startX + decoration.width
     val baseY = decoration.origin.y + decoration.height - 1f
@@ -942,7 +952,7 @@ private fun DrawScope.drawLineNumber(
     viewportBounds: ViewportBounds,
     estimatedLineHeight: Float,
 ) {
-    if (!renderModel.gutterVisible || line.wrapIndex != 0 || line.isPhantomLine) {
+    if (!renderModel.gutterVisible || !line.ownsGutterSemantics) {
         return
     }
     if (!viewportBounds.intersectsLine(line, estimatedLineHeight)) {

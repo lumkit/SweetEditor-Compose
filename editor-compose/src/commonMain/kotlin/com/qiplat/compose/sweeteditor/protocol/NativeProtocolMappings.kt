@@ -115,6 +115,12 @@ internal fun Int.toHitTargetType(): HitTargetType = when (this) {
     else -> HitTargetType.None
 }
 
+internal fun Int.toPointerCursorType(): PointerCursorType = when (this) {
+    1 -> PointerCursorType.Text
+    2 -> PointerCursorType.Hand
+    else -> PointerCursorType.Default
+}
+
 internal fun Int.toCurrentLineRenderMode(): CurrentLineRenderMode = when (this) {
     1 -> CurrentLineRenderMode.Border
     2 -> CurrentLineRenderMode.None
@@ -135,6 +141,12 @@ internal fun Int.toFoldState(): FoldState = when (this) {
     1 -> FoldState.Expanded
     2 -> FoldState.Collapsed
     else -> FoldState.None
+}
+
+internal fun Int.toVisualLineKind(): VisualLineKind = when (this) {
+    1 -> VisualLineKind.Phantom
+    2 -> VisualLineKind.CodeLens
+    else -> VisualLineKind.Content
 }
 
 internal fun Int.toGuideDirection(): GuideDirection = when (this) {
