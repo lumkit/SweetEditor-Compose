@@ -106,6 +106,20 @@ private class DesktopNativeEditorBridge(
         DesktopNativeBindings.nativeSetGutterVisible(handle, visible)
     }
 
+    override fun setScrollbarConfig(config: NativeScrollbarConfig) {
+        DesktopNativeBindings.nativeSetScrollbarConfig(
+            editorHandle = handle,
+            thickness = config.thickness,
+            minThumb = config.minThumb,
+            thumbHitPadding = config.thumbHitPadding,
+            mode = config.mode,
+            thumbDraggable = config.thumbDraggable,
+            trackTapMode = config.trackTapMode,
+            fadeDelayMillis = config.fadeDelayMillis,
+            fadeDurationMillis = config.fadeDurationMillis,
+        )
+    }
+
     override fun setReadOnly(readOnly: Boolean) {
         DesktopNativeBindings.nativeSetReadOnly(handle, readOnly)
     }

@@ -289,6 +289,32 @@ internal object DesktopNativeBindings {
         }
     }
 
+    fun nativeSetScrollbarConfig(
+        editorHandle: Long,
+        thickness: Float,
+        minThumb: Float,
+        thumbHitPadding: Float,
+        mode: Int,
+        thumbDraggable: Boolean,
+        trackTapMode: Int,
+        fadeDelayMillis: Int,
+        fadeDurationMillis: Int,
+    ) {
+        withEditorContext(editorHandle) {
+            EditorNative.setScrollbarConfig(
+                editorHandle = editorHandle,
+                thickness = thickness,
+                minThumb = minThumb,
+                thumbHitPadding = thumbHitPadding,
+                mode = mode,
+                thumbDraggable = thumbDraggable,
+                trackTapMode = trackTapMode,
+                fadeDelayMillis = fadeDelayMillis,
+                fadeDurationMillis = fadeDurationMillis,
+            )
+        }
+    }
+
     fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean) {
         withEditorContext(editorHandle) {
             EditorNative.setReadOnly(editorHandle, readOnly)

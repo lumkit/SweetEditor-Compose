@@ -406,13 +406,21 @@ object ProtocolDecoder {
         height = reader.readFloat(),
     )
 
+    private data class ScrollbarTail(
+        val verticalScrollbar: ScrollbarModel = ScrollbarModel(),
+        val horizontalScrollbar: ScrollbarModel = ScrollbarModel(),
+        val gutterSticky: Boolean = true,
+        val gutterVisible: Boolean = true,
+        val pointerCursorType: PointerCursorType = PointerCursorType.Default,
+    )
+
     private fun readScrollbarModel(
         reader: BinaryReader,
-        layout: RenderModelLayout,
+        includeThumbActive: Boolean,
     ): ScrollbarModel = ScrollbarModel(
         visible = reader.readBooleanAsInt(),
         alpha = reader.readFloat(),
-        thumbActive = if (layout == RenderModelLayout.Legacy) reader.readBooleanAsInt() else false,
+        thumbActive = if (includeThumbActive) reader.readBooleanAsInt() else false,
         track = readScrollbarRect(reader),
         thumb = readScrollbarRect(reader),
     )
@@ -444,23 +452,11 @@ object ProtocolDecoder {
         val linkedEditingRects = readLinkedEditingRects(reader)
         val bracketHighlightRects = readBracketHighlightRects(reader)
 
-        var verticalScrollbar = ScrollbarModel()
-        var horizontalScrollbar = ScrollbarModel()
-        val scrollbarSize = if (layout == RenderModelLayout.Current) 40 else 44
-        if (reader.canRead(scrollbarSize)) {
-            verticalScrollbar = readScrollbarModel(reader, layout)
-        }
-        if (reader.canRead(scrollbarSize)) {
-            horizontalScrollbar = readScrollbarModel(reader, layout)
-        }
-
-        val gutterSticky = if (reader.canRead(4)) reader.readBooleanAsInt() else true
-        val gutterVisible = if (reader.canRead(4)) reader.readBooleanAsInt() else true
-        val pointerCursorType = if (layout == RenderModelLayout.Current && reader.canRead(4)) {
-            reader.readInt().toPointerCursorType()
-        } else {
-            PointerCursorType.Default
-        }
+        val scrollbarTail = readScrollbarTail(reader, layout)
+        val normalizedScrollbars = normalizeScrollbars(
+            vertical = scrollbarTail.verticalScrollbar,
+            horizontal = scrollbarTail.horizontalScrollbar,
+        )
 
         EditorRenderModel(
             splitX = splitX,
@@ -484,11 +480,11 @@ object ProtocolDecoder {
             bracketHighlightRects = bracketHighlightRects,
             gutterIcons = gutterIcons,
             foldMarkers = foldMarkers,
-            verticalScrollbar = verticalScrollbar,
-            horizontalScrollbar = horizontalScrollbar,
-            gutterSticky = gutterSticky,
-            gutterVisible = gutterVisible,
-            pointerCursorType = pointerCursorType,
+            verticalScrollbar = normalizedScrollbars.first,
+            horizontalScrollbar = normalizedScrollbars.second,
+            gutterSticky = scrollbarTail.gutterSticky,
+            gutterVisible = scrollbarTail.gutterVisible,
+            pointerCursorType = scrollbarTail.pointerCursorType,
         )
     } catch (_: IllegalArgumentException) {
         null
@@ -511,6 +507,102 @@ object ProtocolDecoder {
         }
         return count
     }
+
+    private fun readScrollbarTail(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+    ): ScrollbarTail {
+        val start = reader.position
+        if (layout == RenderModelLayout.Current) {
+            tryReadScrollbarTail(
+                reader = reader,
+                includeThumbActive = true,
+                includePointerCursorType = true,
+            )?.let { return it }
+            reader.seek(start)
+        }
+        return tryReadScrollbarTail(
+            reader = reader,
+            includeThumbActive = layout == RenderModelLayout.Legacy,
+            includePointerCursorType = layout == RenderModelLayout.Current,
+        ) ?: ScrollbarTail().also {
+            reader.seek(start)
+        }
+    }
+
+    private fun tryReadScrollbarTail(
+        reader: BinaryReader,
+        includeThumbActive: Boolean,
+        includePointerCursorType: Boolean,
+    ): ScrollbarTail? {
+        val start = reader.position
+        return try {
+            var verticalScrollbar = ScrollbarModel()
+            var horizontalScrollbar = ScrollbarModel()
+            val scrollbarSize = if (includeThumbActive) 44 else 40
+            if (reader.canRead(scrollbarSize)) {
+                verticalScrollbar = readScrollbarModel(reader, includeThumbActive)
+            }
+            if (reader.canRead(scrollbarSize)) {
+                horizontalScrollbar = readScrollbarModel(reader, includeThumbActive)
+            }
+            val gutterStickyRaw = if (reader.canRead(4)) reader.readInt() else 1
+            val gutterVisibleRaw = if (reader.canRead(4)) reader.readInt() else 1
+            if (gutterStickyRaw !in 0..1 || gutterVisibleRaw !in 0..1) {
+                reader.seek(start)
+                return null
+            }
+            val pointerCursorType = if (includePointerCursorType && reader.canRead(4)) {
+                val cursorTypeRaw = reader.readInt()
+                if (cursorTypeRaw !in 0..2) {
+                    reader.seek(start)
+                    return null
+                }
+                cursorTypeRaw.toPointerCursorType()
+            } else {
+                PointerCursorType.Default
+            }
+            ScrollbarTail(
+                verticalScrollbar = verticalScrollbar,
+                horizontalScrollbar = horizontalScrollbar,
+                gutterSticky = gutterStickyRaw != 0,
+                gutterVisible = gutterVisibleRaw != 0,
+                pointerCursorType = pointerCursorType,
+            )
+        } catch (_: IllegalArgumentException) {
+            reader.seek(start)
+            null
+        }
+    }
+
+    private fun normalizeScrollbars(
+        vertical: ScrollbarModel,
+        horizontal: ScrollbarModel,
+    ): Pair<ScrollbarModel, ScrollbarModel> {
+        if (!vertical.visible && horizontal.visible && horizontal.looksVertical()) {
+            return horizontal to vertical
+        }
+        if (vertical.visible && !horizontal.visible && vertical.looksHorizontal()) {
+            return horizontal to vertical
+        }
+        if (vertical.looksHorizontal() && horizontal.looksVertical()) {
+            return horizontal to vertical
+        }
+        return vertical to horizontal
+    }
+
+    private fun ScrollbarModel.looksVertical(): Boolean =
+        bestScrollbarRect().let { rect ->
+            rect.height > rect.width
+        }
+
+    private fun ScrollbarModel.looksHorizontal(): Boolean =
+        bestScrollbarRect().let { rect ->
+            rect.width > rect.height
+        }
+
+    private fun ScrollbarModel.bestScrollbarRect(): ScrollbarRect =
+        if (thumb.width > 0f || thumb.height > 0f) thumb else track
 
     private enum class RenderModelLayout {
         Current,

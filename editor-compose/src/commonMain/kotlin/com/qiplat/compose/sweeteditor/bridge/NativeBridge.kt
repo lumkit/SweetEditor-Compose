@@ -13,6 +13,17 @@ internal interface NativeTextMeasurer {
     fun getFontMetrics(): FloatArray
 }
 
+internal data class NativeScrollbarConfig(
+    val thickness: Float,
+    val minThumb: Float,
+    val thumbHitPadding: Float,
+    val mode: Int,
+    val thumbDraggable: Boolean,
+    val trackTapMode: Int,
+    val fadeDelayMillis: Int,
+    val fadeDurationMillis: Int,
+)
+
 internal interface NativeDocumentBridge {
     val handle: Long
 
@@ -51,6 +62,8 @@ internal interface NativeEditorBridge {
     fun setGutterSticky(sticky: Boolean)
 
     fun setGutterVisible(visible: Boolean)
+
+    fun setScrollbarConfig(config: NativeScrollbarConfig)
 
     fun setReadOnly(readOnly: Boolean)
 

@@ -306,6 +306,20 @@ object EditorNative {
         "editor_set_gutter_visible",
         FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT)
     )
+    private val SET_SCROLLBAR_CONFIG = downcall(
+        "editor_set_scrollbar_config",
+        FunctionDescriptor.ofVoid(
+            ValueLayout.JAVA_LONG,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT,
+        )
+    )
 
     private val BUILD_RENDER_MODEL = downcall(
         "build_editor_render_model",
@@ -848,6 +862,32 @@ object EditorNative {
 
     fun setGutterVisible(editorHandle: Long, visible: Boolean) {
         invokeVoid { SET_GUTTER_VISIBLE.invokeExact(editorHandle, if (visible) 1 else 0) }
+    }
+
+    fun setScrollbarConfig(
+        editorHandle: Long,
+        thickness: Float,
+        minThumb: Float,
+        thumbHitPadding: Float,
+        mode: Int,
+        thumbDraggable: Boolean,
+        trackTapMode: Int,
+        fadeDelayMillis: Int,
+        fadeDurationMillis: Int,
+    ) {
+        invokeVoid {
+            SET_SCROLLBAR_CONFIG.invokeExact(
+                editorHandle,
+                thickness,
+                minThumb,
+                thumbHitPadding,
+                mode,
+                if (thumbDraggable) 1 else 0,
+                trackTapMode,
+                fadeDelayMillis,
+                fadeDurationMillis,
+            )
+        }
     }
 
     fun setMaxGutterIcons(handle: Long, count: Int) {

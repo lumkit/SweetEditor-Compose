@@ -11,6 +11,13 @@ class BinaryReader(
 
     fun canRead(byteCount: Int): Boolean = remaining >= byteCount
 
+    fun seek(newPosition: Int) {
+        require(newPosition in 0..data.size) {
+            "Invalid reader position: $newPosition size=${data.size}"
+        }
+        position = newPosition
+    }
+
     fun readInt(): Int {
         requireRemaining(4)
         val b0 = data[position++].toInt() and 0xFF

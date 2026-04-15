@@ -63,6 +63,19 @@ internal object AndroidNativeBindings {
     external fun nativeSetGutterVisible(editorHandle: Long, visible: Boolean)
 
     @JvmStatic
+    external fun nativeSetScrollbarConfig(
+        editorHandle: Long,
+        thickness: Float,
+        minThumb: Float,
+        thumbHitPadding: Float,
+        mode: Int,
+        thumbDraggable: Boolean,
+        trackTapMode: Int,
+        fadeDelayMillis: Int,
+        fadeDurationMillis: Int,
+    )
+
+    @JvmStatic
     external fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean)
 
     @JvmStatic

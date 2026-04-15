@@ -3,6 +3,7 @@ package com.qiplat.compose.sweeteditor.runtime
 import com.qiplat.compose.sweeteditor.DecorationBatch
 import com.qiplat.compose.sweeteditor.EditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
+import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
@@ -42,6 +43,7 @@ class EditorController(
     private var lastScrollMetricsPayload: ByteArray? = null
     private var viewportWidthSnapshot: Int = -1
     private var viewportHeightSnapshot: Int = -1
+    private var scrollbarConfigSnapshot: NativeScrollbarConfig? = null
 
     internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
 
@@ -333,6 +335,16 @@ class EditorController(
         nativeEditorBridge.setGutterVisible(visible)
         settingsSnapshot = settingsSnapshot.copy(gutterVisible = visible)
         requestRefresh(renderModel = true, scrollMetrics = true)
+    }
+
+    internal fun setScrollbarConfig(config: NativeScrollbarConfig) {
+        ensureActive()
+        if (scrollbarConfigSnapshot == config) {
+            return
+        }
+        nativeEditorBridge.setScrollbarConfig(config)
+        scrollbarConfigSnapshot = config
+        requestRefresh(renderModel = true)
     }
 
     fun isGutterVisible(): Boolean {
@@ -1121,6 +1133,7 @@ class EditorController(
         appliedDecorationBatch = null
         viewportWidthSnapshot = -1
         viewportHeightSnapshot = -1
+        scrollbarConfigSnapshot = null
         invalidateDecodedPayloadCache()
     }
 

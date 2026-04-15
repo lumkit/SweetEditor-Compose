@@ -1,10 +1,7 @@
 package com.qiplat.compose.sweeteditor.runtime
 
 import com.qiplat.compose.sweeteditor.*
-import com.qiplat.compose.sweeteditor.bridge.NativeBridgeFactory
-import com.qiplat.compose.sweeteditor.bridge.NativeDocumentBridge
-import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
-import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
+import com.qiplat.compose.sweeteditor.bridge.*
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
@@ -641,6 +638,7 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     var lastViewportHeight: Int = 0
     var setBatchLineDiagnosticsCallCount: Int = 0
     var setIndentGuidesCallCount: Int = 0
+    var appliedScrollbarConfig: NativeScrollbarConfig? = null
 
     override fun release() = Unit
 
@@ -677,6 +675,9 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     }
     override fun setGutterVisible(visible: Boolean) {
         appliedGutterVisible = visible
+    }
+    override fun setScrollbarConfig(config: NativeScrollbarConfig) {
+        appliedScrollbarConfig = config
     }
     override fun setReadOnly(readOnly: Boolean) {
         appliedReadOnly = readOnly

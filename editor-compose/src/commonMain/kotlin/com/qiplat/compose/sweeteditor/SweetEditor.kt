@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
@@ -153,6 +154,7 @@ fun SweetEditor(
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val textMeasurer = rememberTextMeasurer(cacheSize = 256)
+    val density = LocalDensity.current.density
     val renderModel = state.renderModel
     val controllerScale = controller.scaleState.value
     val renderScale = state.scrollMetrics.scale.takeIf { it > 0f }
@@ -164,7 +166,7 @@ fun SweetEditor(
     val drawCache = remember(scaledTheme, LocalDensity.current) {
         EditorDrawCache(scaledTheme)
     }
-    val selectionCornerRadius = LocalDensity.current.density * scaledTheme.cornerRadius + .5f
+    val selectionCornerRadius = density * scaledTheme.cornerRadius + .5f
     val renderSurfaceCache = remember(
         renderModel?.selectionRects,
         renderModel?.guideSegments,
@@ -418,6 +420,11 @@ private fun SweetEditorEffects(
     val currentOnHitTarget by rememberUpdatedState(onHitTarget)
     val currentOnContextMenuRequest by rememberUpdatedState(onContextMenuRequest)
     val currentOnSelectionHandleDragStateChange by rememberUpdatedState(onSelectionHandleDragStateChange)
+    val density = LocalDensity.current.density
+    val platformType = LocalPlatformType.current
+    val platformScrollbarConfig = remember(platformType, density) {
+        buildDefaultScrollbarConfig(platformType, density)
+    }
 
     val document = state.document
     val lastGestureResult = state.lastGestureResult
@@ -467,6 +474,12 @@ private fun SweetEditorEffects(
     LaunchedEffect(controller, document, settings) {
         if (document != null) {
             controller.applySettings(settings)
+        }
+    }
+
+    LaunchedEffect(controller, document, platformScrollbarConfig) {
+        if (document != null) {
+            controller.setScrollbarConfig(platformScrollbarConfig)
         }
     }
 
@@ -697,8 +710,8 @@ private fun DrawScope.drawEditorSurface(
         }
     }
 
-    drawScrollbar(renderModel.verticalScrollbar, renderModel, theme)
-    drawScrollbar(renderModel.horizontalScrollbar, renderModel, theme)
+    drawScrollbar(renderModel.verticalScrollbar, theme)
+    drawScrollbar(renderModel.horizontalScrollbar, theme)
 
     if (platformType in mobilePlatformTypes) {
         drawSelectionHandle(
@@ -1198,7 +1211,6 @@ private fun selectionHandlePath(
 
 private fun DrawScope.drawScrollbar(
     scrollbar: ScrollbarModel,
-    renderModel: EditorRenderModel,
     theme: EditorTheme,
 ) {
     if (!scrollbar.visible) {
@@ -1675,31 +1687,6 @@ private fun approximatelyEqual(
 
 private const val SELECTION_BAND_EPSILON = 0.5f
 
-private fun DrawScope.drawArrowHead(
-    color: Color,
-    from: Offset,
-    to: Offset,
-    arrowLength: Float,
-) {
-    val dx = to.x - from.x
-    val dy = to.y - from.y
-    val length = kotlin.math.sqrt(dx * dx + dy * dy)
-    if (length < 1f) {
-        return
-    }
-    val ux = dx / length
-    val uy = dy / length
-    val arrowAngle = (PI * 28.0 / 180.0).toFloat()
-    val cosA = kotlin.math.cos(arrowAngle)
-    val sinA = kotlin.math.sin(arrowAngle)
-    val ax1 = to.x - arrowLength * (ux * cosA - uy * sinA)
-    val ay1 = to.y - arrowLength * (uy * cosA + ux * sinA)
-    val ax2 = to.x - arrowLength * (ux * cosA + uy * sinA)
-    val ay2 = to.y - arrowLength * (uy * cosA - ux * sinA)
-    drawLine(color = color, start = to, end = Offset(ax1, ay1), strokeWidth = 1.2f)
-    drawLine(color = color, start = to, end = Offset(ax2, ay2), strokeWidth = 1.2f)
-}
-
 private fun currentLineBorderColor(theme: EditorTheme): Color {
     val color = theme.currentLineColor.toComposeColor()
     return if (color.alpha < 0.63f) {
@@ -1816,14 +1803,6 @@ private data class ViewportBounds(
         val right = x + itemWidth
         val bottom = y + itemHeight
         return right >= 0f && bottom >= 0f && x <= width && y <= height
-    }
-
-    fun intersectsGuide(guide: GuideSegment): Boolean {
-        val left = minOf(guide.start.x, guide.end.x)
-        val top = minOf(guide.start.y, guide.end.y)
-        val rectWidth = kotlin.math.abs(guide.end.x - guide.start.x).coerceAtLeast(1f)
-        val rectHeight = kotlin.math.abs(guide.end.y - guide.start.y).coerceAtLeast(1f)
-        return intersects(left, top, rectWidth, rectHeight)
     }
 
     fun intersectsLine(line: VisualLine, estimatedLineHeight: Float): Boolean {
@@ -1967,6 +1946,26 @@ private data class TextLayoutCacheKey(
     val style: TextStyle,
 )
 
+private fun buildDefaultScrollbarConfig(
+    platformType: PlatformType,
+    density: Float,
+): NativeScrollbarConfig {
+    val isMobile = platformType == PlatformType.Android || platformType == PlatformType.IOS
+    val thicknessDp = if (isMobile) 3f else 6f
+    val minThumbDp = if (isMobile) 36f else 24f
+    val hitPaddingDp = if (isMobile) 8f else 6f
+    return NativeScrollbarConfig(
+        thickness = thicknessDp * density,
+        minThumb = minThumbDp * density,
+        thumbHitPadding = hitPaddingDp * density,
+        mode = 0,
+        thumbDraggable = true,
+        trackTapMode = 0,
+        fadeDelayMillis = if (isMobile) 900 else 600,
+        fadeDurationMillis = if (isMobile) 260 else 220,
+    )
+}
+
 private data class RunTextStyleKey(
     val style: EditorTextStyle,
     val type: VisualRunType,
@@ -2091,59 +2090,12 @@ private fun PointerEvent.toNativeModifiers(): Int {
     return value
 }
 
-private fun EditorController.handleComposeKeyEvent(
-    event: KeyEvent,
-    preferIme: Boolean,
-): Boolean {
-    if (event.type != KeyEventType.KeyDown) {
-        return false
-    }
-    if (isComposing() && event.key != Key.Escape) {
-        return false
-    }
-    val mappedKeyCode = event.key.toEditorKeyCode()
-    if (mappedKeyCode != 0) {
-        val result = handleKeyEvent(
-            keyCode = mappedKeyCode,
-            text = null,
-            modifiers = event.toNativeModifiers(),
-        )
-        return result.handled
-    }
-    if (preferIme) {
-        val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
-            (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
-        } ?: return false
-        val result = handleKeyEvent(
-            keyCode = shortcutKeyCode,
-            text = null,
-            modifiers = event.toNativeModifiers(),
-        )
-        return result.handled
-    }
-    val text = event.toInsertedText()
-    if (text != null && event.shouldInsertDirectText()) {
-        insertText(text)
-        return true
-    }
-    val shortcutKeyCode = event.key.keyCode.toInt().takeIf {
-        (event.isCtrlPressed || event.isMetaPressed) && event.key.isCtrlShortcutKey()
-    } ?: return false
-    val result = handleKeyEvent(
-        keyCode = shortcutKeyCode,
-        text = null,
-        modifiers = event.toNativeModifiers(),
-    )
-    return result.handled
-}
-
 @Composable
 private fun CompletionPopup(
     completions: (@Composable (selectedIndex: Int, items: List<CompletionItem>, render: CompletionItemRenderer?) -> Unit)?,
     controller: SweetEditorController,
     editorWindowOffset: IntOffset,
 ) {
-    val platformType = LocalPlatformType.current
     completions?.also {
         val result = controller.state.completionResult ?: return
         val cursor = controller.state.renderModel?.cursor ?: return

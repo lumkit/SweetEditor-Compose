@@ -143,6 +143,32 @@ internal object IosNativeBindings {
         }
     }
 
+    fun nativeSetScrollbarConfig(
+        editorHandle: Long,
+        thickness: Float,
+        minThumb: Float,
+        thumbHitPadding: Float,
+        mode: Int,
+        thumbDraggable: Boolean,
+        trackTapMode: Int,
+        fadeDelayMillis: Int,
+        fadeDurationMillis: Int,
+    ) {
+        withEditorContext(editorHandle) {
+            editor_set_scrollbar_config(
+                editorHandle,
+                thickness,
+                minThumb,
+                thumbHitPadding,
+                mode,
+                if (thumbDraggable) 1 else 0,
+                trackTapMode,
+                fadeDelayMillis,
+                fadeDurationMillis,
+            )
+        }
+    }
+
     fun nativeSetReadOnly(editorHandle: Long, readOnly: Boolean) {
         withEditorContext(editorHandle) {
             editor_set_read_only(editorHandle, if (readOnly) 1 else 0)
