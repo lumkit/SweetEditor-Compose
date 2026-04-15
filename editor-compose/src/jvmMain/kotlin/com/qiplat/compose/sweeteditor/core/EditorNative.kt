@@ -306,6 +306,20 @@ object EditorNative {
         "editor_set_gutter_visible",
         FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT)
     )
+    private val SET_HANDLE_CONFIG = downcall(
+        "editor_set_handle_config",
+        FunctionDescriptor.ofVoid(
+            ValueLayout.JAVA_LONG,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+            ValueLayout.JAVA_FLOAT,
+        )
+    )
     private val SET_SCROLLBAR_CONFIG = downcall(
         "editor_set_scrollbar_config",
         FunctionDescriptor.ofVoid(
@@ -862,6 +876,32 @@ object EditorNative {
 
     fun setGutterVisible(editorHandle: Long, visible: Boolean) {
         invokeVoid { SET_GUTTER_VISIBLE.invokeExact(editorHandle, if (visible) 1 else 0) }
+    }
+
+    fun setHandleConfig(
+        editorHandle: Long,
+        startLeft: Float,
+        startTop: Float,
+        startRight: Float,
+        startBottom: Float,
+        endLeft: Float,
+        endTop: Float,
+        endRight: Float,
+        endBottom: Float,
+    ) {
+        invokeVoid {
+            SET_HANDLE_CONFIG.invokeExact(
+                editorHandle,
+                startLeft,
+                startTop,
+                startRight,
+                startBottom,
+                endLeft,
+                endTop,
+                endRight,
+                endBottom,
+            )
+        }
     }
 
     fun setScrollbarConfig(

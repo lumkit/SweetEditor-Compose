@@ -106,6 +106,20 @@ private class DesktopNativeEditorBridge(
         DesktopNativeBindings.nativeSetGutterVisible(handle, visible)
     }
 
+    override fun setHandleConfig(config: NativeHandleConfig) {
+        DesktopNativeBindings.nativeSetHandleConfig(
+            editorHandle = handle,
+            startLeft = config.startLeft,
+            startTop = config.startTop,
+            startRight = config.startRight,
+            startBottom = config.startBottom,
+            endLeft = config.endLeft,
+            endTop = config.endTop,
+            endRight = config.endRight,
+            endBottom = config.endBottom,
+        )
+    }
+
     override fun setScrollbarConfig(config: NativeScrollbarConfig) {
         DesktopNativeBindings.nativeSetScrollbarConfig(
             editorHandle = handle,

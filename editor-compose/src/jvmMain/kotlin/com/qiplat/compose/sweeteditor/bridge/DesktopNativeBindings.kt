@@ -289,6 +289,32 @@ internal object DesktopNativeBindings {
         }
     }
 
+    fun nativeSetHandleConfig(
+        editorHandle: Long,
+        startLeft: Float,
+        startTop: Float,
+        startRight: Float,
+        startBottom: Float,
+        endLeft: Float,
+        endTop: Float,
+        endRight: Float,
+        endBottom: Float,
+    ) {
+        withEditorContext(editorHandle) {
+            EditorNative.setHandleConfig(
+                editorHandle = editorHandle,
+                startLeft = startLeft,
+                startTop = startTop,
+                startRight = startRight,
+                startBottom = startBottom,
+                endLeft = endLeft,
+                endTop = endTop,
+                endRight = endRight,
+                endBottom = endBottom,
+            )
+        }
+    }
+
     fun nativeSetScrollbarConfig(
         editorHandle: Long,
         thickness: Float,

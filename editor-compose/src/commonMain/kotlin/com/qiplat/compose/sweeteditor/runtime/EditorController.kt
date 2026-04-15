@@ -3,6 +3,7 @@ package com.qiplat.compose.sweeteditor.runtime
 import com.qiplat.compose.sweeteditor.DecorationBatch
 import com.qiplat.compose.sweeteditor.EditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
+import com.qiplat.compose.sweeteditor.bridge.NativeHandleConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
 import com.qiplat.compose.sweeteditor.model.decoration.*
@@ -44,6 +45,7 @@ class EditorController(
     private var viewportWidthSnapshot: Int = -1
     private var viewportHeightSnapshot: Int = -1
     private var scrollbarConfigSnapshot: NativeScrollbarConfig? = null
+    private var handleConfigSnapshot: NativeHandleConfig? = null
 
     internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
 
@@ -344,6 +346,16 @@ class EditorController(
         }
         nativeEditorBridge.setScrollbarConfig(config)
         scrollbarConfigSnapshot = config
+        requestRefresh(renderModel = true)
+    }
+
+    internal fun setHandleConfig(config: NativeHandleConfig) {
+        ensureActive()
+        if (handleConfigSnapshot == config) {
+            return
+        }
+        nativeEditorBridge.setHandleConfig(config)
+        handleConfigSnapshot = config
         requestRefresh(renderModel = true)
     }
 
@@ -1134,6 +1146,7 @@ class EditorController(
         viewportWidthSnapshot = -1
         viewportHeightSnapshot = -1
         scrollbarConfigSnapshot = null
+        handleConfigSnapshot = null
         invalidateDecodedPayloadCache()
     }
 

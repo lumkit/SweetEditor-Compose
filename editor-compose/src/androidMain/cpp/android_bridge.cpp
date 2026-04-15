@@ -436,6 +436,27 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetGutter
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetHandleConfig(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle,
+    jfloat start_left,
+    jfloat start_top,
+    jfloat start_right,
+    jfloat start_bottom,
+    jfloat end_left,
+    jfloat end_top,
+    jfloat end_right,
+    jfloat end_bottom
+) {
+    editor_set_handle_config(
+        static_cast<intptr_t>(editor_handle),
+        start_left, start_top, start_right, start_bottom,
+        end_left, end_top, end_right, end_bottom
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetScrollbarConfig(
     JNIEnv*,
     jclass,

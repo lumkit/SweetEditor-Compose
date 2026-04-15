@@ -24,6 +24,17 @@ internal data class NativeScrollbarConfig(
     val fadeDurationMillis: Int,
 )
 
+internal data class NativeHandleConfig(
+    val startLeft: Float,
+    val startTop: Float,
+    val startRight: Float,
+    val startBottom: Float,
+    val endLeft: Float,
+    val endTop: Float,
+    val endRight: Float,
+    val endBottom: Float,
+)
+
 internal interface NativeDocumentBridge {
     val handle: Long
 
@@ -64,6 +75,8 @@ internal interface NativeEditorBridge {
     fun setGutterVisible(visible: Boolean)
 
     fun setScrollbarConfig(config: NativeScrollbarConfig)
+
+    fun setHandleConfig(config: NativeHandleConfig)
 
     fun setReadOnly(readOnly: Boolean)
 

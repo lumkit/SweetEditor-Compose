@@ -143,6 +143,26 @@ internal object IosNativeBindings {
         }
     }
 
+    fun nativeSetHandleConfig(
+        editorHandle: Long,
+        startLeft: Float,
+        startTop: Float,
+        startRight: Float,
+        startBottom: Float,
+        endLeft: Float,
+        endTop: Float,
+        endRight: Float,
+        endBottom: Float,
+    ) {
+        withEditorContext(editorHandle) {
+            editor_set_handle_config(
+                editorHandle,
+                startLeft, startTop, startRight, startBottom,
+                endLeft, endTop, endRight, endBottom,
+            )
+        }
+    }
+
     fun nativeSetScrollbarConfig(
         editorHandle: Long,
         thickness: Float,

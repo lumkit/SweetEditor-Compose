@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.qiplat.compose.sweeteditor.bridge.NativeHandleConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
@@ -425,6 +426,9 @@ private fun SweetEditorEffects(
     val platformScrollbarConfig = remember(platformType, density) {
         buildDefaultScrollbarConfig(platformType, density)
     }
+    val platformHandleConfig = remember(platformType, density) {
+        buildDefaultHandleConfig(platformType, density)
+    }
 
     val document = state.document
     val lastGestureResult = state.lastGestureResult
@@ -480,6 +484,12 @@ private fun SweetEditorEffects(
     LaunchedEffect(controller, document, platformScrollbarConfig) {
         if (document != null) {
             controller.setScrollbarConfig(platformScrollbarConfig)
+        }
+    }
+
+    LaunchedEffect(controller, document, platformHandleConfig) {
+        if (document != null && platformHandleConfig != null) {
+            controller.setHandleConfig(platformHandleConfig)
         }
     }
 
@@ -1153,10 +1163,21 @@ private fun DrawScope.drawSelectionHandle(
     if (!visible && alignment in listOf(Alignment.Start, Alignment.End)) {
         return
     }
-    val stemHeight = handleHeight.coerceAtLeast(10f)
-
+    val stemHeight = handleHeight.coerceAtLeast(18f * density)
+    val stemWidth = 1.5f * density
+    drawRect(
+        color = color,
+        topLeft = Offset(position.x - stemWidth / 2f, position.y),
+        size = Size(stemWidth, stemHeight),
+    )
     drawPath(
-        path = selectionHandlePath(alignment, position, stemHeight),
+        path = selectionHandlePath(
+            alignment = alignment,
+            position = position,
+            stemHeight = stemHeight,
+            dropRadius = 10f * density,
+            dropLength = 24f * density,
+        ),
         color = color,
     )
 }
@@ -1164,48 +1185,30 @@ private fun DrawScope.drawSelectionHandle(
 private fun selectionHandlePath(
     alignment: Alignment.Horizontal,
     position: PointF,
-    handleHeight: Float,
+    stemHeight: Float,
+    dropRadius: Float,
+    dropLength: Float,
 ): Path {
     val path = Path()
-    when (alignment) {
-        Alignment.Start -> {
-            path.apply {
-                moveTo(position.x, position.y + handleHeight)
-                lineTo(position.x - handleHeight, position.y + handleHeight)
-                arcTo(
-                    rect = Rect(
-                        left = position.x - handleHeight,
-                        top = position.y + handleHeight,
-                        right = position.x,
-                        bottom = position.y + handleHeight * 2
-                    ),
-                    startAngleDegrees = -90f,
-                    sweepAngleDegrees = -270f,
-                    forceMoveTo = false
-                )
-                close()
-            }
-        }
+    val tipX = position.x
+    val tipY = position.y + stemHeight
+    val centerX = tipX
+    val centerY = tipY + dropLength
+    val rotationDegrees = if (alignment == Alignment.Start) 45f else -45f
+    val tip = rotateAround(tipX, tipY, tipX, tipY, rotationDegrees)
+    val control1 = rotateAround(tipX, tipY + dropLength * 0.4f, tipX, tipY, rotationDegrees)
+    val control2 = rotateAround(centerX - dropRadius, centerY - dropRadius * 0.8f, tipX, tipY, rotationDegrees)
+    val left = rotateAround(centerX - dropRadius, centerY, tipX, tipY, rotationDegrees)
+    val bottom = rotateAround(centerX, centerY + dropRadius, tipX, tipY, rotationDegrees)
+    val right = rotateAround(centerX + dropRadius, centerY, tipX, tipY, rotationDegrees)
+    val control3 = rotateAround(centerX + dropRadius, centerY - dropRadius * 0.8f, tipX, tipY, rotationDegrees)
 
-        Alignment.End -> {
-            path.apply {
-                moveTo(position.x, position.y + handleHeight)
-                lineTo(position.x + handleHeight, position.y + handleHeight)
-                arcTo(
-                    rect = Rect(
-                        left = position.x,
-                        top = position.y + handleHeight,
-                        right = position.x + handleHeight,
-                        bottom = position.y + handleHeight * 2
-                    ),
-                    startAngleDegrees = -90f,
-                    sweepAngleDegrees = 270f,
-                    forceMoveTo = false
-                )
-                close()
-            }
-        }
-    }
+    path.moveTo(tip.x, tip.y)
+    path.cubicTo(control1.x, control1.y, control2.x, control2.y, left.x, left.y)
+    path.cubicTo(left.x, left.y, left.x, left.y, bottom.x, bottom.y)
+    path.cubicTo(bottom.x, bottom.y, right.x, right.y, right.x, right.y)
+    path.cubicTo(control3.x, control3.y, control1.x, control1.y, tip.x, tip.y)
+    path.close()
     return path
 }
 
@@ -1963,6 +1966,69 @@ private fun buildDefaultScrollbarConfig(
         trackTapMode = 0,
         fadeDelayMillis = if (isMobile) 900 else 600,
         fadeDurationMillis = if (isMobile) 260 else 220,
+    )
+}
+
+private fun buildDefaultHandleConfig(
+    platformType: PlatformType,
+    density: Float,
+): NativeHandleConfig? {
+    val isMobile = platformType == PlatformType.Android || platformType == PlatformType.IOS
+    if (!isMobile) {
+        return null
+    }
+    val angle = (PI / 4.0).toFloat()
+    val cos = kotlin.math.cos(angle)
+    val sin = kotlin.math.sin(angle)
+    val radius = 10f
+    val distance = 24f
+    val points = listOf(
+        0f to 0f,
+        -radius to distance,
+        radius to distance,
+        0f to (distance + radius),
+        0f to (distance - radius * 0.8f),
+    )
+    var minX = Float.POSITIVE_INFINITY
+    var minY = Float.POSITIVE_INFINITY
+    var maxX = Float.NEGATIVE_INFINITY
+    var maxY = Float.NEGATIVE_INFINITY
+    points.forEach { (x, y) ->
+        val rx = x * cos - y * sin
+        val ry = x * sin + y * cos
+        minX = minOf(minX, rx)
+        minY = minOf(minY, ry)
+        maxX = maxOf(maxX, rx)
+        maxY = maxOf(maxY, ry)
+    }
+    val pad = 8f
+    return NativeHandleConfig(
+        startLeft = (minX - pad) * density,
+        startTop = (minY - pad) * density,
+        startRight = (maxX + pad) * density,
+        startBottom = (maxY + pad) * density,
+        endLeft = (-maxX - pad) * density,
+        endTop = (minY - pad) * density,
+        endRight = (-minX + pad) * density,
+        endBottom = (maxY + pad) * density,
+    )
+}
+
+private fun rotateAround(
+    x: Float,
+    y: Float,
+    pivotX: Float,
+    pivotY: Float,
+    degrees: Float,
+): Offset {
+    val radians = (degrees * (PI / 180.0)).toFloat()
+    val cos = kotlin.math.cos(radians)
+    val sin = kotlin.math.sin(radians)
+    val dx = x - pivotX
+    val dy = y - pivotY
+    return Offset(
+        x = pivotX + dx * cos - dy * sin,
+        y = pivotY + dx * sin + dy * cos,
     )
 }
 

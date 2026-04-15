@@ -639,6 +639,7 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     var setBatchLineDiagnosticsCallCount: Int = 0
     var setIndentGuidesCallCount: Int = 0
     var appliedScrollbarConfig: NativeScrollbarConfig? = null
+    var appliedHandleConfig: NativeHandleConfig? = null
 
     override fun release() = Unit
 
@@ -675,6 +676,9 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     }
     override fun setGutterVisible(visible: Boolean) {
         appliedGutterVisible = visible
+    }
+    override fun setHandleConfig(config: NativeHandleConfig) {
+        appliedHandleConfig = config
     }
     override fun setScrollbarConfig(config: NativeScrollbarConfig) {
         appliedScrollbarConfig = config
