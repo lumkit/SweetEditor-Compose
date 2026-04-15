@@ -67,16 +67,18 @@ fun SweetEditor(
     completions: (@Composable (selectedIndex: Int, items: List<CompletionItem>, render: CompletionItemRenderer?) -> Unit)? = null,
 ) {
     var editorWindowOffset by remember { mutableStateOf(IntOffset.Zero) }
-    val mergedDecorationProviders = buildList {
-        val providerIds = mutableSetOf<String>()
-        decorationProviders.forEach { provider ->
-            if (providerIds.add(provider.id)) {
-                add(provider)
+    val mergedDecorationProviders = remember(decorationProviders, controller.attachedDecorationProviders) {
+        buildList {
+            val providerIds = mutableSetOf<String>()
+            decorationProviders.forEach { provider ->
+                if (providerIds.add(provider.id)) {
+                    add(provider)
+                }
             }
-        }
-        controller.attachedDecorationProviders.forEach { provider ->
-            if (providerIds.add(provider.id)) {
-                add(provider)
+            controller.attachedDecorationProviders.forEach { provider ->
+                if (providerIds.add(provider.id)) {
+                    add(provider)
+                }
             }
         }
     }
@@ -161,6 +163,17 @@ fun SweetEditor(
     }
     val drawCache = remember(scaledTheme, LocalDensity.current) {
         EditorDrawCache(scaledTheme)
+    }
+    val selectionCornerRadius = LocalDensity.current.density * scaledTheme.cornerRadius + .5f
+    val renderSurfaceCache = remember(
+        renderModel?.selectionRects,
+        renderModel?.guideSegments,
+        renderModel?.diagnosticDecorations,
+        renderModel?.gutterIcons,
+        renderModel?.foldMarkers,
+        selectionCornerRadius,
+    ) {
+        buildRenderSurfaceCache(renderModel, selectionCornerRadius)
     }
     val iconPainter = remember(controller, state.editorIconProvider) {
         EditorGutterIconPainter(
@@ -367,6 +380,7 @@ fun SweetEditor(
             textMeasurer = textMeasurer,
             drawCache = drawCache,
             iconPainter = iconPainter,
+            renderSurfaceCache = renderSurfaceCache,
             animatedCursor = animatedCursor,
             theme = scaledTheme,
             platformType = platformType,
@@ -510,6 +524,7 @@ private fun DrawScope.drawEditorSurface(
     textMeasurer: TextMeasurer,
     drawCache: EditorDrawCache,
     iconPainter: EditorGutterIconPainter,
+    renderSurfaceCache: RenderSurfaceCache,
     animatedCursor: AnimatedCursorRenderState,
     theme: EditorTheme,
     platformType: PlatformType,
@@ -528,8 +543,7 @@ private fun DrawScope.drawEditorSurface(
         height = renderModel.viewportHeight.takeIf { it > 0f } ?: size.height,
     )
     val estimatedLineHeight = renderModel.cursor.height.takeIf { it > 0f } ?: 20f
-
-    val cornerRadius: Float = density * theme.cornerRadius + .5f
+    val cornerRadius = density * theme.cornerRadius + .5f
 
     drawRect(
         color = theme.backgroundColor.toComposeColor(),
@@ -544,23 +558,16 @@ private fun DrawScope.drawEditorSurface(
         width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width,
     )
 
-    val visibleSelectionRects = renderModel.selectionRects.filter { rect ->
-        viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)
-    }
-    if (visibleSelectionRects.isNotEmpty()) {
-        drawSelectionRects(visibleSelectionRects, theme.selectionColor.toComposeColor(), cornerRadius)
+    if (renderSurfaceCache.selectionItems.isNotEmpty()) {
+        drawSelectionItems(renderSurfaceCache.selectionItems, theme.selectionColor.toComposeColor())
     }
 
-    renderModel.guideSegments.forEach { guide ->
-        if (viewportBounds.intersectsGuide(guide)) {
-            drawGuide(guide, theme, drawCache)
-        }
+    if (renderSurfaceCache.guideGroups.isNotEmpty()) {
+        drawGuideGroups(renderSurfaceCache.guideGroups, theme, drawCache)
     }
 
-    renderModel.diagnosticDecorations.forEach { decoration ->
-        if (viewportBounds.intersects(decoration.origin.x, decoration.origin.y, decoration.width, decoration.height)) {
-            drawDiagnostic(decoration, theme)
-        }
+    if (renderSurfaceCache.diagnosticGroups.isNotEmpty()) {
+        drawDiagnosticGroups(renderSurfaceCache.diagnosticGroups, theme)
     }
 
     if (
@@ -630,8 +637,6 @@ private fun DrawScope.drawEditorSurface(
     )
     val activeLineColor = currentLineAccentColor(theme)
     val overlayMode = renderModel.maxGutterIcons == 0
-    val gutterIconsByLine = renderModel.gutterIcons.groupBy { it.logicalLine }
-    val foldMarkerByLine = renderModel.foldMarkers.associateBy { it.logicalLine }
     var currentDrawingLineNumber = -1
     renderModel.lines.forEach { line ->
         if (!line.ownsGutterSemantics) {
@@ -642,7 +647,7 @@ private fun DrawScope.drawEditorSurface(
         }
         val logicalLine = line.logicalLine
         val lineNumber = logicalLine + 1
-        val iconItems = gutterIconsByLine[logicalLine].orEmpty()
+        val iconItems = renderSurfaceCache.gutterIconsByLine[logicalLine].orEmpty()
         val hasIcons = iconItems.isNotEmpty()
         val lineIconTint = if (logicalLine == renderModel.cursor.textPosition.line) {
             activeLineColor
@@ -677,7 +682,7 @@ private fun DrawScope.drawEditorSurface(
             }
         }
 
-        val marker = foldMarkerByLine[logicalLine]
+        val marker = renderSurfaceCache.foldMarkerByLine[logicalLine]
         if (marker != null && viewportBounds.intersects(
                 marker.origin.x,
                 marker.origin.y,
@@ -778,128 +783,75 @@ private fun DrawScope.drawCurrentLine(
     }
 }
 
-private fun DrawScope.drawSelectionRects(
-    rects: List<SelectionRect>,
+private fun DrawScope.drawSelectionItems(
+    items: List<SelectionRenderItem>,
     color: Color,
-    cornerRadius: Float,
 ) {
-    val bands = mergeSelectionBands(rects)
-    val clusters = buildSelectionClusters(bands)
-    clusters.forEach { cluster ->
-        if (cluster.size == 1) {
-            val band = cluster.first()
+    items.forEach { item ->
+        val rect = item.rect
+        if (rect != null) {
             drawRoundRect(
                 color = color,
-                topLeft = Offset(band.left, band.top),
-                size = Size(band.right - band.left, band.bottom - band.top),
-                cornerRadius = CornerRadius(cornerRadius),
+                topLeft = rect.topLeft,
+                size = rect.size,
+                cornerRadius = item.cornerRadius,
             )
-        } else {
+        } else if (item.path != null) {
             drawPath(
-                path = buildRoundedSelectionPath(cluster, cornerRadius),
+                path = item.path,
                 color = color,
             )
         }
     }
 }
 
-private fun DrawScope.drawGuide(
-    guide: GuideSegment,
+private fun DrawScope.drawGuideGroups(
+    guideGroups: List<GuideRenderGroup>,
     theme: EditorTheme,
     drawCache: EditorDrawCache,
 ) {
-    val color = if (guide.type == GuideType.Separator) {
-        theme.separatorLineColor.toComposeColor()
-    } else {
-        theme.guideColor.toComposeColor()
-    }
-    val pathEffect = when (guide.style) {
-        GuideStyle.Solid -> null
-        GuideStyle.Dashed -> drawCache.dashedGuidePathEffect
-        GuideStyle.Double -> drawCache.doubleGuidePathEffect
-    }
-    val strokeWidth = if (guide.type == GuideType.Indent) 1f else 1.2f
-    val start = Offset(guide.start.x, guide.start.y)
-    val end = Offset(guide.end.x, guide.end.y)
-    if (guide.arrowEnd) {
-        val arrowTrim = 8f
-        val dx = end.x - start.x
-        val dy = end.y - start.y
-        val length = kotlin.math.sqrt(dx * dx + dy * dy)
-        val lineEnd = if (length > arrowTrim) {
-            val ratio = (length - arrowTrim) / length
-            Offset(start.x + dx * ratio, start.y + dy * ratio)
-        } else {
-            end
-        }
-        drawLine(
-            color = color,
-            start = start,
-            end = lineEnd,
-            strokeWidth = strokeWidth,
-            pathEffect = pathEffect,
+    guideGroups.forEach { group ->
+        drawPath(
+            path = group.path,
+            color = if (group.type == GuideType.Separator) {
+                theme.separatorLineColor.toComposeColor()
+            } else {
+                theme.guideColor.toComposeColor()
+            },
+            style = Stroke(
+                width = group.strokeWidth,
+                pathEffect = when (group.style) {
+                    GuideStyle.Solid -> null
+                    GuideStyle.Dashed -> drawCache.dashedGuidePathEffect
+                    GuideStyle.Double -> drawCache.doubleGuidePathEffect
+                },
+            ),
         )
-        drawArrowHead(color = color, from = start, to = end, arrowLength = 9f)
-        return
     }
-    drawLine(
-        color = color,
-        start = start,
-        end = end,
-        strokeWidth = strokeWidth,
-        pathEffect = pathEffect,
-    )
 }
 
-private fun DrawScope.drawDiagnostic(
-    decoration: DiagnosticDecoration,
+private fun DrawScope.drawDiagnosticGroups(
+    diagnosticGroups: List<DiagnosticRenderGroup>,
     theme: EditorTheme,
 ) {
-    val color = if (decoration.color != 0) {
-        decoration.color.toComposeColor()
-    } else {
-        when (decoration.severity) {
-            0 -> theme.diagnosticErrorColor.toComposeColor()
-            1 -> theme.diagnosticWarningColor.toComposeColor()
-            2 -> theme.diagnosticInfoColor.toComposeColor()
-            else -> theme.diagnosticHintColor.toComposeColor()
-        }
-    }
-    val startX = decoration.origin.x
-    val endX = startX + decoration.width
-    val baseY = decoration.origin.y + decoration.height - 1f
-    if (decoration.severity == 3) {
-        drawLine(
-            color = color,
-            start = Offset(startX, baseY),
-            end = Offset(endX, baseY),
-            strokeWidth = 2f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 2f)),
+    diagnosticGroups.forEach { group ->
+        drawPath(
+            path = group.path,
+            color = group.colorValue.takeIf { it != 0 }?.toComposeColor() ?: when (group.severity) {
+                0 -> theme.diagnosticErrorColor.toComposeColor()
+                1 -> theme.diagnosticWarningColor.toComposeColor()
+                2 -> theme.diagnosticInfoColor.toComposeColor()
+                else -> theme.diagnosticHintColor.toComposeColor()
+            },
+            style = Stroke(
+                width = 2f,
+                pathEffect = if (group.severity == 3) {
+                    PathEffect.dashPathEffect(floatArrayOf(3f, 2f))
+                } else {
+                    null
+                },
+            ),
         )
-        return
-    }
-    val halfWave = 7f
-    val amplitude = 3.5f
-    var x = startX
-    var step = 0
-    while (x < endX) {
-        val nextX = minOf(x + halfWave, endX)
-        val midX = (x + nextX) / 2f
-        val peakY = if (step % 2 == 0) baseY - amplitude else baseY + amplitude
-        drawLine(
-            color = color,
-            start = Offset(x, baseY),
-            end = Offset(midX, peakY),
-            strokeWidth = 2f,
-        )
-        drawLine(
-            color = color,
-            start = Offset(midX, peakY),
-            end = Offset(nextX, baseY),
-            strokeWidth = 2f,
-        )
-        x = nextX
-        step++
     }
 }
 
@@ -1289,6 +1241,220 @@ private data class AnimatedCursorRenderState(
     val height: Float,
     val visible: Boolean,
 )
+
+private data class RenderSurfaceCache(
+    val selectionItems: List<SelectionRenderItem> = emptyList(),
+    val guideGroups: List<GuideRenderGroup> = emptyList(),
+    val diagnosticGroups: List<DiagnosticRenderGroup> = emptyList(),
+    val gutterIconsByLine: Map<Int, List<GutterIconRenderItem>> = emptyMap(),
+    val foldMarkerByLine: Map<Int, FoldMarkerRenderItem> = emptyMap(),
+)
+
+private data class SelectionRenderItem(
+    val rect: Rect? = null,
+    val cornerRadius: CornerRadius = CornerRadius.Zero,
+    val path: Path? = null,
+)
+
+private data class GuideRenderGroup(
+    val type: GuideType,
+    val style: GuideStyle,
+    val strokeWidth: Float,
+    val path: Path,
+)
+
+private data class DiagnosticRenderGroup(
+    val severity: Int,
+    val colorValue: Int,
+    val path: Path,
+)
+
+private fun buildRenderSurfaceCache(
+    renderModel: EditorRenderModel?,
+    cornerRadius: Float,
+): RenderSurfaceCache {
+    if (renderModel == null) {
+        return RenderSurfaceCache()
+    }
+    return RenderSurfaceCache(
+        selectionItems = buildSelectionRenderItems(renderModel.selectionRects, cornerRadius),
+        guideGroups = buildGuideRenderGroups(renderModel.guideSegments),
+        diagnosticGroups = buildDiagnosticRenderGroups(renderModel.diagnosticDecorations),
+        gutterIconsByLine = renderModel.gutterIcons.groupBy { it.logicalLine },
+        foldMarkerByLine = renderModel.foldMarkers.associateBy { it.logicalLine },
+    )
+}
+
+private data class GuideRenderGroupKey(
+    val type: GuideType,
+    val style: GuideStyle,
+    val strokeWidth: Float,
+)
+
+private fun buildGuideRenderGroups(
+    guideSegments: List<GuideSegment>,
+): List<GuideRenderGroup> {
+    if (guideSegments.isEmpty()) {
+        return emptyList()
+    }
+    val groupedPaths = linkedMapOf<GuideRenderGroupKey, Path>()
+    guideSegments.forEach { guide ->
+        val key = GuideRenderGroupKey(
+            type = guide.type,
+            style = guide.style,
+            strokeWidth = if (guide.type == GuideType.Indent) 1f else 1.2f,
+        )
+        val path = groupedPaths.getOrPut(key) { Path() }
+        appendGuideToPath(path, guide)
+    }
+    return groupedPaths.map { (key, path) ->
+        GuideRenderGroup(
+            type = key.type,
+            style = key.style,
+            strokeWidth = key.strokeWidth,
+            path = path,
+        )
+    }
+}
+
+private fun appendGuideToPath(
+    path: Path,
+    guide: GuideSegment,
+) {
+    val startX = guide.start.x
+    val startY = guide.start.y
+    val endX = guide.end.x
+    val endY = guide.end.y
+    if (guide.arrowEnd) {
+        val arrowTrim = 8f
+        val dx = endX - startX
+        val dy = endY - startY
+        val length = kotlin.math.sqrt(dx * dx + dy * dy)
+        val lineEndX: Float
+        val lineEndY: Float
+        if (length > arrowTrim) {
+            val ratio = (length - arrowTrim) / length
+            lineEndX = startX + dx * ratio
+            lineEndY = startY + dy * ratio
+        } else {
+            lineEndX = endX
+            lineEndY = endY
+        }
+        path.moveTo(startX, startY)
+        path.lineTo(lineEndX, lineEndY)
+        appendArrowHeadToPath(path, startX, startY, endX, endY, 9f)
+        return
+    }
+    path.moveTo(startX, startY)
+    path.lineTo(endX, endY)
+}
+
+private fun appendArrowHeadToPath(
+    path: Path,
+    fromX: Float,
+    fromY: Float,
+    toX: Float,
+    toY: Float,
+    arrowLength: Float,
+) {
+    val dx = toX - fromX
+    val dy = toY - fromY
+    val length = kotlin.math.sqrt(dx * dx + dy * dy)
+    if (length < 1f) {
+        return
+    }
+    val ux = dx / length
+    val uy = dy / length
+    val arrowAngle = (PI * 28.0 / 180.0).toFloat()
+    val cosA = kotlin.math.cos(arrowAngle)
+    val sinA = kotlin.math.sin(arrowAngle)
+    val ax1 = toX - arrowLength * (ux * cosA - uy * sinA)
+    val ay1 = toY - arrowLength * (uy * cosA + ux * sinA)
+    val ax2 = toX - arrowLength * (ux * cosA + uy * sinA)
+    val ay2 = toY - arrowLength * (uy * cosA - ux * sinA)
+    path.moveTo(toX, toY)
+    path.lineTo(ax1, ay1)
+    path.moveTo(toX, toY)
+    path.lineTo(ax2, ay2)
+}
+
+private fun buildSelectionRenderItems(
+    selectionRects: List<SelectionRect>,
+    cornerRadius: Float,
+): List<SelectionRenderItem> {
+    val clusters = buildSelectionClusters(mergeSelectionBands(selectionRects))
+    if (clusters.isEmpty()) {
+        return emptyList()
+    }
+    val roundedCorner = CornerRadius(cornerRadius)
+    return clusters.map { cluster ->
+        if (cluster.size == 1) {
+            val band = cluster.first()
+            SelectionRenderItem(
+                rect = Rect(
+                    left = band.left,
+                    top = band.top,
+                    right = band.right,
+                    bottom = band.bottom,
+                ),
+                cornerRadius = roundedCorner,
+            )
+        } else {
+            SelectionRenderItem(
+                path = buildRoundedSelectionPath(cluster, cornerRadius),
+            )
+        }
+    }
+}
+
+private fun buildDiagnosticRenderGroups(
+    decorations: List<DiagnosticDecoration>,
+): List<DiagnosticRenderGroup> {
+    if (decorations.isEmpty()) {
+        return emptyList()
+    }
+    val groupedPaths = linkedMapOf<Pair<Int, Int>, Path>()
+    decorations.forEach { decoration ->
+        val key = decoration.severity to decoration.color
+        val path = groupedPaths.getOrPut(key) { Path() }
+        appendDiagnosticToPath(path, decoration)
+    }
+    return groupedPaths.map { (key, path) ->
+        DiagnosticRenderGroup(
+            severity = key.first,
+            colorValue = key.second,
+            path = path,
+        )
+    }
+}
+
+private fun appendDiagnosticToPath(
+    path: Path,
+    decoration: DiagnosticDecoration,
+) {
+    val startX = decoration.origin.x
+    val endX = startX + decoration.width
+    val baseY = decoration.origin.y + decoration.height - 1f
+    if (decoration.severity == 3) {
+        path.moveTo(startX, baseY)
+        path.lineTo(endX, baseY)
+        return
+    }
+    val halfWave = 7f
+    val amplitude = 3.5f
+    var x = startX
+    var step = 0
+    while (x < endX) {
+        val nextX = minOf(x + halfWave, endX)
+        val midX = (x + nextX) / 2f
+        val peakY = if (step % 2 == 0) baseY - amplitude else baseY + amplitude
+        path.moveTo(x, baseY)
+        path.lineTo(midX, peakY)
+        path.lineTo(nextX, baseY)
+        x = nextX
+        step++
+    }
+}
 
 private fun mergeSelectionBands(rects: List<SelectionRect>): List<SelectionBand> {
     val sortedRects = rects.sortedWith(compareBy<SelectionRect> { it.origin.y }.thenBy { it.origin.x })
@@ -1690,7 +1856,7 @@ private class EditorDrawCache(
 ) {
     private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
     private val lineNumberTextStyles = mutableMapOf<Boolean, TextStyle>()
-    private val textLayouts = SimpleLruCache<TextLayoutCacheKey, TextLayoutResult>(maxSize = 256)
+    private val textLayouts = SimpleLruCache<TextLayoutCacheKey, TextLayoutResult>(maxSize = 1024)
 
     val dashedGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
     val doubleGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
@@ -1749,7 +1915,7 @@ private class EditorDrawCache(
         text: String,
         style: TextStyle,
     ): TextLayoutResult {
-        if (text.length > 256) {
+        if (text.length > 2048) {
             return textMeasurer.measure(
                 text = text,
                 style = style,
@@ -1770,12 +1936,12 @@ private class SimpleLruCache<K, V>(
     private val maxSize: Int,
 ) {
     private val values = mutableMapOf<K, V>()
-    private val accessOrder = ArrayDeque<K>()
+    private val accessOrder = linkedSetOf<K>()
 
     operator fun get(key: K): V? {
         val value = values[key] ?: return null
         accessOrder.remove(key)
-        accessOrder.addLast(key)
+        accessOrder.add(key)
         return value
     }
 
@@ -1784,9 +1950,10 @@ private class SimpleLruCache<K, V>(
             accessOrder.remove(key)
         }
         values[key] = value
-        accessOrder.addLast(key)
+        accessOrder.add(key)
         while (values.size > maxSize) {
-            val eldestKey = accessOrder.removeFirstOrNull() ?: break
+            val eldestKey = accessOrder.firstOrNull() ?: break
+            accessOrder.remove(eldestKey)
             values.remove(eldestKey)
         }
     }

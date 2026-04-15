@@ -36,6 +36,12 @@ class EditorController(
     private var settingsSnapshot: EditorSettings = EditorSettings()
     private var scaleSnapshot: Float = 1f
     private var showSplitLineSnapshot: Boolean = true
+    private var pendingDecorationBatch: DecorationBatch? = null
+    private var appliedDecorationBatch: DecorationBatch? = null
+    private var lastRenderModelPayload: ByteArray? = null
+    private var lastScrollMetricsPayload: ByteArray? = null
+    private var viewportWidthSnapshot: Int = -1
+    private var viewportHeightSnapshot: Int = -1
 
     internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
 
@@ -49,6 +55,8 @@ class EditorController(
         nativeEditorBridge.setDocument(document?.nativeBridge)
         state.document = document
         state.isAttached = document != null
+        invalidateAppliedDecorationBatch()
+        invalidateDecodedPayloadCache()
         requestRefresh(
             renderModel = true,
             scrollMetrics = true,
@@ -88,7 +96,12 @@ class EditorController(
      */
     fun setViewport(width: Int, height: Int) {
         ensureActive()
+        if (width == viewportWidthSnapshot && height == viewportHeightSnapshot) {
+            return
+        }
         nativeEditorBridge.setViewport(width, height)
+        viewportWidthSnapshot = width
+        viewportHeightSnapshot = height
         requestRefresh(renderModel = true, scrollMetrics = true)
     }
 
@@ -159,6 +172,9 @@ class EditorController(
      */
     fun setScale(scale: Float) {
         ensureActive()
+        if (approximatelyEqual(scaleSnapshot, scale)) {
+            return
+        }
         editorTextMeasurer.setScale(scale)
         nativeEditorBridge.setScale(scale)
         nativeEditorBridge.onFontMetricsChanged()
@@ -178,6 +194,9 @@ class EditorController(
      */
     fun syncPlatformScale(scale: Float) {
         ensureActive()
+        if (approximatelyEqual(scaleSnapshot, scale)) {
+            return
+        }
         scaleSnapshot = scale
         editorTextMeasurer.setScale(scale)
         nativeEditorBridge.onFontMetricsChanged()
@@ -841,6 +860,7 @@ class EditorController(
      */
     fun registerTextStyles(stylesById: Map<Int, TextStyle>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.registerBatchTextStyles(
             ProtocolEncoder.encodeBatchTextStyles(stylesById),
         )
@@ -858,6 +878,7 @@ class EditorController(
         spansByLine: Map<Int, List<StyleSpan>>,
     ) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBatchLineSpans(
             ProtocolEncoder.encodeBatchLineSpans(layer, spansByLine),
         )
@@ -871,6 +892,7 @@ class EditorController(
      */
     fun setLineInlayHints(hintsByLine: Map<Int, List<InlayHint>>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBatchLineInlayHints(
             ProtocolEncoder.encodeBatchLineInlayHints(hintsByLine),
         )
@@ -884,6 +906,7 @@ class EditorController(
      */
     fun setLinePhantomTexts(phantomsByLine: Map<Int, List<PhantomText>>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBatchLinePhantomTexts(
             ProtocolEncoder.encodeBatchLinePhantomTexts(phantomsByLine),
         )
@@ -897,6 +920,7 @@ class EditorController(
      */
     fun setLineGutterIcons(iconsByLine: Map<Int, List<GutterIcon>>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBatchLineGutterIcons(
             ProtocolEncoder.encodeBatchLineGutterIcons(iconsByLine),
         )
@@ -910,6 +934,7 @@ class EditorController(
      */
     fun setLineDiagnostics(diagnosticsByLine: Map<Int, List<DiagnosticItem>>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBatchLineDiagnostics(
             ProtocolEncoder.encodeBatchLineDiagnostics(diagnosticsByLine),
         )
@@ -923,6 +948,7 @@ class EditorController(
      */
     fun setFoldRegions(regions: List<FoldRegion>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setFoldRegions(
             ProtocolEncoder.encodeFoldRegions(regions),
         )
@@ -931,30 +957,35 @@ class EditorController(
 
     fun clearInlayHints() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearInlayHints()
         requestRefresh(renderModel = true)
     }
 
     fun clearPhantomTexts() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearPhantomTexts()
         requestRefresh(renderModel = true)
     }
 
     fun clearGutterIcons() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearGutterIcons()
         requestRefresh(renderModel = true)
     }
 
     fun clearDiagnostics() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearDiagnostics()
         requestRefresh(renderModel = true)
     }
 
     fun setIndentGuides(guides: List<IndentGuide>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setIndentGuides(
             ProtocolEncoder.encodeIndentGuides(guides),
         )
@@ -963,6 +994,7 @@ class EditorController(
 
     fun setBracketGuides(guides: List<BracketGuide>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setBracketGuides(
             ProtocolEncoder.encodeBracketGuides(guides),
         )
@@ -971,6 +1003,7 @@ class EditorController(
 
     fun setFlowGuides(guides: List<FlowGuide>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setFlowGuides(
             ProtocolEncoder.encodeFlowGuides(guides),
         )
@@ -979,6 +1012,7 @@ class EditorController(
 
     fun setSeparatorGuides(guides: List<SeparatorGuide>) {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.setSeparatorGuides(
             ProtocolEncoder.encodeSeparatorGuides(guides),
         )
@@ -987,12 +1021,14 @@ class EditorController(
 
     fun clearGuides() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearGuides()
         requestRefresh(renderModel = true)
     }
 
     fun clearAllDecorations() {
         ensureActive()
+        invalidateAppliedDecorationBatch()
         nativeEditorBridge.clearAllDecorations()
         requestRefresh(renderModel = true)
     }
@@ -1004,41 +1040,10 @@ class EditorController(
      */
     internal fun applyDecorationBatch(batch: DecorationBatch) {
         ensureActive()
-        nativeEditorBridge.registerBatchTextStyles(
-            ProtocolEncoder.encodeBatchTextStyles(batch.textStyles),
-        )
-        batch.spansByLayer.forEach { (layer, spansByLine) ->
-            nativeEditorBridge.setBatchLineSpans(
-                ProtocolEncoder.encodeBatchLineSpans(layer, spansByLine),
-            )
+        if (batch == pendingDecorationBatch || batch == appliedDecorationBatch) {
+            return
         }
-        nativeEditorBridge.setBatchLineInlayHints(
-            ProtocolEncoder.encodeBatchLineInlayHints(batch.inlayHints),
-        )
-        nativeEditorBridge.setBatchLinePhantomTexts(
-            ProtocolEncoder.encodeBatchLinePhantomTexts(batch.phantomTexts),
-        )
-        nativeEditorBridge.setBatchLineGutterIcons(
-            ProtocolEncoder.encodeBatchLineGutterIcons(batch.gutterIcons),
-        )
-        nativeEditorBridge.setBatchLineDiagnostics(
-            ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics),
-        )
-        nativeEditorBridge.setIndentGuides(
-            ProtocolEncoder.encodeIndentGuides(batch.indentGuides),
-        )
-        nativeEditorBridge.setBracketGuides(
-            ProtocolEncoder.encodeBracketGuides(batch.bracketGuides),
-        )
-        nativeEditorBridge.setFlowGuides(
-            ProtocolEncoder.encodeFlowGuides(batch.flowGuides),
-        )
-        nativeEditorBridge.setSeparatorGuides(
-            ProtocolEncoder.encodeSeparatorGuides(batch.separatorGuides),
-        )
-        nativeEditorBridge.setFoldRegions(
-            ProtocolEncoder.encodeFoldRegions(batch.foldRegions),
-        )
+        pendingDecorationBatch = batch
         requestRefresh(renderModel = true)
     }
 
@@ -1079,11 +1084,20 @@ class EditorController(
             return
         }
         if (state.isRenderModelDirty) {
-            state.renderModel = ProtocolDecoder.decodeRenderModel(nativeEditorBridge.buildRenderModel())
+            flushPendingDecorationBatch()
+            val payload = nativeEditorBridge.buildRenderModel()
+            if (!payload.contentEqualsNullable(lastRenderModelPayload)) {
+                state.renderModel = ProtocolDecoder.decodeRenderModel(payload)
+                lastRenderModelPayload = payload?.copyOf()
+            }
             state.isRenderModelDirty = false
         }
         if (state.isScrollMetricsDirty) {
-            state.scrollMetrics = ProtocolDecoder.decodeScrollMetrics(nativeEditorBridge.getScrollMetrics())
+            val payload = nativeEditorBridge.getScrollMetrics()
+            if (!payload.contentEqualsNullable(lastScrollMetricsPayload)) {
+                state.scrollMetrics = ProtocolDecoder.decodeScrollMetrics(payload)
+                lastScrollMetricsPayload = payload?.copyOf()
+            }
             state.isScrollMetricsDirty = false
         }
     }
@@ -1103,6 +1117,11 @@ class EditorController(
         state.isRenderModelDirty = false
         state.isScrollMetricsDirty = false
         state.isDecorationDirty = false
+        pendingDecorationBatch = null
+        appliedDecorationBatch = null
+        viewportWidthSnapshot = -1
+        viewportHeightSnapshot = -1
+        invalidateDecodedPayloadCache()
     }
 
     /**
@@ -1126,6 +1145,92 @@ class EditorController(
         }
     }
 
+    private fun invalidateAppliedDecorationBatch() {
+        pendingDecorationBatch = null
+        appliedDecorationBatch = null
+    }
+
+    private fun invalidateDecodedPayloadCache() {
+        lastRenderModelPayload = null
+        lastScrollMetricsPayload = null
+    }
+
+    private fun flushPendingDecorationBatch() {
+        val batch = pendingDecorationBatch ?: return
+        val previous = appliedDecorationBatch
+        if (previous?.textStyles != batch.textStyles) {
+            nativeEditorBridge.registerBatchTextStyles(
+                ProtocolEncoder.encodeBatchTextStyles(batch.textStyles),
+            )
+        }
+        val syntaxSpans = batch.spansByLayer[SpanLayer.Syntax].orEmpty()
+        if (previous?.spansByLayer?.get(SpanLayer.Syntax).orEmpty() != syntaxSpans) {
+            nativeEditorBridge.setBatchLineSpans(
+                ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Syntax, syntaxSpans),
+            )
+        }
+        val semanticSpans = batch.spansByLayer[SpanLayer.Semantic].orEmpty()
+        if (previous?.spansByLayer?.get(SpanLayer.Semantic).orEmpty() != semanticSpans) {
+            nativeEditorBridge.setBatchLineSpans(
+                ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Semantic, semanticSpans),
+            )
+        }
+        if (previous?.inlayHints != batch.inlayHints) {
+            nativeEditorBridge.setBatchLineInlayHints(
+                ProtocolEncoder.encodeBatchLineInlayHints(batch.inlayHints),
+            )
+        }
+        if (previous?.phantomTexts != batch.phantomTexts) {
+            nativeEditorBridge.setBatchLinePhantomTexts(
+                ProtocolEncoder.encodeBatchLinePhantomTexts(batch.phantomTexts),
+            )
+        }
+        if (previous?.gutterIcons != batch.gutterIcons) {
+            nativeEditorBridge.setBatchLineGutterIcons(
+                ProtocolEncoder.encodeBatchLineGutterIcons(batch.gutterIcons),
+            )
+        }
+        if (previous?.diagnostics != batch.diagnostics) {
+            nativeEditorBridge.setBatchLineDiagnostics(
+                ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics),
+            )
+        }
+        if (previous?.indentGuides != batch.indentGuides) {
+            nativeEditorBridge.setIndentGuides(
+                ProtocolEncoder.encodeIndentGuides(batch.indentGuides),
+            )
+        }
+        if (previous?.bracketGuides != batch.bracketGuides) {
+            nativeEditorBridge.setBracketGuides(
+                ProtocolEncoder.encodeBracketGuides(batch.bracketGuides),
+            )
+        }
+        if (previous?.flowGuides != batch.flowGuides) {
+            nativeEditorBridge.setFlowGuides(
+                ProtocolEncoder.encodeFlowGuides(batch.flowGuides),
+            )
+        }
+        if (previous?.separatorGuides != batch.separatorGuides) {
+            nativeEditorBridge.setSeparatorGuides(
+                ProtocolEncoder.encodeSeparatorGuides(batch.separatorGuides),
+            )
+        }
+        if (previous?.foldRegions != batch.foldRegions) {
+            nativeEditorBridge.setFoldRegions(
+                ProtocolEncoder.encodeFoldRegions(batch.foldRegions),
+            )
+        }
+        appliedDecorationBatch = batch
+        pendingDecorationBatch = null
+    }
+
+    private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean {
+        if (this == null || other == null) {
+            return this == null && other == null
+        }
+        return this.contentEquals(other)
+    }
+
     /**
      * Marks deferred refresh categories that should be processed by Compose effects.
      *
@@ -1139,18 +1244,27 @@ class EditorController(
         decorations: Boolean = false,
     ) {
         if (renderModel) {
-            state.isRenderModelDirty = true
-            state.renderModelRequestVersion += 1
+            if (!state.isRenderModelDirty) {
+                state.isRenderModelDirty = true
+                state.renderModelRequestVersion += 1
+            }
         }
         if (scrollMetrics) {
-            state.isScrollMetricsDirty = true
-            state.scrollMetricsRequestVersion += 1
+            if (!state.isScrollMetricsDirty) {
+                state.isScrollMetricsDirty = true
+                state.scrollMetricsRequestVersion += 1
+            }
         }
         if (decorations) {
-            state.isDecorationDirty = true
-            state.decorationRequestVersion += 1
+            if (!state.isDecorationDirty) {
+                state.isDecorationDirty = true
+                state.decorationRequestVersion += 1
+            }
         }
     }
+
+    private fun approximatelyEqual(first: Float, second: Float): Boolean =
+        kotlin.math.abs(first - second) <= 0.0001f
 }
 
 private fun GestureType.asEventType(): EditorGestureEventType = when (this) {

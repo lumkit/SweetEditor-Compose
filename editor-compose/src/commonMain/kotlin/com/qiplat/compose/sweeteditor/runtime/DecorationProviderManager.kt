@@ -33,7 +33,7 @@ internal fun InstallDecorationProviders(
             state.isDecorationDirty = false
             return@LaunchedEffect
         }
-        manager.retainOnly(providerIds)?.let(controller::applyDecorationBatch)
+        manager.retainOnly(providerIds, visibleLineRange)?.let(controller::applyDecorationBatch)
         if (providerIds.isEmpty() && !manager.hasPendingRequests()) {
             state.isDecorationDirty = false
         }
@@ -42,7 +42,7 @@ internal fun InstallDecorationProviders(
     providers.forEach { provider ->
         DisposableEffect(provider.id) {
             onDispose {
-                manager.removeProvider(provider.id)?.let(controller::applyDecorationBatch)
+                manager.removeProvider(provider.id, visibleLineRange)?.let(controller::applyDecorationBatch)
                 if (!manager.hasPendingRequests()) {
                     state.isDecorationDirty = false
                 }
@@ -65,7 +65,7 @@ internal fun InstallDecorationProviders(
             val currentDocument = document
             val currentVisibleRange = visibleLineRange
             if (currentDocument == null || currentVisibleRange == null) {
-                manager.removeProvider(provider.id)?.let(controller::applyDecorationBatch)
+                manager.removeProvider(provider.id, currentVisibleRange)?.let(controller::applyDecorationBatch)
                 if (!manager.hasPendingRequests()) {
                     state.isDecorationDirty = false
                 }
@@ -103,6 +103,7 @@ internal fun InstallDecorationProviders(
                             generation = generation,
                             result = result,
                             defaultLineRange = requestedLineRange,
+                            visibleLineRange = currentVisibleRange,
                         )?.let(controller::applyDecorationBatch)
                     }
                     return true
@@ -126,6 +127,11 @@ internal fun InstallDecorationProviders(
 }
 
 internal class DecorationProviderManager {
+    private data class BatchProjectionKey(
+        val aggregateBatch: DecorationBatch,
+        val visibleLineRange: IntRange?,
+    )
+
     private data class ProviderEntry(
         val generation: Int = 0,
         val batch: DecorationBatch = DecorationBatch(),
@@ -133,6 +139,10 @@ internal class DecorationProviderManager {
     )
 
     private val providerEntries = linkedMapOf<String, ProviderEntry>()
+    private var cachedBatch: DecorationBatch = DecorationBatch()
+    private var isCachedBatchDirty: Boolean = false
+    private var cachedProjectionKey: BatchProjectionKey? = null
+    private var cachedProjectedBatch: DecorationBatch = DecorationBatch()
 
     fun beginGeneration(providerId: String): Int {
         val nextGeneration = (providerEntries[providerId]?.generation ?: 0) + 1
@@ -187,15 +197,19 @@ internal class DecorationProviderManager {
         generation: Int,
         result: DecorationResult,
         defaultLineRange: IntRange,
+        visibleLineRange: IntRange? = null,
     ): DecorationBatch? {
         val current = providerEntries[providerId] ?: return null
         if (current.generation != generation) {
             return null
         }
-        providerEntries[providerId] = current.copy(
-            batch = applyResult(current.batch, result, defaultLineRange),
-        )
-        return buildBatch()
+        val updatedBatch = applyResult(current.batch, result, defaultLineRange)
+        if (updatedBatch == current.batch) {
+            return if (visibleLineRange != null) buildBatch(visibleLineRange) else null
+        }
+        providerEntries[providerId] = current.copy(batch = updatedBatch)
+        invalidateCachedBatch()
+        return buildBatch(visibleLineRange)
     }
 
     fun finishGeneration(
@@ -210,23 +224,31 @@ internal class DecorationProviderManager {
         return hasPendingRequests().not()
     }
 
-    fun removeProvider(providerId: String): DecorationBatch? {
+    fun removeProvider(
+        providerId: String,
+        visibleLineRange: IntRange? = null,
+    ): DecorationBatch? {
         providerEntries.remove(providerId) ?: return null
+        invalidateCachedBatch()
         return if (providerEntries.isNotEmpty()) {
-            buildBatch()
+            buildBatch(visibleLineRange)
         } else {
             DecorationBatch()
         }
     }
 
-    fun retainOnly(providerIds: List<String>): DecorationBatch? {
+    fun retainOnly(
+        providerIds: List<String>,
+        visibleLineRange: IntRange? = null,
+    ): DecorationBatch? {
         val idSet = providerIds.toSet()
         val removed = providerEntries.keys.filterNot(idSet::contains)
         if (removed.isEmpty()) {
             return null
         }
         removed.forEach(providerEntries::remove)
-        return buildBatch()
+        invalidateCachedBatch()
+        return buildBatch(visibleLineRange)
     }
 
     fun clearAll(): DecorationBatch? {
@@ -234,12 +256,33 @@ internal class DecorationProviderManager {
             return null
         }
         providerEntries.clear()
+        cachedBatch = DecorationBatch()
+        isCachedBatchDirty = false
+        cachedProjectionKey = null
+        cachedProjectedBatch = DecorationBatch()
         return DecorationBatch()
     }
 
     fun hasPendingRequests(): Boolean = providerEntries.values.any { it.pendingGeneration != null }
 
-    internal fun buildBatch(): DecorationBatch {
+    internal fun buildBatch(
+        visibleLineRange: IntRange? = null,
+    ): DecorationBatch {
+        val aggregateBatch = buildAggregateBatch()
+        val projectionKey = BatchProjectionKey(aggregateBatch, visibleLineRange)
+        if (cachedProjectionKey == projectionKey) {
+            return cachedProjectedBatch
+        }
+        return projectBatchForVisibleRange(aggregateBatch, visibleLineRange).also { projectedBatch ->
+            cachedProjectionKey = projectionKey
+            cachedProjectedBatch = projectedBatch
+        }
+    }
+
+    private fun buildAggregateBatch(): DecorationBatch {
+        if (!isCachedBatchDirty) {
+            return cachedBatch
+        }
         var textStyles: Map<Int, TextStyle> = emptyMap()
         var syntaxSpans: Map<Int, List<StyleSpan>> = emptyMap()
         var semanticSpans: Map<Int, List<StyleSpan>> = emptyMap()
@@ -262,11 +305,11 @@ internal class DecorationProviderManager {
             phantomTexts = phantomTexts.mergeValues(batch.phantomTexts)
             gutterIcons = gutterIcons.mergeValues(batch.gutterIcons)
             diagnostics = diagnostics.mergeValues(batch.diagnostics)
-            indentGuides = indentGuides + batch.indentGuides
-            bracketGuides = bracketGuides + batch.bracketGuides
-            flowGuides = flowGuides + batch.flowGuides
-            separatorGuides = separatorGuides + batch.separatorGuides
-            foldRegions = foldRegions + batch.foldRegions
+            indentGuides = indentGuides.appendDistinct(batch.indentGuides)
+            bracketGuides = bracketGuides.appendDistinct(batch.bracketGuides)
+            flowGuides = flowGuides.appendDistinct(batch.flowGuides)
+            separatorGuides = separatorGuides.appendDistinct(batch.separatorGuides)
+            foldRegions = foldRegions.appendDistinct(batch.foldRegions)
         }
 
         return DecorationBatch(
@@ -284,7 +327,10 @@ internal class DecorationProviderManager {
             flowGuides = flowGuides,
             separatorGuides = separatorGuides,
             foldRegions = foldRegions,
-        )
+        ).also { batch ->
+            cachedBatch = batch
+            isCachedBatchDirty = false
+        }
     }
 
     private fun applyResult(
@@ -312,10 +358,18 @@ internal class DecorationProviderManager {
             phantomTexts = applyLineMap(current.phantomTexts, result.phantomTexts, result.phantomTextsMode, result.lineRange ?: defaultLineRange),
             gutterIcons = applyLineMap(current.gutterIcons, result.gutterIcons, result.gutterIconsMode, result.lineRange ?: defaultLineRange),
             diagnostics = applyLineMap(current.diagnostics, result.diagnostics, result.diagnosticsMode, result.lineRange ?: defaultLineRange),
-            indentGuides = applyGuideList(current.indentGuides, result.indentGuides, result.indentGuidesMode, result.lineRange ?: defaultLineRange) { it.start.line },
-            bracketGuides = applyGuideList(current.bracketGuides, result.bracketGuides, result.bracketGuidesMode, result.lineRange ?: defaultLineRange) { it.parent.line },
-            flowGuides = applyGuideList(current.flowGuides, result.flowGuides, result.flowGuidesMode, result.lineRange ?: defaultLineRange) { it.start.line },
-            separatorGuides = applyGuideList(current.separatorGuides, result.separatorGuides, result.separatorGuidesMode, result.lineRange ?: defaultLineRange) { it.line },
+            indentGuides = applyGuideList(current.indentGuides, result.indentGuides, result.indentGuidesMode, result.lineRange ?: defaultLineRange) {
+                it.start.line <= (result.lineRange ?: defaultLineRange).last && it.end.line >= (result.lineRange ?: defaultLineRange).first
+            },
+            bracketGuides = applyGuideList(current.bracketGuides, result.bracketGuides, result.bracketGuidesMode, result.lineRange ?: defaultLineRange) {
+                it.parent.line <= (result.lineRange ?: defaultLineRange).last && it.end.line >= (result.lineRange ?: defaultLineRange).first
+            },
+            flowGuides = applyGuideList(current.flowGuides, result.flowGuides, result.flowGuidesMode, result.lineRange ?: defaultLineRange) {
+                it.start.line <= (result.lineRange ?: defaultLineRange).last && it.end.line >= (result.lineRange ?: defaultLineRange).first
+            },
+            separatorGuides = applyGuideList(current.separatorGuides, result.separatorGuides, result.separatorGuidesMode, result.lineRange ?: defaultLineRange) {
+                it.line in (result.lineRange ?: defaultLineRange)
+            },
             foldRegions = applyFoldRegions(current.foldRegions, result.foldRegions, result.foldRegionsMode, result.lineRange ?: defaultLineRange),
         )
     }
@@ -362,15 +416,15 @@ internal class DecorationProviderManager {
         next: List<T>?,
         mode: DecorationApplyMode,
         lineRange: IntRange,
-        lineSelector: (T) -> Int,
+        intersectsLineRange: (T) -> Boolean,
     ): List<T> {
         if (next == null) {
             return current
         }
         return when (mode) {
-            DecorationApplyMode.Merge -> current + next
+            DecorationApplyMode.Merge -> current.appendDistinct(next)
             DecorationApplyMode.ReplaceAll -> next
-            DecorationApplyMode.ReplaceRange -> current.filterNot { lineSelector(it) in lineRange } + next
+            DecorationApplyMode.ReplaceRange -> current.filterNot(intersectsLineRange).appendDistinct(next)
         }
     }
 
@@ -384,13 +438,19 @@ internal class DecorationProviderManager {
             return current
         }
         return when (mode) {
-            DecorationApplyMode.Merge -> current + next
+            DecorationApplyMode.Merge -> current.appendDistinct(next)
             DecorationApplyMode.ReplaceAll -> next
-            DecorationApplyMode.ReplaceRange -> current.filterNot { it.startLine in lineRange || it.endLine in lineRange } + next
+            DecorationApplyMode.ReplaceRange -> current.filterNot { it.startLine <= lineRange.last && it.endLine >= lineRange.first }
+                .appendDistinct(next)
         }
     }
 
     private fun ProviderEntry?.orEmpty(): ProviderEntry = this ?: ProviderEntry()
+
+    private fun invalidateCachedBatch() {
+        isCachedBatchDirty = true
+        cachedProjectionKey = null
+    }
 }
 
 internal suspend fun runDecorationProviderSafely(
@@ -408,15 +468,28 @@ private fun computeVisibleLineRange(
     renderModel: com.qiplat.compose.sweeteditor.model.visual.EditorRenderModel?,
     document: EditorDocument,
 ): IntRange {
-    val logicalLines = renderModel?.lines
-        ?.map { it.logicalLine }
-        ?.distinct()
-        .orEmpty()
-    if (logicalLines.isEmpty()) {
+    val lines = renderModel?.lines.orEmpty()
+    if (lines.isEmpty()) {
         val lastLine = (document.getLineCount() - 1).coerceAtLeast(0)
         return 0..lastLine
     }
-    return logicalLines.first()..logicalLines.last()
+    var minLine = Int.MAX_VALUE
+    var maxLine = Int.MIN_VALUE
+    lines.forEach { line ->
+        val logicalLine = line.logicalLine
+        if (logicalLine < minLine) {
+            minLine = logicalLine
+        }
+        if (logicalLine > maxLine) {
+            maxLine = logicalLine
+        }
+    }
+    return if (minLine == Int.MAX_VALUE || maxLine == Int.MIN_VALUE) {
+        val lastLine = (document.getLineCount() - 1).coerceAtLeast(0)
+        0..lastLine
+    } else {
+        minLine..maxLine
+    }
 }
 
 private fun IntRange.expand(overscanLines: Int, lineCount: Int): IntRange {
@@ -443,3 +516,47 @@ private fun <T> Map<Int, List<T>>.mergeValues(
         put(line, mergedValues)
     }
 }
+
+private fun <T> List<T>.appendDistinct(next: List<T>): List<T> {
+    if (next.isEmpty()) {
+        return this
+    }
+    if (isEmpty()) {
+        return next
+    }
+    val merged = LinkedHashSet<T>(size + next.size)
+    merged.addAll(this)
+    merged.addAll(next)
+    return merged.toList()
+}
+
+private fun projectBatchForVisibleRange(
+    batch: DecorationBatch,
+    visibleLineRange: IntRange?,
+): DecorationBatch {
+    if (visibleLineRange == null) {
+        return batch
+    }
+    val projectedRange = visibleLineRange.expandUnbounded(64)
+    return batch.copy(
+        indentGuides = batch.indentGuides.filter { it.intersects(projectedRange) },
+        bracketGuides = batch.bracketGuides.filter { it.intersects(projectedRange) },
+        flowGuides = batch.flowGuides.filter { it.intersects(projectedRange) },
+        separatorGuides = batch.separatorGuides.filter { it.line in projectedRange },
+    )
+}
+
+private fun IntRange.expandUnbounded(padding: Int): IntRange {
+    val start = (first - padding).coerceAtLeast(0)
+    val end = if (last > Int.MAX_VALUE - padding) Int.MAX_VALUE else last + padding
+    return start..end
+}
+
+private fun IndentGuide.intersects(lineRange: IntRange): Boolean =
+    start.line <= lineRange.last && end.line >= lineRange.first
+
+private fun BracketGuide.intersects(lineRange: IntRange): Boolean =
+    parent.line <= lineRange.last && end.line >= lineRange.first
+
+private fun FlowGuide.intersects(lineRange: IntRange): Boolean =
+    start.line <= lineRange.last && end.line >= lineRange.first

@@ -235,4 +235,138 @@ class DecorationProviderManagerCommonTest {
         assertEquals(1, syntaxSpans.size)
         assertEquals(listOf(StyleSpan(column = 0, length = 4, styleId = 7)), syntaxSpans.getValue(3))
     }
+
+    @Test
+    fun unchangedProviderResultDoesNotRebuildAggregateBatch() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("syntax")
+        val firstBatch = manager.commitResult(
+            providerId = "syntax",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    1 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 1..1,
+        )
+        val secondBatch = manager.commitResult(
+            providerId = "syntax",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    1 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 1..1,
+        )
+
+        requireNotNull(firstBatch)
+        assertEquals(null, secondBatch)
+    }
+
+    @Test
+    fun mergeIndentGuidesDoesNotAccumulateDuplicates() {
+        val manager = DecorationProviderManager()
+
+        val guide = IndentGuide(
+            start = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(1, 4),
+            end = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(8, 4),
+        )
+        val generation = manager.beginGeneration("guides")
+        manager.commitResult(
+            providerId = "guides",
+            generation = generation,
+            result = DecorationResult(
+                indentGuides = listOf(guide),
+                indentGuidesMode = DecorationApplyMode.Merge,
+            ),
+            defaultLineRange = 1..8,
+        )
+        val batch = manager.commitResult(
+            providerId = "guides",
+            generation = generation,
+            result = DecorationResult(
+                indentGuides = listOf(guide),
+                indentGuidesMode = DecorationApplyMode.Merge,
+            ),
+            defaultLineRange = 1..8,
+        )
+
+        assertEquals(null, batch)
+        assertEquals(listOf(guide), manager.buildBatch().indentGuides)
+    }
+
+    @Test
+    fun replaceRangeRemovesIndentGuidesThatOverlapRange() {
+        val manager = DecorationProviderManager()
+
+        val baseGeneration = manager.beginGeneration("guides")
+        manager.commitResult(
+            providerId = "guides",
+            generation = baseGeneration,
+            result = DecorationResult(
+                indentGuides = listOf(
+                    IndentGuide(
+                        start = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(1, 4),
+                        end = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(10, 4),
+                    ),
+                ),
+                indentGuidesMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 1..10,
+        )
+        val nextGeneration = manager.beginGeneration("guides")
+        val replacement = IndentGuide(
+            start = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(3, 8),
+            end = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(6, 8),
+        )
+        val batch = manager.commitResult(
+            providerId = "guides",
+            generation = nextGeneration,
+            result = DecorationResult(
+                indentGuides = listOf(replacement),
+                indentGuidesMode = DecorationApplyMode.ReplaceRange,
+                lineRange = 4..5,
+            ),
+            defaultLineRange = 4..5,
+        )
+
+        requireNotNull(batch)
+        assertEquals(listOf(replacement), batch.indentGuides)
+    }
+
+    @Test
+    fun buildBatchProjectsIndentGuidesToVisibleRange() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("guides")
+        manager.commitResult(
+            providerId = "guides",
+            generation = generation,
+            result = DecorationResult(
+                indentGuides = listOf(
+                    IndentGuide(
+                        start = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(1, 4),
+                        end = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(20, 4),
+                    ),
+                    IndentGuide(
+                        start = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(400, 4),
+                        end = com.qiplat.compose.sweeteditor.model.foundation.TextPosition(460, 4),
+                    ),
+                ),
+                indentGuidesMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 0..500,
+            visibleLineRange = 10..30,
+        )
+
+        val batch = manager.buildBatch(10..30)
+
+        assertEquals(1, batch.indentGuides.size)
+        assertEquals(1, batch.indentGuides.single().start.line)
+    }
 }

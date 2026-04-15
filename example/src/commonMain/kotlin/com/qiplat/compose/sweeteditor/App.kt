@@ -58,7 +58,6 @@ fun App() {
             textMeasurer = editorAppearance.textMeasurer,
             state = editorState,
         )
-        val fps by rememberFps()
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
         var wrapModeOrdinal by rememberSaveable { mutableIntStateOf(WrapMode.None.ordinal) }
@@ -80,7 +79,7 @@ fun App() {
                 ExampleSampleSpec("nlohmann-json.hpp", "files/nlohmann-json_hpp", "files/cpp_json"),
             )
         }
-        val decorationProviders = remember {
+        val decorationProviders: List<DecorationProvider> = remember {
             listOf(
                 LanguageConfigDecorationProvider(),
                 ExampleDemoDecorationProvider(),
@@ -111,12 +110,6 @@ fun App() {
         }
         val activeSample =
             loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
-        val scale by editorController.scaleState
-        val cursorPosition by editorController.cursorPositionState
-        val visibleLineRange by editorController.visibleLineRangeState
-        val selectedText by editorController.selectedTextState
-        val canUndo by editorController.canUndoState
-        val canRedo by editorController.canRedoState
 
         LaunchedEffect(sampleSpecs) {
             val configurationCache = mutableMapOf<String, LanguageConfiguration>()
@@ -176,8 +169,6 @@ fun App() {
                             gutterVisible = gutterVisible,
                             showSplitLine = showSplitLine,
                             currentLineRenderMode = currentLineRenderMode,
-                            canUndo = canUndo,
-                            canRedo = canRedo,
                             onDarkThemeChanged = { darkThemeState = it },
                             onCycleWrapMode = {
                                 wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
@@ -206,45 +197,9 @@ fun App() {
                 CompositionLocalProvider(
                     LocalContentColor provides Color(editorAppearance.theme.textColor),
                 ) {
-                    ProvideTextStyle(value = MaterialTheme.typography.labelMedium) {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .windowInsetsPadding(WindowInsets.navigationBars)
-                                .height(72.dp)
-                                .padding(horizontal = 16.dp)
-                                .horizontalScroll(rememberScrollState()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Ln ${cursorPosition.line + 1}, Col ${cursorPosition.column + 1}",
-                                modifier = Modifier.width(120.dp),
-                            )
-                            Text(
-                                text = visibleLineRange?.let { "Visible ${it.first + 1}-${it.last + 1}" } ?: "Visible -",
-                                modifier = Modifier.width(128.dp),
-                            )
-                            Text(
-                                text = if (selectedText.isNullOrEmpty()) "Selection 0" else "Selection ${selectedText!!.length}",
-                                modifier = Modifier.width(110.dp),
-                            )
-                            Text(
-                                text = "FPS ${fps.toInt()}",
-                                modifier = Modifier.width(70.dp),
-                            )
-                            Text(
-                                text = "Scale: ${scale.toString().take(4)}",
-                                modifier = Modifier.width(80.dp),
-                            )
-                            Slider(
-                                value = scale,
-                                onValueChange = {
-                                    editorController.setScale(it)
-                                },
-                                valueRange = .5f..2f,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
+                    ExampleStatusBar(
+                        editorController = editorController,
+                    )
                 }
             },
         ) { paddingValues ->
@@ -275,78 +230,6 @@ fun App() {
                                 )
                             }
                         }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(editorAppearance.theme.backgroundColor))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AssistChip(
-                            onClick = {
-                                wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
-                            },
-                            label = {
-                                Text("Wrap: ${wrapMode.name}")
-                            },
-                        )
-                        AssistChip(
-                            onClick = {
-                                currentLineRenderModeOrdinal =
-                                    (currentLineRenderModeOrdinal + 1) % CurrentLineRenderMode.entries.size
-                            },
-                            label = {
-                                Text("CurrentLine: ${currentLineRenderMode.name}")
-                            },
-                        )
-                        FilterChip(
-                            selected = !readOnly,
-                            onClick = {
-                                readOnly = !readOnly
-                            },
-                            label = {
-                                Text(if (readOnly) "ReadOnly" else "Editable")
-                            },
-                        )
-                        FilterChip(
-                            selected = compositionEnabled,
-                            onClick = {
-                                compositionEnabled = !compositionEnabled
-                            },
-                            label = {
-                                Text(if (compositionEnabled) "IME On" else "IME Off")
-                            },
-                        )
-                        FilterChip(
-                            selected = gutterVisible,
-                            onClick = {
-                                gutterVisible = !gutterVisible
-                            },
-                            label = {
-                                Text(if (gutterVisible) "Gutter On" else "Gutter Off")
-                            },
-                        )
-                        FilterChip(
-                            selected = gutterSticky,
-                            onClick = {
-                                gutterSticky = !gutterSticky
-                            },
-                            label = {
-                                Text(if (gutterSticky) "Sticky Gutter" else "Scrolling Gutter")
-                            },
-                        )
-                        FilterChip(
-                            selected = showSplitLine,
-                            onClick = {
-                                showSplitLine = !showSplitLine
-                            },
-                            label = {
-                                Text(if (showSplitLine) "SplitLine On" else "SplitLine Off")
-                            },
-                        )
                     }
 
                     SweetEditor(
@@ -404,6 +287,58 @@ fun App() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun ExampleStatusBar(
+    editorController: SweetEditorController,
+) {
+    val fps by rememberFps()
+    val scale by editorController.scaleState
+    val cursorPosition by editorController.cursorPositionState
+    val visibleLineRange by editorController.visibleLineRangeState
+    val selectedText by editorController.selectedTextState
+
+    ProvideTextStyle(value = MaterialTheme.typography.labelMedium) {
+        Row(
+            Modifier.fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .height(72.dp)
+                .padding(horizontal = 16.dp)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Ln ${cursorPosition.line + 1}, Col ${cursorPosition.column + 1}",
+                modifier = Modifier.width(120.dp),
+            )
+            Text(
+                text = visibleLineRange?.let { "Visible ${it.first + 1}-${it.last + 1}" } ?: "Visible -",
+                modifier = Modifier.width(128.dp),
+            )
+            Text(
+                text = if (selectedText.isNullOrEmpty()) "Selection 0" else "Selection ${selectedText!!.length}",
+                modifier = Modifier.width(110.dp),
+            )
+            Text(
+                text = "FPS ${fps.toInt()}",
+                modifier = Modifier.width(70.dp),
+            )
+            Text(
+                text = "Scale: ${scale.toString().take(4)}",
+                modifier = Modifier.width(80.dp),
+            )
+            Slider(
+                value = scale,
+                onValueChange = {
+                    editorController.setScale(it)
+                },
+                valueRange = .5f..2f,
+                modifier = Modifier.width(120.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun RowScope.Actions(
     editorController: SweetEditorController,
     darkThemeState: Boolean,
@@ -413,8 +348,6 @@ private fun RowScope.Actions(
     gutterVisible: Boolean,
     showSplitLine: Boolean,
     currentLineRenderMode: CurrentLineRenderMode,
-    canUndo: Boolean,
-    canRedo: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     onCycleWrapMode: () -> Unit,
     onToggleReadOnly: () -> Unit,
@@ -424,6 +357,8 @@ private fun RowScope.Actions(
     onCycleCurrentLineRenderMode: () -> Unit,
 ) {
     var menuState by rememberSaveable { mutableStateOf(false) }
+    val canUndo by editorController.canUndoState
+    val canRedo by editorController.canRedoState
 
     IconButton(
         {
@@ -675,6 +610,7 @@ private class ExampleDemoCompletionProvider : CompletionProvider {
 private class ExampleDemoDecorationProvider : DecorationProvider {
     override val id: String = "example.demo.decoration"
     override val overscanLines: Int = 8
+    override val debounceMillis: Long = 80L
     override val capabilities: Set<DecorationType> = setOf(
         DecorationType.InlayHint,
         DecorationType.Diagnostic,
@@ -683,6 +619,12 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
         DecorationType.GutterIcon,
         DecorationType.SeparatorGuide,
     )
+    private val styleIdColorToken = EditorThemeStyleIds.UserBase + 1
+    private val textStyles = mapOf(
+        styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
+    )
+    private val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
+    private var structuralCache: StructuralDecorationCache? = null
 
     override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
         val inlayHints = linkedMapOf<Int, MutableList<InlayHint>>()
@@ -769,14 +711,20 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
     private fun buildStructuralDecorations(
         context: DecorationProviderContext,
     ): Pair<List<FoldRegion>, List<IndentGuide>> {
+        val cache = structuralCache
+        if (cache != null && !shouldRebuildStructuralDecorations(cache, context)) {
+            return cache.foldRegions to cache.indentGuides
+        }
         val foldSet = linkedSetOf<FoldRegion>()
         val indentSet = linkedSetOf<IndentGuide>()
         val braceStack = ArrayDeque<Int>()
         val regionStack = ArrayDeque<Int>()
+        val lineSnapshots = ArrayList<String>(context.totalLineCount)
         var inBlockComment = false
 
         for (line in 0 until context.totalLineCount) {
             val text = context.document.getLineText(line)
+            lineSnapshots += text
             val trimmed = text.trim().lowercase()
             if (trimmed.startsWith("#region") || trimmed.startsWith("// region")) {
                 regionStack.addLast(line)
@@ -850,7 +798,16 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                 i++
             }
         }
-        return foldSet.toList() to indentSet.toList()
+        val foldRegions = foldSet.toList()
+        val indentGuides = indentSet.toList()
+        structuralCache = StructuralDecorationCache(
+            documentIdentity = context.document.hashCode(),
+            totalLineCount = context.totalLineCount,
+            foldRegions = foldRegions,
+            indentGuides = indentGuides,
+            lineSnapshots = lineSnapshots,
+        )
+        return foldRegions to indentGuides
     }
 
     private fun addStructuralRegion(
@@ -873,7 +830,41 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
             end = TextPosition(endLine, indentColumn),
         )
     }
+
+    private fun shouldRebuildStructuralDecorations(
+        cache: StructuralDecorationCache,
+        context: DecorationProviderContext,
+    ): Boolean {
+        if (cache.documentIdentity != context.document.hashCode()) {
+            return true
+        }
+        if (cache.totalLineCount != context.totalLineCount) {
+            return true
+        }
+        if (!context.lastEditResult.changed) {
+            return false
+        }
+        return context.textChanges.any { change ->
+            if (change.range.start.line != change.range.end.line) {
+                return@any true
+            }
+            val line = change.range.start.line
+            val oldLine = cache.lineSnapshots.getOrNull(line).orEmpty()
+            val newLine = context.document.getLineText(line)
+            structuralPattern.containsMatchIn(oldLine) || structuralPattern.containsMatchIn(newLine)
+        }
+    }
 }
+
+private data class StructuralDecorationCache(
+    val documentIdentity: Int,
+    val totalLineCount: Int,
+    val foldRegions: List<FoldRegion>,
+    val indentGuides: List<IndentGuide>,
+    val lineSnapshots: List<String>,
+)
+
+private val structuralPattern = Regex("""\{|\}|#region|#endregion|//\s*region|//\s*endregion|/\*|\*/|'|" """.trim())
 
 @Composable
 fun rememberFps(): State<Float> {

@@ -5,6 +5,7 @@ import com.qiplat.compose.sweeteditor.bridge.NativeBridgeFactory
 import com.qiplat.compose.sweeteditor.bridge.NativeDocumentBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeTextMeasurer
+import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 import com.qiplat.compose.sweeteditor.model.snippet.TabStopGroup
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class EditorControllerCommonTest {
@@ -132,6 +134,142 @@ class EditorControllerCommonTest {
         assertEquals(CurrentLineRenderMode.Border, controller.getCurrentLineRenderMode())
         assertEquals(false, controller.isGutterSticky())
         assertEquals(false, controller.isGutterVisible())
+    }
+
+    @Test
+    fun applyDecorationBatchCoalescesUntilRefresh() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+        val batch = DecorationBatch(
+            textStyles = mapOf(1 to TextStyle(color = 0xFF00FF)),
+            spansByLayer = mapOf(
+                SpanLayer.Syntax to mapOf(
+                    0 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+            ),
+        )
+
+        controller.applyDecorationBatch(batch)
+        controller.applyDecorationBatch(batch)
+
+        assertEquals(0, editorBridge.registerBatchTextStylesCallCount)
+        assertEquals(0, editorBridge.setBatchLineSpansCallCount)
+
+        controller.refreshNow()
+
+        assertEquals(1, editorBridge.registerBatchTextStylesCallCount)
+        assertEquals(1, editorBridge.setBatchLineSpansCallCount)
+        assertEquals(1, editorBridge.buildRenderModelCallCount)
+
+        controller.applyDecorationBatch(batch)
+        controller.refreshNow()
+
+        assertEquals(1, editorBridge.registerBatchTextStylesCallCount)
+        assertEquals(1, editorBridge.setBatchLineSpansCallCount)
+        assertEquals(1, editorBridge.buildRenderModelCallCount)
+    }
+
+    @Test
+    fun refreshNowReusesDecodedSnapshotsWhenNativePayloadIsUnchanged() {
+        val editorBridge = FakeNativeEditorBridge().apply {
+            renderModelPayload = buildRenderModelPayloadForControllerTest()
+            scrollMetricsPayload = buildScrollMetricsPayloadForControllerTest()
+        }
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.refresh()
+        controller.refreshNow()
+        val firstRenderModel = requireNotNull(controller.state.renderModel)
+        val firstScrollMetrics = controller.state.scrollMetrics
+
+        controller.refresh()
+        controller.refreshNow()
+
+        assertSame(firstRenderModel, controller.state.renderModel)
+        assertSame(firstScrollMetrics, controller.state.scrollMetrics)
+        assertEquals(2, editorBridge.buildRenderModelCallCount)
+        assertEquals(2, editorBridge.getScrollMetricsCallCount)
+    }
+
+    @Test
+    fun refreshRequestsOnlyBumpVersionsOnDirtyEdge() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.refresh()
+        controller.refresh()
+        controller.requestDecorationRefresh()
+        controller.requestDecorationRefresh()
+
+        assertEquals(1, controller.state.renderModelRequestVersion)
+        assertEquals(1, controller.state.scrollMetricsRequestVersion)
+        assertEquals(1, controller.state.decorationRequestVersion)
+    }
+
+    @Test
+    fun setViewportSkipsDuplicateSize() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.setViewport(800, 600)
+        controller.setViewport(800, 600)
+        controller.setViewport(1024, 600)
+
+        assertEquals(2, editorBridge.setViewportCallCount)
+        assertEquals(1_024, editorBridge.lastViewportWidth)
+        assertEquals(600, editorBridge.lastViewportHeight)
+    }
+
+    @Test
+    fun applyDecorationBatchOnlyFlushesChangedCategories() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+        val indentGuide = IndentGuide(
+            start = TextPosition(1, 4),
+            end = TextPosition(8, 4),
+        )
+        val firstBatch = DecorationBatch(
+            indentGuides = listOf(indentGuide),
+        )
+        val secondBatch = DecorationBatch(
+            indentGuides = listOf(indentGuide),
+            diagnostics = mapOf(
+                2 to listOf(DiagnosticItem(column = 0, length = 4, severity = DiagnosticSeverity.Warning)),
+            ),
+        )
+
+        controller.applyDecorationBatch(firstBatch)
+        controller.refreshNow()
+        controller.applyDecorationBatch(secondBatch)
+        controller.refreshNow()
+
+        assertEquals(1, editorBridge.setIndentGuidesCallCount)
+        assertEquals(2, editorBridge.setBatchLineDiagnosticsCallCount)
     }
 
     @Test
@@ -492,6 +630,17 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     var linkedEditingNextResult: Boolean = false
     var linkedEditingPrevResult: Boolean = false
     var linkedEditingCancelCount: Int = 0
+    var buildRenderModelCallCount: Int = 0
+    var getScrollMetricsCallCount: Int = 0
+    var registerBatchTextStylesCallCount: Int = 0
+    var setBatchLineSpansCallCount: Int = 0
+    var renderModelPayload: ByteArray? = null
+    var scrollMetricsPayload: ByteArray? = null
+    var setViewportCallCount: Int = 0
+    var lastViewportWidth: Int = 0
+    var lastViewportHeight: Int = 0
+    var setBatchLineDiagnosticsCallCount: Int = 0
+    var setIndentGuidesCallCount: Int = 0
 
     override fun release() = Unit
 
@@ -499,7 +648,11 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
         documentHandle = document?.handle ?: 0L
     }
 
-    override fun setViewport(width: Int, height: Int) = Unit
+    override fun setViewport(width: Int, height: Int) {
+        setViewportCallCount += 1
+        lastViewportWidth = width
+        lastViewportHeight = height
+    }
     override fun onFontMetricsChanged() = Unit
     override fun setFoldArrowMode(mode: FoldArrowMode) {
         appliedFoldArrowMode = mode
@@ -545,8 +698,14 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     }
     override fun getCursorPosition(): TextPosition = fakeCursorPosition
     override fun getSelection(): TextRange? = selectionRange
-    override fun buildRenderModel(): ByteArray? = null
-    override fun getScrollMetrics(): ByteArray? = null
+    override fun buildRenderModel(): ByteArray? {
+        buildRenderModelCallCount += 1
+        return renderModelPayload
+    }
+    override fun getScrollMetrics(): ByteArray? {
+        getScrollMetricsCallCount += 1
+        return scrollMetricsPayload
+    }
     override fun handleGesture(
         type: Int,
         points: FloatArray,
@@ -622,17 +781,25 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     override fun setScroll(scrollX: Float, scrollY: Float) = Unit
     override fun getPositionRect(line: Int, column: Int) = CursorRect()
     override fun getCursorRect() = CursorRect()
-    override fun registerBatchTextStyles(data: ByteArray) = Unit
-    override fun setBatchLineSpans(data: ByteArray) = Unit
+    override fun registerBatchTextStyles(data: ByteArray) {
+        registerBatchTextStylesCallCount += 1
+    }
+    override fun setBatchLineSpans(data: ByteArray) {
+        setBatchLineSpansCallCount += 1
+    }
     override fun setBatchLineInlayHints(data: ByteArray) = Unit
     override fun setBatchLinePhantomTexts(data: ByteArray) = Unit
     override fun setBatchLineGutterIcons(data: ByteArray) = Unit
-    override fun setBatchLineDiagnostics(data: ByteArray) = Unit
+    override fun setBatchLineDiagnostics(data: ByteArray) {
+        setBatchLineDiagnosticsCallCount += 1
+    }
     override fun clearInlayHints() = Unit
     override fun clearPhantomTexts() = Unit
     override fun clearGutterIcons() = Unit
     override fun clearDiagnostics() = Unit
-    override fun setIndentGuides(data: ByteArray) = Unit
+    override fun setIndentGuides(data: ByteArray) {
+        setIndentGuidesCallCount += 1
+    }
     override fun setBracketGuides(data: ByteArray) = Unit
     override fun setFlowGuides(data: ByteArray) = Unit
     override fun setSeparatorGuides(data: ByteArray) = Unit
@@ -663,5 +830,83 @@ private fun buildTextEditResultPayload(): ByteArray {
     writer.writeInt(0)
     writer.writeInt(0)
     writer.writeUtf8("abc")
+    return writer.toByteArray()
+}
+
+private fun buildRenderModelPayloadForControllerTest(): ByteArray {
+    val writer = BinaryWriter()
+    writer.writeFloat(1f)
+    writer.writeBooleanAsInt(true)
+    writer.writeFloat(2f)
+    writer.writeFloat(3f)
+    writer.writeFloat(100f)
+    writer.writeFloat(200f)
+    writer.writeFloat(4f)
+    writer.writeFloat(5f)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeFloat(10f)
+    writer.writeFloat(20f)
+    writer.writeFloat(18f)
+    writer.writeBooleanAsInt(true)
+    writer.writeBooleanAsInt(false)
+    writer.writeInt(0)
+    repeat(2) {
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeBooleanAsInt(false)
+    }
+    writer.writeBooleanAsInt(false)
+    writer.writeFloat(0f)
+    writer.writeFloat(0f)
+    writer.writeFloat(0f)
+    writer.writeFloat(0f)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeInt(0)
+    writer.writeBooleanAsInt(false)
+    writer.writeFloat(0f)
+    repeat(2) {
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+    }
+    writer.writeBooleanAsInt(false)
+    writer.writeFloat(0f)
+    repeat(2) {
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+        writer.writeFloat(0f)
+    }
+    writer.writeBooleanAsInt(true)
+    writer.writeBooleanAsInt(true)
+    writer.writeInt(0)
+    return writer.toByteArray()
+}
+
+private fun buildScrollMetricsPayloadForControllerTest(): ByteArray {
+    val writer = BinaryWriter()
+    writer.writeFloat(1f)
+    writer.writeFloat(2f)
+    writer.writeFloat(3f)
+    writer.writeFloat(10f)
+    writer.writeFloat(20f)
+    writer.writeFloat(300f)
+    writer.writeFloat(400f)
+    writer.writeFloat(500f)
+    writer.writeFloat(600f)
+    writer.writeFloat(16f)
+    writer.writeFloat(484f)
+    writer.writeBooleanAsInt(true)
+    writer.writeBooleanAsInt(true)
     return writer.toByteArray()
 }
