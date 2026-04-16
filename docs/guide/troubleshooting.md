@@ -1,31 +1,6 @@
 # Troubleshooting
 
-This page covers common issues encountered while integrating or publishing SweetEditor.
-
-## GitHub Pages Shows Plain Markdown Instead Of The VitePress Site
-
-Cause:
-
-- GitHub Pages is still deploying the branch or `docs/` folder directly instead of the GitHub Actions build artifact
-
-Fix:
-
-1. Open repository `Settings`
-2. Go to `Pages`
-3. Set `Build and deployment > Source` to `GitHub Actions`
-4. Re-run the Pages workflow
-
-## Homepage Hero Image Or Logo Does Not Show
-
-Cause:
-
-- VitePress homepage and logo use static public assets
-- the image must exist under `docs/public`
-
-Fix:
-
-- keep hero/logo images under `docs/public/...`
-- use public paths such as `/snapshot/Screenshot_Desktop.png`
+This page covers common issues encountered while integrating and using SweetEditor.
 
 ## Decorations Keep Duplicating While Scrolling
 
@@ -66,19 +41,15 @@ Checklist:
 Note:
 
 - Desktop wheel normalization is handled at the platform layer
-- verify the latest editor-compose version and site build if behavior differs between local and published versions
 
-## Build Succeeds Locally But Site Looks Old Online
+## Editor Looks Different From Expected Theme
 
-Cause:
+Checklist:
 
-- Pages may still be serving an old deployment or the wrong deployment source
-
-Fix:
-
-- verify latest workflow run succeeded
-- verify Pages source is `GitHub Actions`
-- refresh after deployment completes
+- verify `controller.applyTheme(theme)` is called after the controller is ready
+- verify the expected `themeContent` keys are supported by the parser
+- verify behavior flags are configured in `EditorSettings` rather than theme content
+- verify custom `textStyles` names match the style aliases used by your highlighting data
 
 ## Related Docs
 

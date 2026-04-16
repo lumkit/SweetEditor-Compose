@@ -1,31 +1,6 @@
 # 排障
 
-这一页汇总集成和发布 SweetEditor 时最常见的问题。
-
-## GitHub Pages 显示成普通 Markdown 页面
-
-原因：
-
-- GitHub Pages 仍在直接发布 branch 或 `docs/` 目录，而不是 GitHub Actions 构建产物
-
-修复方式：
-
-1. 打开仓库 `Settings`
-2. 进入 `Pages`
-3. 将 `Build and deployment > Source` 切到 `GitHub Actions`
-4. 重新运行 Pages workflow
-
-## 首页 Hero 图或 Logo 不显示
-
-原因：
-
-- VitePress 首页和站点 logo 使用的是 public 静态资源
-- 对应图片必须放在 `docs/public` 下
-
-修复方式：
-
-- 将 hero/logo 图片放到 `docs/public/...`
-- 使用类似 `/snapshot/Screenshot_Desktop.png` 的 public 路径
+这一页汇总集成和使用 SweetEditor 时最常见的问题。
 
 ## 滚动时 Decoration 一直重复追加
 
@@ -61,18 +36,14 @@
 - 是否稳定使用 `rememberEditorAppearance()` 或 `rememberEditorTheme()`
 - 行为相关配置是否错误地写进了 themeContent，而不是 `EditorSettings`
 
-## 本地构建成功，但线上看起来还是旧站
+## 编辑器外观和预期不一致
 
-原因：
+检查项：
 
-- Pages 可能还在使用旧部署
-- 或者当前仍指向错误的部署来源
-
-修复方式：
-
-- 检查最新 workflow 是否成功
-- 确认 Pages source 是 `GitHub Actions`
-- 部署完成后强制刷新页面
+- 是否在控制器就绪后调用了 `controller.applyTheme(theme)`
+- `themeContent` 中使用的键是否属于当前解析器支持的字段
+- 行为类配置是否错误地写到了 themeContent，而不是 `EditorSettings`
+- 自定义 `textStyles` 名称是否与高亮数据中的样式别名一致
 
 ## 相关文档
 
