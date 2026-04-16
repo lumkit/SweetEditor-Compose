@@ -54,7 +54,6 @@ export default defineConfig({
             text: "Docs",
             items: [
               { text: "Chinese Site", link: "/zh/" },
-              { text: "Platform Implementation Standard", link: "/platform-implementation-standard" }
             ]
           }
         ],
@@ -119,7 +118,6 @@ export default defineConfig({
           {
             text: "更多参考",
             items: [
-              { text: "Platform Implementation Standard", link: "/platform-implementation-standard" },
               { text: "English Site", link: "/" }
             ]
           }
