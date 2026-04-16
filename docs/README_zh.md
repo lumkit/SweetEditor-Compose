@@ -1,6 +1,6 @@
 <div align="center">
 
-[English](../README.md) | **简体中文**
+[English](index.md) | **简体中文**
 
 # SweetEditor
 
@@ -70,7 +70,7 @@
 
 ## 许可证
 
-SweetEditor 使用 [GNU Lesser General Public License v2.1 or later](../LICENSE)（LGPL-2.1+）开源协议，并附带一个额外的 [Static Linking Exception](../EXCEPTION) 作为补充说明。
+SweetEditor 使用 [GNU Lesser General Public License v2.1 or later](https://github.com/lumkit/SweetEditor-Compose/blob/main/LICENSE)（LGPL-2.1+）开源协议，并附带一个额外的 [Static Linking Exception](https://github.com/lumkit/SweetEditor-Compose/blob/main/EXCEPTION) 作为补充说明。
 
 ## Star History
 
