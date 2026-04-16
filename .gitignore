@@ -52,3 +52,4 @@ node_modules/
 
 platform-demo/*
 *.lock
+/editor-core/src/
