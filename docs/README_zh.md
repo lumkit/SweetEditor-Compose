@@ -41,6 +41,12 @@
 - [x] 只读模式、自动换行模式、自动缩进模式、gutter 显示/吸附等设置
 - [x] 可配置外观系统：主题内容加载、字体配置、当前行渲染模式、行距、折叠箭头模式
 
+## Core Library
+
+本项目使用的原生编辑器 core 基于开源仓库 `OpenSweetEditor`：
+
+- [FinalScave/OpenSweetEditor](https://github.com/FinalScave/OpenSweetEditor)
+
 ## 截图
 
 <div align="center">

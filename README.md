@@ -42,17 +42,23 @@
 - [x] Read-only mode, wrap mode, auto-indent mode, gutter visibility/sticky options
 - [x] Configurable appearance: theme content loading, font configuration, current-line render mode, line spacing, fold arrow mode
 
+## Core Library
+
+The native editor core used by this project is based on the open-source `OpenSweetEditor` repository:
+
+- [FinalScave/OpenSweetEditor](https://github.com/FinalScave/OpenSweetEditor)
+
 ## Screenshots
 
 <div align="center">
   <table>
     <tr>
       <td align="center"><b>Android</b><br/><img src="docs/snapshot/Screenshot_Android.jpg" alt="Android screenshot" width="360"/></td>
-      <td align="center"><b>IOS screenshot</b><br/><img src="docs/snapshot/Screenshot_IOS.png" alt="IOS screenshot" width="360"/></td>
+      <td align="center"><b>IOS</b><br/><img src="docs/snapshot/Screenshot_IOS.png" alt="IOS screenshot" width="360"/></td>
     </tr>
     <tr>
-      <td align="center"><b>Desktop screenshot</b><br/><img src="docs/snapshot/Screenshot_Desktop.png" alt="Desktop screenshot" width="360"/></td>
-      <td align="center"><b>Web screenshot</b><br/><img src="" alt="Web screenshot" width="360"/></td>
+      <td align="center"><b>Desktop</b><br/><img src="docs/snapshot/Screenshot_Desktop.png" alt="Desktop screenshot" width="360"/></td>
+      <td align="center"><b>Web</b><br/><img src="" alt="Web screenshot" width="360"/></td>
     </tr>
   </table>
 </div>
