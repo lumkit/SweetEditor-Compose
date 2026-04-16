@@ -20,7 +20,7 @@ hero:
       link: https://github.com/lumkit/SweetEditor-Compose
     - theme: brand
       text: 中文文档
-      link: /README_zh
+      link: /zh/
 
 features:
   - title: Fast Integration

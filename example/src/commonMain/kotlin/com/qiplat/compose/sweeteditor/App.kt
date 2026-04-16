@@ -234,7 +234,8 @@ fun App() {
         ) { paddingValues ->
             ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = Color(editorAppearance.theme.textColor))) {
                 Column(
-                    modifier = Modifier.padding(paddingValues).fillMaxSize(),
+                    modifier = Modifier.padding(paddingValues)
+                        .fillMaxSize(),
                 ) {
                     if (loadedSamples.isNotEmpty()) {
                         Row(
