@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "docs/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
