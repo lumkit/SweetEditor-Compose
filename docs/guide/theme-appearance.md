@@ -95,3 +95,9 @@ Use `EditorSettings` when you want to configure editor behavior rather than visu
 - Theme and appearance are Compose-side abstractions
 - The native render model remains the single source of truth for what is drawn
 - Apply the theme before expecting the editor to reflect final colors and typography
+
+## Related Docs
+
+- [Theme Schema](./theme-schema.md)
+- [EditorSettings Reference](./editor-settings-reference.md)
+- [API Cookbook](./api-cookbook.md)
