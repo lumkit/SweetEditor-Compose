@@ -18,13 +18,24 @@ SweetEditor is a Compose Multiplatform code editor library backed by a native C+
 
 ## Start Exploring
 
-1. Read the main [README](https://github.com/lumkit/SweetEditor-Compose/blob/main/README.md)
-2. Open the [中文文档](../README_zh.md) if you prefer Chinese
-3. Inspect the [example](https://github.com/lumkit/SweetEditor-Compose/tree/main/example) module
-4. Review [platform-implementation-standard](../platform-implementation-standard.md)
+1. Read [Installation](./installation.md)
+2. Follow [Quick Start](./quick-start.md)
+3. Explore [Usage](./usage.md)
+4. Inspect the [example](https://github.com/lumkit/SweetEditor-Compose/tree/main/example) module
+5. Open the [中文文档](../README_zh.md) if you prefer Chinese
+6. Review [platform-implementation-standard](../platform-implementation-standard.md)
 
 ## Core Library
 
 The native editor core used by this project is based on:
 
 - [FinalScave/OpenSweetEditor](https://github.com/FinalScave/OpenSweetEditor)
+
+## Suggested Reading Path
+
+- [Installation](./installation.md)
+- [Quick Start](./quick-start.md)
+- [Decorations](./decorations.md)
+- [Completion](./completion.md)
+- [Copilot / Inline Suggestion](./copilot-inline-suggestion.md)
+- [Platform Support](./platform-support.md)

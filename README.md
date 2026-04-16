@@ -11,7 +11,7 @@
 
 **Issues and pull requests are welcome.**
 
-**To check out all docs, please visit:** [Documentation Site](https://lumkit.github.io/SweetEditor-Compose/)
+**To check out all docs, please visit:** [Documentation Site](https://lumkit.github.io/SweetEditor-Compose)
 
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=cplusplus)](https://isocpp.org/)
 [![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Desktop%20%7C%20Web*%20-brightgreen.svg)](#platform-support-status)

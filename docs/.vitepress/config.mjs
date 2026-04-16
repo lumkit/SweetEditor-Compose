@@ -11,7 +11,9 @@ export default defineConfig({
     logo: "/snapshot/Screenshot_Desktop.png",
     nav: [
       { text: "Home", link: "/" },
+      { text: "Installation", link: "/guide/installation" },
       { text: "Getting Started", link: "/guide/getting-started" },
+      { text: "Quick Start", link: "/guide/quick-start" },
       { text: "Usage", link: "/guide/usage" },
       { text: "API Overview", link: "/guide/api-overview" },
       { text: "中文文档", link: "/README_zh" },
@@ -22,8 +24,14 @@ export default defineConfig({
         text: "Guide",
         items: [
           { text: "Introduction", link: "/" },
+          { text: "Installation", link: "/guide/installation" },
           { text: "Getting Started", link: "/guide/getting-started" },
+          { text: "Quick Start", link: "/guide/quick-start" },
           { text: "Features", link: "/guide/features" },
+          { text: "Decorations", link: "/guide/decorations" },
+          { text: "Completion", link: "/guide/completion" },
+          { text: "Copilot / Inline Suggestion", link: "/guide/copilot-inline-suggestion" },
+          { text: "Platform Support", link: "/guide/platform-support" },
           { text: "Usage", link: "/guide/usage" },
           { text: "API Overview", link: "/guide/api-overview" },
           { text: "Core Library", link: "/guide/core-library" }
