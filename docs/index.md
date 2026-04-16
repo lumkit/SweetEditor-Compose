@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "SweetEditor"
-  text: "High-performance code editor for Compose Multiplatform"
+  text: "Code editor for Compose Multiplatform"
   tagline: "A native C++17 editor core wrapped by Kotlin Multiplatform and Compose, built for IDEs, AI coding tools, cloud workspaces, and long-term editor infrastructure."
   image:
     src: /snapshot/Screenshot_Desktop.png
