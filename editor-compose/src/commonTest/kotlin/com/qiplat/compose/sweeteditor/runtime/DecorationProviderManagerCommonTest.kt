@@ -7,10 +7,7 @@ import com.qiplat.compose.sweeteditor.DecorationUpdate
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 class DecorationProviderManagerCommonTest {
     @Test
@@ -368,5 +365,188 @@ class DecorationProviderManagerCommonTest {
 
         assertEquals(1, batch.indentGuides.size)
         assertEquals(1, batch.indentGuides.single().start.line)
+    }
+
+    @Test
+    fun buildBatchProjectsLineBasedDecorationsToVisibleRange() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("decorations")
+        manager.commitResult(
+            providerId = "decorations",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    5 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                    120 to listOf(StyleSpan(column = 1, length = 3, styleId = 2)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+                diagnostics = mapOf(
+                    150 to listOf(DiagnosticItem(column = 2, length = 2, severity = DiagnosticSeverity.Warning)),
+                ),
+                diagnosticsMode = DecorationApplyMode.ReplaceAll,
+                inlayHints = mapOf(
+                    15 to listOf(InlayHint(column = 0, text = "a")),
+                    160 to listOf(InlayHint(column = 1, text = "b")),
+                ),
+                inlayHintsMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 0..200,
+            visibleLineRange = 10..30,
+        )
+
+        val batch = manager.buildBatch(10..30)
+
+        assertEquals(setOf(5), batch.spansByLayer.getValue(SpanLayer.Syntax).keys)
+        assertEquals(setOf(15), batch.inlayHints.keys)
+        assertEquals(emptySet(), batch.diagnostics.keys)
+    }
+
+    @Test
+    fun buildBatchKeepsFoldRegionsOutsideVisibleRange() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("folds")
+        manager.commitResult(
+            providerId = "folds",
+            generation = generation,
+            result = DecorationResult(
+                foldRegions = listOf(
+                    FoldRegion(startLine = 1, endLine = 3),
+                    FoldRegion(startLine = 200, endLine = 240),
+                ),
+                foldRegionsMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 0..300,
+            visibleLineRange = 10..30,
+        )
+
+        val batch = manager.buildBatch(10..30)
+
+        assertEquals(2, batch.foldRegions.size)
+    }
+
+    @Test
+    fun buildBatchProjectsTextStylesToVisibleSpanUsage() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("styles")
+        manager.commitResult(
+            providerId = "styles",
+            generation = generation,
+            result = DecorationResult(
+                textStyles = mapOf(
+                    1 to TextStyle(color = 0xFF0000),
+                    2 to TextStyle(color = 0x00FF00),
+                    3 to TextStyle(color = 0x0000FF),
+                ),
+                textStylesMode = DecorationApplyMode.ReplaceAll,
+                syntaxSpans = mapOf(
+                    15 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                    200 to listOf(StyleSpan(column = 0, length = 2, styleId = 2)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+                semanticSpans = mapOf(
+                    20 to listOf(StyleSpan(column = 1, length = 1, styleId = 3)),
+                ),
+                semanticSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 0..240,
+            visibleLineRange = 10..30,
+        )
+
+        val batch = manager.buildBatch(10..30)
+
+        assertEquals(setOf(1, 3), batch.textStyles.keys)
+    }
+
+    @Test
+    fun buildBatchDropsTextStylesWhenNoVisibleSpansUseThem() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("styles")
+        manager.commitResult(
+            providerId = "styles",
+            generation = generation,
+            result = DecorationResult(
+                textStyles = mapOf(
+                    5 to TextStyle(color = 0xFF0000),
+                ),
+                textStylesMode = DecorationApplyMode.ReplaceAll,
+                syntaxSpans = mapOf(
+                    400 to listOf(StyleSpan(column = 0, length = 2, styleId = 5)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 0..500,
+            visibleLineRange = 10..30,
+        )
+
+        val batch = manager.buildBatch(10..30)
+
+        assertEquals(emptySet(), batch.textStyles.keys)
+    }
+
+    @Test
+    fun buildBatchReusesProjectedBatchForSameVisibleRange() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("syntax")
+        manager.commitResult(
+            providerId = "syntax",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    12 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 10..20,
+            visibleLineRange = 10..20,
+        )
+
+        val first = manager.buildBatch(10..20)
+        val second = manager.buildBatch(10..20)
+
+        assertSame(first, second)
+    }
+
+    @Test
+    fun buildBatchInvalidatesProjectedCacheWhenAggregateChanges() {
+        val manager = DecorationProviderManager()
+
+        val generation = manager.beginGeneration("syntax")
+        manager.commitResult(
+            providerId = "syntax",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    12 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 10..20,
+            visibleLineRange = 10..20,
+        )
+
+        val first = manager.buildBatch(10..20)
+
+        manager.commitResult(
+            providerId = "syntax",
+            generation = generation,
+            result = DecorationResult(
+                syntaxSpans = mapOf(
+                    12 to listOf(StyleSpan(column = 0, length = 3, styleId = 1)),
+                ),
+                syntaxSpansMode = DecorationApplyMode.ReplaceAll,
+            ),
+            defaultLineRange = 10..20,
+            visibleLineRange = 10..20,
+        )
+
+        val second = manager.buildBatch(10..20)
+
+        assertNotSame(first, second)
+        assertEquals(3, second.spansByLayer.getValue(SpanLayer.Syntax).getValue(12).single().length)
     }
 }

@@ -366,6 +366,10 @@ private class DesktopNativeEditorBridge(
         DesktopNativeBindings.nativeGotoPosition(handle, line, column)
     }
 
+    override fun ensureCursorVisible() {
+        DesktopNativeBindings.nativeEnsureCursorVisible(handle)
+    }
+
     override fun setScroll(scrollX: Float, scrollY: Float) {
         DesktopNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
     }

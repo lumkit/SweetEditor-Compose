@@ -42,10 +42,24 @@ class EditorController(
     private var appliedDecorationBatch: DecorationBatch? = null
     private var lastRenderModelPayload: ByteArray? = null
     private var lastScrollMetricsPayload: ByteArray? = null
+    private var encodedTextStylesCache: EncodedDecorationPayload? = null
+    private var encodedSyntaxSpansCache: EncodedDecorationPayload? = null
+    private var encodedSemanticSpansCache: EncodedDecorationPayload? = null
+    private var encodedInlayHintsCache: EncodedDecorationPayload? = null
+    private var encodedPhantomTextsCache: EncodedDecorationPayload? = null
+    private var encodedGutterIconsCache: EncodedDecorationPayload? = null
+    private var encodedDiagnosticsCache: EncodedDecorationPayload? = null
+    private var encodedIndentGuidesCache: EncodedDecorationPayload? = null
+    private var encodedBracketGuidesCache: EncodedDecorationPayload? = null
+    private var encodedFlowGuidesCache: EncodedDecorationPayload? = null
+    private var encodedSeparatorGuidesCache: EncodedDecorationPayload? = null
+    private var encodedFoldRegionsCache: EncodedDecorationPayload? = null
     private var viewportWidthSnapshot: Int = -1
     private var viewportHeightSnapshot: Int = -1
     private var scrollbarConfigSnapshot: NativeScrollbarConfig? = null
     private var handleConfigSnapshot: NativeHandleConfig? = null
+    private var compositionActiveSnapshot: Boolean = false
+    private var compositionTextSnapshot: String? = null
 
     internal fun textMeasurer(): EditorTextMeasurer = editorTextMeasurer
 
@@ -59,6 +73,7 @@ class EditorController(
         nativeEditorBridge.setDocument(document?.nativeBridge)
         state.document = document
         state.isAttached = document != null
+        resetCompositionSnapshot()
         invalidateAppliedDecorationBatch()
         invalidateDecodedPayloadCache()
         requestRefresh(
@@ -203,6 +218,7 @@ class EditorController(
         }
         scaleSnapshot = scale
         editorTextMeasurer.setScale(scale)
+        nativeEditorBridge.setScale(scale)
         nativeEditorBridge.onFontMetricsChanged()
         requestRefresh(renderModel = true, scrollMetrics = true)
     }
@@ -388,6 +404,9 @@ class EditorController(
      */
     fun setCompositionEnabled(enabled: Boolean) {
         ensureActive()
+        if (settingsSnapshot.compositionEnabled == enabled) {
+            return
+        }
         nativeEditorBridge.setCompositionEnabled(enabled)
         settingsSnapshot = settingsSnapshot.copy(compositionEnabled = enabled)
         requestRefresh(renderModel = true)
@@ -458,7 +477,9 @@ class EditorController(
     fun compositionStart() {
         ensureActive()
         nativeEditorBridge.compositionStart()
-        requestRefresh(renderModel = true, decorations = true)
+        compositionActiveSnapshot = true
+        compositionTextSnapshot = null
+        requestRefresh(renderModel = true)
     }
 
     /**
@@ -468,8 +489,13 @@ class EditorController(
      */
     fun compositionUpdate(text: String) {
         ensureActive()
+        if (compositionActiveSnapshot && compositionTextSnapshot == text) {
+            return
+        }
         nativeEditorBridge.compositionUpdate(text)
-        requestRefresh(renderModel = true, decorations = true)
+        compositionActiveSnapshot = true
+        compositionTextSnapshot = text
+        requestRefresh(renderModel = true)
     }
 
     /**
@@ -481,6 +507,7 @@ class EditorController(
     fun compositionEnd(committedText: String? = null): TextEditResult {
         ensureActive()
         val editResult = decodeEditResult(nativeEditorBridge.compositionEnd(committedText))
+        resetCompositionSnapshot()
         requestRefresh(renderModel = true, scrollMetrics = true, decorations = true)
         return editResult
     }
@@ -491,7 +518,8 @@ class EditorController(
     fun compositionCancel() {
         ensureActive()
         nativeEditorBridge.compositionCancel()
-        requestRefresh(renderModel = true, decorations = true)
+        resetCompositionSnapshot()
+        requestRefresh(renderModel = true)
     }
 
     /**
@@ -756,8 +784,7 @@ class EditorController(
 
     fun ensureCursorVisible() {
         ensureActive()
-        val cursor = nativeEditorBridge.getCursorPosition()
-        nativeEditorBridge.gotoPosition(cursor.line, cursor.column)
+        nativeEditorBridge.ensureCursorVisible()
         requestRefresh(renderModel = true, scrollMetrics = true)
     }
 
@@ -1110,17 +1137,17 @@ class EditorController(
         if (state.isRenderModelDirty) {
             flushPendingDecorationBatch()
             val payload = nativeEditorBridge.buildRenderModel()
-            if (!payload.contentEqualsNullable(lastRenderModelPayload)) {
+            if (!payload.matchesCachedPayload(lastRenderModelPayload)) {
                 state.renderModel = ProtocolDecoder.decodeRenderModel(payload)
-                lastRenderModelPayload = payload?.copyOf()
+                lastRenderModelPayload = payload
             }
             state.isRenderModelDirty = false
         }
         if (state.isScrollMetricsDirty) {
             val payload = nativeEditorBridge.getScrollMetrics()
-            if (!payload.contentEqualsNullable(lastScrollMetricsPayload)) {
+            if (!payload.matchesCachedPayload(lastScrollMetricsPayload)) {
                 state.scrollMetrics = ProtocolDecoder.decodeScrollMetrics(payload)
-                lastScrollMetricsPayload = payload?.copyOf()
+                lastScrollMetricsPayload = payload
             }
             state.isScrollMetricsDirty = false
         }
@@ -1143,6 +1170,7 @@ class EditorController(
         state.isDecorationDirty = false
         pendingDecorationBatch = null
         appliedDecorationBatch = null
+        resetCompositionSnapshot()
         viewportWidthSnapshot = -1
         viewportHeightSnapshot = -1
         scrollbarConfigSnapshot = null
@@ -1181,81 +1209,156 @@ class EditorController(
         lastScrollMetricsPayload = null
     }
 
+    private fun resetCompositionSnapshot() {
+        compositionActiveSnapshot = false
+        compositionTextSnapshot = null
+    }
+
     private fun flushPendingDecorationBatch() {
         val batch = pendingDecorationBatch ?: return
         val previous = appliedDecorationBatch
         if (previous?.textStyles != batch.textStyles) {
             nativeEditorBridge.registerBatchTextStyles(
-                ProtocolEncoder.encodeBatchTextStyles(batch.textStyles),
+                encodeDecorationPayload(batch.textStyles, encodedTextStylesCache) {
+                    ProtocolEncoder.encodeBatchTextStyles(batch.textStyles)
+                }.also {
+                    encodedTextStylesCache = it
+                }.data,
             )
         }
         val syntaxSpans = batch.spansByLayer[SpanLayer.Syntax].orEmpty()
         if (previous?.spansByLayer?.get(SpanLayer.Syntax).orEmpty() != syntaxSpans) {
             nativeEditorBridge.setBatchLineSpans(
-                ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Syntax, syntaxSpans),
+                encodeDecorationPayload(syntaxSpans, encodedSyntaxSpansCache) {
+                    ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Syntax, syntaxSpans)
+                }.also {
+                    encodedSyntaxSpansCache = it
+                }.data,
             )
         }
         val semanticSpans = batch.spansByLayer[SpanLayer.Semantic].orEmpty()
         if (previous?.spansByLayer?.get(SpanLayer.Semantic).orEmpty() != semanticSpans) {
             nativeEditorBridge.setBatchLineSpans(
-                ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Semantic, semanticSpans),
+                encodeDecorationPayload(semanticSpans, encodedSemanticSpansCache) {
+                    ProtocolEncoder.encodeBatchLineSpans(SpanLayer.Semantic, semanticSpans)
+                }.also {
+                    encodedSemanticSpansCache = it
+                }.data,
             )
         }
         if (previous?.inlayHints != batch.inlayHints) {
             nativeEditorBridge.setBatchLineInlayHints(
-                ProtocolEncoder.encodeBatchLineInlayHints(batch.inlayHints),
+                encodeDecorationPayload(batch.inlayHints, encodedInlayHintsCache) {
+                    ProtocolEncoder.encodeBatchLineInlayHints(batch.inlayHints)
+                }.also {
+                    encodedInlayHintsCache = it
+                }.data,
             )
         }
         if (previous?.phantomTexts != batch.phantomTexts) {
             nativeEditorBridge.setBatchLinePhantomTexts(
-                ProtocolEncoder.encodeBatchLinePhantomTexts(batch.phantomTexts),
+                encodeDecorationPayload(batch.phantomTexts, encodedPhantomTextsCache) {
+                    ProtocolEncoder.encodeBatchLinePhantomTexts(batch.phantomTexts)
+                }.also {
+                    encodedPhantomTextsCache = it
+                }.data,
             )
         }
         if (previous?.gutterIcons != batch.gutterIcons) {
             nativeEditorBridge.setBatchLineGutterIcons(
-                ProtocolEncoder.encodeBatchLineGutterIcons(batch.gutterIcons),
+                encodeDecorationPayload(batch.gutterIcons, encodedGutterIconsCache) {
+                    ProtocolEncoder.encodeBatchLineGutterIcons(batch.gutterIcons)
+                }.also {
+                    encodedGutterIconsCache = it
+                }.data,
             )
         }
         if (previous?.diagnostics != batch.diagnostics) {
             nativeEditorBridge.setBatchLineDiagnostics(
-                ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics),
+                encodeDecorationPayload(batch.diagnostics, encodedDiagnosticsCache) {
+                    ProtocolEncoder.encodeBatchLineDiagnostics(batch.diagnostics)
+                }.also {
+                    encodedDiagnosticsCache = it
+                }.data,
             )
         }
         if (previous?.indentGuides != batch.indentGuides) {
             nativeEditorBridge.setIndentGuides(
-                ProtocolEncoder.encodeIndentGuides(batch.indentGuides),
+                encodeDecorationPayload(batch.indentGuides, encodedIndentGuidesCache) {
+                    ProtocolEncoder.encodeIndentGuides(batch.indentGuides)
+                }.also {
+                    encodedIndentGuidesCache = it
+                }.data,
             )
         }
         if (previous?.bracketGuides != batch.bracketGuides) {
             nativeEditorBridge.setBracketGuides(
-                ProtocolEncoder.encodeBracketGuides(batch.bracketGuides),
+                encodeDecorationPayload(batch.bracketGuides, encodedBracketGuidesCache) {
+                    ProtocolEncoder.encodeBracketGuides(batch.bracketGuides)
+                }.also {
+                    encodedBracketGuidesCache = it
+                }.data,
             )
         }
         if (previous?.flowGuides != batch.flowGuides) {
             nativeEditorBridge.setFlowGuides(
-                ProtocolEncoder.encodeFlowGuides(batch.flowGuides),
+                encodeDecorationPayload(batch.flowGuides, encodedFlowGuidesCache) {
+                    ProtocolEncoder.encodeFlowGuides(batch.flowGuides)
+                }.also {
+                    encodedFlowGuidesCache = it
+                }.data,
             )
         }
         if (previous?.separatorGuides != batch.separatorGuides) {
             nativeEditorBridge.setSeparatorGuides(
-                ProtocolEncoder.encodeSeparatorGuides(batch.separatorGuides),
+                encodeDecorationPayload(batch.separatorGuides, encodedSeparatorGuidesCache) {
+                    ProtocolEncoder.encodeSeparatorGuides(batch.separatorGuides)
+                }.also {
+                    encodedSeparatorGuidesCache = it
+                }.data,
             )
         }
         if (previous?.foldRegions != batch.foldRegions) {
             nativeEditorBridge.setFoldRegions(
-                ProtocolEncoder.encodeFoldRegions(batch.foldRegions),
+                encodeDecorationPayload(batch.foldRegions, encodedFoldRegionsCache) {
+                    ProtocolEncoder.encodeFoldRegions(batch.foldRegions)
+                }.also {
+                    encodedFoldRegionsCache = it
+                }.data,
             )
         }
         appliedDecorationBatch = batch
         pendingDecorationBatch = null
     }
 
-    private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean {
+    private fun encodeDecorationPayload(
+        value: Any,
+        cache: EncodedDecorationPayload?,
+        encode: () -> ByteArray,
+    ): EncodedDecorationPayload {
+        if (cache?.rawValue === value) {
+            return cache
+        }
+        return EncodedDecorationPayload(
+            rawValue = value,
+            data = encode(),
+        )
+    }
+
+    private fun ByteArray?.matchesCachedPayload(other: ByteArray?): Boolean {
+        if (this === other) {
+            return true
+        }
         if (this == null || other == null) {
             return this == null && other == null
         }
         return this.contentEquals(other)
     }
+
+    private data class EncodedDecorationPayload(
+        val rawValue: Any,
+        val data: ByteArray,
+    )
 
     /**
      * Marks deferred refresh categories that should be processed by Compose effects.
@@ -1269,22 +1372,29 @@ class EditorController(
         scrollMetrics: Boolean = false,
         decorations: Boolean = false,
     ) {
+        var frameRefreshRequested = false
         if (renderModel) {
             if (!state.isRenderModelDirty) {
                 state.isRenderModelDirty = true
                 state.renderModelRequestVersion += 1
+                frameRefreshRequested = true
             }
         }
         if (scrollMetrics) {
             if (!state.isScrollMetricsDirty) {
                 state.isScrollMetricsDirty = true
                 state.scrollMetricsRequestVersion += 1
+                frameRefreshRequested = true
             }
+        }
+        if (frameRefreshRequested) {
+            state.frameRefreshSignal += 1
         }
         if (decorations) {
             if (!state.isDecorationDirty) {
                 state.isDecorationDirty = true
                 state.decorationRequestVersion += 1
+                state.decorationRefreshSignal += 1
             }
         }
     }

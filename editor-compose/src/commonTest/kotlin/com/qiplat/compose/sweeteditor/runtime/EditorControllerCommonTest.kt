@@ -216,6 +216,8 @@ class EditorControllerCommonTest {
         assertEquals(1, controller.state.renderModelRequestVersion)
         assertEquals(1, controller.state.scrollMetricsRequestVersion)
         assertEquals(1, controller.state.decorationRequestVersion)
+        assertEquals(1, controller.state.frameRefreshSignal)
+        assertEquals(1, controller.state.decorationRefreshSignal)
     }
 
     @Test
@@ -235,6 +237,142 @@ class EditorControllerCommonTest {
         assertEquals(2, editorBridge.setViewportCallCount)
         assertEquals(1_024, editorBridge.lastViewportWidth)
         assertEquals(600, editorBridge.lastViewportHeight)
+    }
+
+    @Test
+    fun ensureCursorVisibleDelegatesToNativeBridgeApi() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.ensureCursorVisible()
+
+        assertEquals(1, editorBridge.ensureCursorVisibleCallCount)
+        assertEquals(0, editorBridge.gotoPositionCallCount)
+    }
+
+    @Test
+    fun syncPlatformScaleUpdatesMeasurerAndNativeScale() {
+        val editorBridge = FakeNativeEditorBridge()
+        val textMeasurer = FakeEditorTextMeasurer()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = textMeasurer,
+        )
+
+        controller.syncPlatformScale(1.5f)
+
+        assertEquals(1.5f, textMeasurer.lastScale)
+        assertEquals(1.5f, editorBridge.lastScale)
+        assertEquals(1, editorBridge.onFontMetricsChangedCallCount)
+    }
+
+    @Test
+    fun compositionUpdatesDoNotTriggerDecorationRefresh() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.compositionStart()
+        controller.compositionUpdate("hel")
+        controller.compositionCancel()
+
+        assertEquals(1, controller.state.renderModelRequestVersion)
+        assertEquals(0, controller.state.scrollMetricsRequestVersion)
+        assertEquals(0, controller.state.decorationRequestVersion)
+        assertEquals(1, controller.state.frameRefreshSignal)
+        assertEquals(0, controller.state.decorationRefreshSignal)
+        assertEquals(1, editorBridge.compositionStartCallCount)
+        assertEquals(listOf("hel"), editorBridge.compositionUpdates)
+        assertEquals(1, editorBridge.compositionCancelCallCount)
+    }
+
+    @Test
+    fun compositionEndStillTriggersDecorationRefresh() {
+        val editorBridge = FakeNativeEditorBridge().apply {
+            compositionEndPayload = buildTextEditResultPayload()
+        }
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.compositionEnd("ok")
+
+        assertEquals(1, controller.state.renderModelRequestVersion)
+        assertEquals(1, controller.state.scrollMetricsRequestVersion)
+        assertEquals(1, controller.state.decorationRequestVersion)
+        assertEquals("ok", editorBridge.lastCompositionCommittedText)
+    }
+
+    @Test
+    fun compositionUpdateSkipsDuplicateNativeUpdate() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.compositionStart()
+        controller.compositionUpdate("same")
+        controller.compositionUpdate("same")
+
+        assertEquals(listOf("same"), editorBridge.compositionUpdates)
+        assertEquals(1, controller.state.renderModelRequestVersion)
+        assertEquals(1, controller.state.frameRefreshSignal)
+    }
+
+    @Test
+    fun compositionUpdateAllowsSameTextAfterCompositionRestart() {
+        val editorBridge = FakeNativeEditorBridge().apply {
+            compositionEndPayload = buildTextEditResultPayload()
+        }
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.compositionStart()
+        controller.compositionUpdate("same")
+        controller.compositionEnd(null)
+        controller.compositionStart()
+        controller.compositionUpdate("same")
+
+        assertEquals(listOf("same", "same"), editorBridge.compositionUpdates)
+    }
+
+    @Test
+    fun setCompositionEnabledSkipsDuplicateNativeCall() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+
+        controller.setCompositionEnabled(false)
+        controller.setCompositionEnabled(false)
+
+        assertEquals(1, editorBridge.setCompositionEnabledCallCount)
+        assertEquals(1, controller.state.renderModelRequestVersion)
+        assertEquals(1, controller.state.frameRefreshSignal)
     }
 
     @Test
@@ -267,6 +405,42 @@ class EditorControllerCommonTest {
 
         assertEquals(1, editorBridge.setIndentGuidesCallCount)
         assertEquals(2, editorBridge.setBatchLineDiagnosticsCallCount)
+    }
+
+    @Test
+    fun applyDecorationBatchReusesEncodedPayloadAfterInvalidation() {
+        val editorBridge = FakeNativeEditorBridge()
+        val controller = EditorController(
+            state = EditorState(
+                bridgeFactory = FakeNativeBridgeFactory(editorBridge),
+            ),
+            textMeasurer = FakeEditorTextMeasurer(),
+        )
+        val batch = DecorationBatch(
+            textStyles = mapOf(1 to TextStyle(color = 0xFF00FF)),
+            spansByLayer = mapOf(
+                SpanLayer.Syntax to mapOf(
+                    0 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
+                ),
+            ),
+        )
+
+        controller.applyDecorationBatch(batch)
+        controller.refreshNow()
+        controller.clearAllDecorations()
+        controller.applyDecorationBatch(batch)
+        controller.refreshNow()
+
+        assertEquals(2, editorBridge.registerBatchTextStylesCallCount)
+        assertEquals(2, editorBridge.setBatchLineSpansCallCount)
+        assertSame(
+            editorBridge.registerBatchTextStylesPayloads[0],
+            editorBridge.registerBatchTextStylesPayloads[1],
+        )
+        assertSame(
+            editorBridge.setBatchLineSpansPayloads[0],
+            editorBridge.setBatchLineSpansPayloads[1],
+        )
     }
 
     @Test
@@ -631,13 +805,26 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     var getScrollMetricsCallCount: Int = 0
     var registerBatchTextStylesCallCount: Int = 0
     var setBatchLineSpansCallCount: Int = 0
+    val registerBatchTextStylesPayloads = mutableListOf<ByteArray>()
+    val setBatchLineSpansPayloads = mutableListOf<ByteArray>()
     var renderModelPayload: ByteArray? = null
     var scrollMetricsPayload: ByteArray? = null
     var setViewportCallCount: Int = 0
     var lastViewportWidth: Int = 0
     var lastViewportHeight: Int = 0
+    var ensureCursorVisibleCallCount: Int = 0
+    var gotoPositionCallCount: Int = 0
+    var lastScale: Float = 1f
+    var onFontMetricsChangedCallCount: Int = 0
     var setBatchLineDiagnosticsCallCount: Int = 0
     var setIndentGuidesCallCount: Int = 0
+    var compositionStartCallCount: Int = 0
+    val compositionUpdates = mutableListOf<String>()
+    var compositionCancelCallCount: Int = 0
+    var lastCompositionCommittedText: String? = null
+    var compositionEndPayload: ByteArray? = null
+    var composing: Boolean = false
+    var setCompositionEnabledCallCount: Int = 0
     var appliedScrollbarConfig: NativeScrollbarConfig? = null
     var appliedHandleConfig: NativeHandleConfig? = null
 
@@ -652,7 +839,9 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
         lastViewportWidth = width
         lastViewportHeight = height
     }
-    override fun onFontMetricsChanged() = Unit
+    override fun onFontMetricsChanged() {
+        onFontMetricsChangedCallCount += 1
+    }
     override fun setFoldArrowMode(mode: FoldArrowMode) {
         appliedFoldArrowMode = mode
     }
@@ -662,7 +851,9 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     override fun setTabSize(tabSize: Int) {
         appliedTabSize = tabSize
     }
-    override fun setScale(scale: Float) = Unit
+    override fun setScale(scale: Float) {
+        lastScale = scale
+    }
     override fun setLineSpacing(add: Float, mult: Float) {
         lineSpacingAdd = add
         lineSpacingMult = mult
@@ -688,6 +879,7 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     }
     override fun isReadOnly(): Boolean = appliedReadOnly
     override fun setCompositionEnabled(enabled: Boolean) {
+        setCompositionEnabledCallCount += 1
         appliedCompositionEnabled = enabled
     }
     override fun isCompositionEnabled(): Boolean = appliedCompositionEnabled
@@ -729,11 +921,23 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     }
     override fun tickAnimations(): ByteArray? = null
     override fun handleKeyEvent(keyCode: Int, text: String?, modifiers: Int): ByteArray? = null
-    override fun compositionStart() = Unit
-    override fun compositionUpdate(text: String) = Unit
-    override fun compositionEnd(committedText: String?): ByteArray? = null
-    override fun compositionCancel() = Unit
-    override fun isComposing(): Boolean = false
+    override fun compositionStart() {
+        compositionStartCallCount += 1
+        composing = true
+    }
+    override fun compositionUpdate(text: String) {
+        compositionUpdates += text
+    }
+    override fun compositionEnd(committedText: String?): ByteArray? {
+        lastCompositionCommittedText = committedText
+        composing = false
+        return compositionEndPayload
+    }
+    override fun compositionCancel() {
+        compositionCancelCallCount += 1
+        composing = false
+    }
+    override fun isComposing(): Boolean = composing
     override fun insertText(text: String): ByteArray? {
         lastInsertedText = text
         return insertTextPayload
@@ -782,15 +986,22 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
     override fun moveCursorToLineStart(extendSelection: Boolean) = Unit
     override fun moveCursorToLineEnd(extendSelection: Boolean) = Unit
     override fun scrollToLine(line: Int, behavior: ScrollBehavior) = Unit
-    override fun gotoPosition(line: Int, column: Int) = Unit
+    override fun gotoPosition(line: Int, column: Int) {
+        gotoPositionCallCount += 1
+    }
+    override fun ensureCursorVisible() {
+        ensureCursorVisibleCallCount += 1
+    }
     override fun setScroll(scrollX: Float, scrollY: Float) = Unit
     override fun getPositionRect(line: Int, column: Int) = CursorRect()
     override fun getCursorRect() = CursorRect()
     override fun registerBatchTextStyles(data: ByteArray) {
         registerBatchTextStylesCallCount += 1
+        registerBatchTextStylesPayloads += data
     }
     override fun setBatchLineSpans(data: ByteArray) {
         setBatchLineSpansCallCount += 1
+        setBatchLineSpansPayloads += data
     }
     override fun setBatchLineInlayHints(data: ByteArray) = Unit
     override fun setBatchLinePhantomTexts(data: ByteArray) = Unit
@@ -815,7 +1026,11 @@ private class FakeNativeEditorBridge : NativeEditorBridge {
 }
 
 private class FakeEditorTextMeasurer : EditorTextMeasurer {
-    override fun setScale(scale: Float) = Unit
+    var lastScale: Float = 1f
+
+    override fun setScale(scale: Float) {
+        lastScale = scale
+    }
 
     override fun measureTextWidth(text: String, fontStyle: Int): Float = text.length.toFloat()
 

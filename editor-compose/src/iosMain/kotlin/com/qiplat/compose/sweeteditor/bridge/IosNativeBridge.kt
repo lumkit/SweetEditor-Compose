@@ -366,6 +366,10 @@ private class IosNativeEditorBridge(
         IosNativeBindings.nativeGotoPosition(handle, line, column)
     }
 
+    override fun ensureCursorVisible() {
+        IosNativeBindings.nativeEnsureCursorVisible(handle)
+    }
+
     override fun setScroll(scrollX: Float, scrollY: Float) {
         IosNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
     }

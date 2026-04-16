@@ -64,14 +64,41 @@ internal actual fun InstallPlatformImeSession(
     }
 
     LaunchedEffect(isFocused, isReadOnly, textInputService, controller, state.document) {
-        if (textInputService == null || state.document == null) {
+        if (shouldTearDownJvmImeSession(
+                textInputServiceAvailable = textInputService != null,
+                documentAvailable = state.document != null,
+                isFocused = isFocused,
+                isReadOnly = isReadOnly,
+            )
+        ) {
+            val teardownPlan = computeJvmImeTeardownPlan(
+                textInputServiceAvailable = textInputService != null,
+                sessionActive = imeSession != null,
+                isComposing = controller.isComposing(),
+                currentValue = imeValue,
+            )
+            if (teardownPlan.stopInput) {
+                imeSession?.let(textInputService!!::stopInput)
+            }
             imeSession = null
+            if (teardownPlan.cancelComposition) {
+                controller.compositionCancel()
+            }
+            if (teardownPlan.clearValue) {
+                val clearedValue = TextFieldValue()
+                imeValue = clearedValue
+                imeEditProcessor.reset(clearedValue, null)
+            }
+            if (teardownPlan.hideKeyboard) {
+                textInputService?.hideSoftwareKeyboard()
+            }
             return@LaunchedEffect
         }
+        val activeTextInputService = requireNotNull(textInputService)
         if (isFocused && !isReadOnly) {
             controller.setCompositionEnabled(true)
             if (imeSession == null) {
-                val session = textInputService.startInput(
+                val session = activeTextInputService.startInput(
                     value = imeValue,
                     imeOptions = ImeOptions.Default,
                     onEditCommand = { commands ->
@@ -82,32 +109,60 @@ internal actual fun InstallPlatformImeSession(
                             newValue = newValue,
                         )
                         imeValue = normalizedValue
-                        imeSession?.updateState(oldValue, normalizedValue)
-                        imeEditProcessor.reset(normalizedValue, imeSession)
+                        if (shouldSyncJvmImeState(oldValue, normalizedValue)) {
+                            imeSession?.updateState(oldValue, normalizedValue)
+                            imeEditProcessor.reset(normalizedValue, imeSession)
+                        }
                     },
                     onImeActionPerformed = { action: ImeAction ->
                         val oldValue = imeValue
                         val normalizedValue = controller.handleImeAction(action, oldValue)
                         imeValue = normalizedValue
-                        imeSession?.updateState(oldValue, normalizedValue)
-                        imeEditProcessor.reset(normalizedValue, imeSession)
+                        if (shouldSyncJvmImeState(oldValue, normalizedValue)) {
+                            imeSession?.updateState(oldValue, normalizedValue)
+                            imeEditProcessor.reset(normalizedValue, imeSession)
+                        }
                     },
                 )
                 imeSession = session
                 imeEditProcessor.reset(imeValue, session)
-                textInputService.showSoftwareKeyboard()
+                activeTextInputService.showSoftwareKeyboard()
             }
-        } else {
-            imeSession?.let(textInputService::stopInput)
-            imeSession = null
-            if (controller.isComposing()) {
-                controller.compositionCancel()
-            }
-            val clearedValue = TextFieldValue()
-            imeValue = clearedValue
-            imeEditProcessor.reset(clearedValue, null)
-            textInputService.hideSoftwareKeyboard()
         }
     }
     return Modifier
 }
+
+internal data class JvmImeTeardownPlan(
+    val stopInput: Boolean,
+    val cancelComposition: Boolean,
+    val clearValue: Boolean,
+    val hideKeyboard: Boolean,
+)
+
+internal fun shouldTearDownJvmImeSession(
+    textInputServiceAvailable: Boolean,
+    documentAvailable: Boolean,
+    isFocused: Boolean,
+    isReadOnly: Boolean,
+): Boolean = !textInputServiceAvailable || !documentAvailable || !isFocused || isReadOnly
+
+internal fun computeJvmImeTeardownPlan(
+    textInputServiceAvailable: Boolean,
+    sessionActive: Boolean,
+    isComposing: Boolean,
+    currentValue: TextFieldValue,
+): JvmImeTeardownPlan {
+    val hasImeState = currentValue != TextFieldValue()
+    return JvmImeTeardownPlan(
+        stopInput = textInputServiceAvailable && sessionActive,
+        cancelComposition = isComposing,
+        clearValue = hasImeState,
+        hideKeyboard = textInputServiceAvailable && (sessionActive || isComposing || hasImeState),
+    )
+}
+
+internal fun shouldSyncJvmImeState(
+    previousValue: TextFieldValue,
+    nextValue: TextFieldValue,
+): Boolean = previousValue != nextValue

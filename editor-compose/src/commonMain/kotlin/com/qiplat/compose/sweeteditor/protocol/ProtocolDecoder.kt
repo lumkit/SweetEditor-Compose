@@ -180,18 +180,26 @@ object ProtocolDecoder {
         y = reader.readFloat(),
     )
 
-    private fun readTextStyle(reader: BinaryReader): TextStyle = TextStyle(
-        color = reader.readInt(),
-        backgroundColor = reader.readInt(),
-        fontStyle = reader.readInt(),
-    )
+    private fun readTextStyle(
+        reader: BinaryReader,
+        context: RenderDecodeContext,
+    ): TextStyle {
+        val color = reader.readInt()
+        val backgroundColor = reader.readInt()
+        val fontStyle = reader.readInt()
+        return context.internTextStyle(color, backgroundColor, fontStyle)
+    }
 
-    private fun readVisualRun(reader: BinaryReader, layout: RenderModelLayout): VisualRun = VisualRun(
+    private fun readVisualRun(
+        reader: BinaryReader,
+        layout: RenderModelLayout,
+        context: RenderDecodeContext,
+    ): VisualRun = VisualRun(
         type = reader.readInt().toVisualRunType(),
         x = reader.readFloat(),
         y = reader.readFloat(),
         text = reader.readUtf8(),
-        style = readTextStyle(reader),
+        style = readTextStyle(reader, context),
         iconId = reader.readInt(),
         colorValue = reader.readInt(),
         width = reader.readFloat(),
@@ -203,12 +211,13 @@ object ProtocolDecoder {
     private fun readVisualRuns(
         reader: BinaryReader,
         layout: RenderModelLayout,
+        context: RenderDecodeContext,
     ): List<VisualRun> {
         val minBytesPerItem = if (layout == RenderModelLayout.Current) 48 else 44
         val count = readCount(reader, minBytesPerItem = minBytesPerItem, label = "visual runs")
         return buildList(count) {
             repeat(count) {
-                add(readVisualRun(reader, layout))
+                add(readVisualRun(reader, layout, context))
             }
         }
     }
@@ -216,6 +225,7 @@ object ProtocolDecoder {
     private fun readVisualLine(
         reader: BinaryReader,
         layout: RenderModelLayout,
+        context: RenderDecodeContext,
     ): VisualLine {
         val logicalLine = reader.readInt()
         val wrapIndex = reader.readInt()
@@ -228,7 +238,7 @@ object ProtocolDecoder {
                 kind = reader.readInt().toVisualLineKind(),
                 ownsGutterSemantics = reader.readBooleanAsInt(),
                 foldState = reader.readInt().toFoldState(),
-                runs = readVisualRuns(reader, layout),
+                runs = readVisualRuns(reader, layout, context),
             )
         } else {
             val isPhantomLine = reader.readBooleanAsInt()
@@ -239,7 +249,7 @@ object ProtocolDecoder {
                 kind = if (isPhantomLine) VisualLineKind.Phantom else VisualLineKind.Content,
                 ownsGutterSemantics = wrapIndex == 0 && !isPhantomLine,
                 foldState = reader.readInt().toFoldState(),
-                runs = readVisualRuns(reader, layout),
+                runs = readVisualRuns(reader, layout, context),
             )
         }
     }
@@ -247,12 +257,13 @@ object ProtocolDecoder {
     private fun readVisualLines(
         reader: BinaryReader,
         layout: RenderModelLayout,
+        context: RenderDecodeContext,
     ): List<VisualLine> {
         val minBytesPerItem = if (layout == RenderModelLayout.Current) 24 else 20
         val count = readCount(reader, minBytesPerItem = minBytesPerItem, label = "visual lines")
         return buildList(count) {
             repeat(count) {
-                add(readVisualLine(reader, layout))
+                add(readVisualLine(reader, layout, context))
             }
         }
     }
@@ -430,6 +441,7 @@ object ProtocolDecoder {
         layout: RenderModelLayout,
     ): EditorRenderModel? = try {
         val reader = BinaryReader(data)
+        val context = RenderDecodeContext()
         val splitX = reader.readFloat()
         val splitLineVisible = reader.readBooleanAsInt()
         val scrollX = reader.readFloat()
@@ -438,7 +450,7 @@ object ProtocolDecoder {
         val viewportHeight = reader.readFloat()
         val currentLine = readPoint(reader)
         val currentLineRenderMode = reader.readInt().toCurrentLineRenderMode()
-        val lines = readVisualLines(reader, layout)
+        val lines = readVisualLines(reader, layout, context)
         val gutterIcons = readGutterIconRenderItems(reader)
         val foldMarkers = readFoldMarkerRenderItems(reader)
         val cursor = readCursor(reader)
@@ -608,4 +620,33 @@ object ProtocolDecoder {
         Current,
         Legacy,
     }
+
+    private class RenderDecodeContext {
+        private val textStyles = HashMap<TextStyleKey, TextStyle>()
+
+        fun internTextStyle(
+            color: Int,
+            backgroundColor: Int,
+            fontStyle: Int,
+        ): TextStyle {
+            val key = TextStyleKey(
+                color = color,
+                backgroundColor = backgroundColor,
+                fontStyle = fontStyle,
+            )
+            return textStyles.getOrPut(key) {
+                TextStyle(
+                    color = color,
+                    backgroundColor = backgroundColor,
+                    fontStyle = fontStyle,
+                )
+            }
+        }
+    }
+
+    private data class TextStyleKey(
+        val color: Int,
+        val backgroundColor: Int,
+        val fontStyle: Int,
+    )
 }

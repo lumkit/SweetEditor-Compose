@@ -283,6 +283,9 @@ internal object AndroidNativeBindings {
     external fun nativeGotoPosition(editorHandle: Long, line: Int, column: Int)
 
     @JvmStatic
+    external fun nativeEnsureCursorVisible(editorHandle: Long)
+
+    @JvmStatic
     external fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float)
 
     @JvmStatic

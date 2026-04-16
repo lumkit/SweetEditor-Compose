@@ -1219,6 +1219,16 @@ Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeGotoPosit
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeEnsureCursorVisible(
+    JNIEnv*,
+    jclass,
+    jlong editor_handle
+) {
+    ScopedCurrentEditorHandle current(static_cast<intptr_t>(editor_handle));
+    editor_ensure_cursor_visible(static_cast<intptr_t>(editor_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_qiplat_compose_sweeteditor_bridge_AndroidNativeBindings_nativeSetScroll(
     JNIEnv*,
     jclass,

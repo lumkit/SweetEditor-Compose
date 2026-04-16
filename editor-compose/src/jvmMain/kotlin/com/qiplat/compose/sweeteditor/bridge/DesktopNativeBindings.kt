@@ -958,6 +958,12 @@ internal object DesktopNativeBindings {
         }
     }
 
+    fun nativeEnsureCursorVisible(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            EditorNative.ensureCursorVisible(editorHandle)
+        }
+    }
+
     fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float) {
         withEditorContext(editorHandle) {
             EditorNative.setScroll(editorHandle, scrollX, scrollY)

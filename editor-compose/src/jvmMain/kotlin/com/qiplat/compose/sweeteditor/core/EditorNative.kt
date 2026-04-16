@@ -282,6 +282,11 @@ object EditorNative {
         FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_FLOAT)
     )
 
+    private val ENSURE_CURSOR_VISIBLE = downcall(
+        "editor_ensure_cursor_visible",
+        FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG)
+    )
+
     private val SET_LINE_SPACING = downcall(
         "editor_set_line_spacing",
         FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT)
@@ -856,6 +861,10 @@ object EditorNative {
 
     fun setScale(editorHandle: Long, scale: Float) {
         invokeVoid { SET_SCALE.invokeExact(editorHandle, scale) }
+    }
+
+    fun ensureCursorVisible(editorHandle: Long) {
+        invokeVoid { ENSURE_CURSOR_VISIBLE.invokeExact(editorHandle) }
     }
 
     fun setLineSpacing(editorHandle: Long, add: Float, mult: Float) {

@@ -590,6 +590,12 @@ internal object IosNativeBindings {
         }
     }
 
+    fun nativeEnsureCursorVisible(editorHandle: Long) {
+        withEditorContext(editorHandle) {
+            editor_ensure_cursor_visible(editorHandle)
+        }
+    }
+
     fun nativeSetScroll(editorHandle: Long, scrollX: Float, scrollY: Float) {
         withEditorContext(editorHandle) {
             editor_set_scroll(editorHandle, scrollX, scrollY)

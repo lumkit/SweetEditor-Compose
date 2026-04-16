@@ -165,6 +165,9 @@ fun SweetEditor(
     val drawCache = remember(scaledTheme, LocalDensity.current) {
         EditorDrawCache(scaledTheme)
     }
+    val resolvedColors = remember(scaledTheme) {
+        resolveEditorColors(scaledTheme)
+    }
     val selectionCornerRadius = density * scaledTheme.cornerRadius + .5f
     val renderSurfaceCache = remember(
         renderModel?.selectionRects,
@@ -291,90 +294,33 @@ fun SweetEditor(
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val scrollDelta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero
-                        if (scrollDelta != Offset.Zero) {
-                            controller.dispatchGestureEvent(
-                                type = EditorGestureEventType.MouseWheel,
-                                points = emptyList(),
-                                modifiers = event.toNativeModifiers(),
-                                wheelDeltaX = scrollDelta.x,
-                                wheelDeltaY = scrollDelta.y,
-                            )
-                        }
-                    }
-                }
-            }
-            .pointerInput(controller) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
                         val eventModifiers = event.toNativeModifiers()
-                        val allPoints = event.changes.map { it.position.toGesturePoint() }
-                        val downChanges = event.changes.filter { it.changedToDownIgnoreConsumed() }
-                        val upChanges = event.changes.filter { it.changedToUpIgnoreConsumed() }
-                        val pressedChanges = event.changes.filter { it.pressed }
-                        val movedPressedPoints = pressedChanges
-                            .filter { it.position != it.previousPosition }
-                            .map { it.position.toGesturePoint() }
-
-                        if (downChanges.isNotEmpty()) {
-                            val primaryDown = downChanges.first()
+                        val plan = buildPointerDispatchPlan(
+                            scrollDelta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero,
+                            isSecondaryPressed = event.buttons.isSecondaryPressed,
+                            changes = event.changes.map { change ->
+                                PointerChangeSnapshot(
+                                    type = change.type,
+                                    position = change.position.toGesturePoint(),
+                                    previousPosition = change.previousPosition.toGesturePoint(),
+                                    pressed = change.pressed,
+                                    changedToDown = change.changedToDownIgnoreConsumed(),
+                                    changedToUp = change.changedToUpIgnoreConsumed(),
+                                )
+                            },
+                        )
+                        if (plan.requestFocus) {
                             focusRequester.requestFocus()
-                            if (primaryDown.type == PointerType.Touch && pressedChanges.size > 1 && allPoints.isNotEmpty()) {
-                                controller.dispatchGestureEvent(
-                                    type = EditorGestureEventType.TouchPointerDown,
-                                    points = allPoints,
-                                    modifiers = eventModifiers,
-                                )
-                            } else {
-                                controller.dispatchGestureEvent(
-                                    type = primaryDown.type.toDownEventType(
-                                        isSecondaryPressed = event.buttons.isSecondaryPressed,
-                                    ),
-                                    points = listOf(primaryDown.position.toGesturePoint()),
-                                    modifiers = eventModifiers,
-                                )
-                            }
-                        } else if (upChanges.isNotEmpty()) {
-                            val primaryUp = upChanges.first()
-                            if (primaryUp.type == PointerType.Touch && pressedChanges.isNotEmpty() && allPoints.isNotEmpty()) {
-                                controller.dispatchGestureEvent(
-                                    type = EditorGestureEventType.TouchPointerUp,
-                                    points = allPoints,
-                                    modifiers = eventModifiers,
-                                )
-                            } else {
-                                controller.dispatchGestureEvent(
-                                    type = primaryUp.type.toUpEventType(),
-                                    points = listOf(primaryUp.position.toGesturePoint()),
-                                    modifiers = eventModifiers,
-                                )
-                            }
-                        } else if (movedPressedPoints.isNotEmpty()) {
-                            val pointerType = pressedChanges.firstOrNull()?.type ?: PointerType.Touch
-                            val scaleDelta = if (pointerType == PointerType.Touch && pressedChanges.size >= 2) {
-                                pressedChanges.calculateScaleDelta()
-                            } else {
-                                1f
-                            }
-                            val movePoints = if (pointerType == PointerType.Touch) {
-                                pressedChanges.map { it.position.toGesturePoint() }
-                            } else {
-                                movedPressedPoints
-                            }
+                        }
+                        plan.dispatches.forEach { dispatch ->
                             controller.dispatchGestureEvent(
-                                type = pointerType.toMoveEventType(),
-                                points = movePoints,
+                                type = dispatch.type,
+                                points = dispatch.points,
                                 modifiers = eventModifiers,
+                                wheelDeltaX = dispatch.wheelDeltaX,
+                                wheelDeltaY = dispatch.wheelDeltaY,
+                                directScale = dispatch.directScale,
                             )
-                            if (pointerType == PointerType.Touch && pressedChanges.size >= 2 && scaleDelta != 1f) {
-                                controller.dispatchGestureEvent(
-                                    type = EditorGestureEventType.DirectScale,
-                                    points = listOf(pressedChanges.calculateCentroidPoint()),
-                                    modifiers = eventModifiers,
-                                    directScale = scaleDelta,
-                                )
-                            }
                         }
                     }
                 }
@@ -388,6 +334,7 @@ fun SweetEditor(
             renderSurfaceCache = renderSurfaceCache,
             animatedCursor = animatedCursor,
             theme = scaledTheme,
+            colors = resolvedColors,
             platformType = platformType,
             mobilePlatformTypes = mobilePlatformTypes
         )
@@ -442,15 +389,8 @@ private fun SweetEditorEffects(
 
     LaunchedEffect(controller, state) {
         snapshotFlow {
-            Triple(
-                state.renderModelRequestVersion,
-                state.scrollMetricsRequestVersion,
-                state.isRenderModelDirty || state.isScrollMetricsDirty,
-            )
-        }.collectLatest { (_, _, dirty) ->
-            if (!dirty) {
-                return@collectLatest
-            }
+            state.frameRefreshSignal
+        }.collectLatest {
             withFrameNanos {
                 controller.refreshNow()
             }
@@ -552,12 +492,13 @@ private fun DrawScope.drawEditorSurface(
     renderSurfaceCache: RenderSurfaceCache,
     animatedCursor: AnimatedCursorRenderState,
     theme: EditorTheme,
+    colors: ResolvedEditorColors,
     platformType: PlatformType,
     mobilePlatformTypes: List<PlatformType>,
 ) {
     if (renderModel == null) {
         drawRect(
-            color = theme.backgroundColor.toComposeColor(),
+            color = colors.backgroundColor,
             topLeft = Offset.Zero,
             size = size,
         )
@@ -571,28 +512,28 @@ private fun DrawScope.drawEditorSurface(
     val cornerRadius = density * theme.cornerRadius + .5f
 
     drawRect(
-        color = theme.backgroundColor.toComposeColor(),
+        color = colors.backgroundColor,
         topLeft = Offset.Zero,
         size = size,
     )
     drawCurrentLine(
         renderModel = renderModel,
-        fillColor = theme.currentLineColor.toComposeColor(),
-        borderColor = currentLineBorderColor(theme),
+        fillColor = colors.currentLineColor,
+        borderColor = colors.currentLineBorderColor,
         left = 0f,
         width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width,
     )
 
     if (renderSurfaceCache.selectionItems.isNotEmpty()) {
-        drawSelectionItems(renderSurfaceCache.selectionItems, theme.selectionColor.toComposeColor())
+        drawSelectionItems(renderSurfaceCache.selectionItems, colors.selectionColor)
     }
 
     if (renderSurfaceCache.guideGroups.isNotEmpty()) {
-        drawGuideGroups(renderSurfaceCache.guideGroups, theme, drawCache)
+        drawGuideGroups(renderSurfaceCache.guideGroups, colors, drawCache)
     }
 
     if (renderSurfaceCache.diagnosticGroups.isNotEmpty()) {
-        drawDiagnosticGroups(renderSurfaceCache.diagnosticGroups, theme)
+        drawDiagnosticGroups(renderSurfaceCache.diagnosticGroups, colors, drawCache)
     }
 
     if (
@@ -603,15 +544,15 @@ private fun DrawScope.drawEditorSurface(
             renderModel.compositionDecoration.height,
         )
     ) {
-        drawCompositionDecoration(renderModel, theme.compositionUnderlineColor.toComposeColor())
+        drawCompositionDecoration(renderModel, colors.compositionUnderlineColor)
     }
 
     renderModel.linkedEditingRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
             drawLinkedEditing(
                 rect = rect,
-                activeColor = theme.linkedEditingActiveColor.toComposeColor(),
-                inactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
+                activeColor = colors.linkedEditingActiveColor,
+                inactiveColor = colors.linkedEditingInactiveColor,
             )
         }
     }
@@ -619,7 +560,7 @@ private fun DrawScope.drawEditorSurface(
     renderModel.bracketHighlightRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
             drawRoundRect(
-                color = theme.bracketHighlightBackgroundColor.toComposeColor(),
+                color = colors.bracketHighlightBackgroundColor,
                 topLeft = Offset(
                     x = rect.origin.x,
                     y = rect.origin.y,
@@ -628,7 +569,7 @@ private fun DrawScope.drawEditorSurface(
                 cornerRadius = CornerRadius(cornerRadius),
             )
             drawRoundRect(
-                color = theme.bracketHighlightBorderColor.toComposeColor(),
+                color = colors.bracketHighlightBorderColor,
                 topLeft = Offset(
                     x = rect.origin.x,
                     y = rect.origin.y,
@@ -642,25 +583,26 @@ private fun DrawScope.drawEditorSurface(
 
     renderModel.lines.forEach { line ->
         if (viewportBounds.intersectsLine(line, estimatedLineHeight)) {
-            drawRuns(textMeasurer, line, theme, drawCache, viewportBounds, estimatedLineHeight)
+            drawRuns(textMeasurer, line, theme, colors, drawCache, viewportBounds, estimatedLineHeight)
         }
     }
 
     drawCursor(
-        theme = theme,
         cornerRadius = cornerRadius,
         animatedCursor = animatedCursor,
         renderModel = renderModel,
+        drawCache = drawCache,
+        cursorColor = colors.cursorColor,
     )
 
     drawGutterBackground(
         renderModel = renderModel,
-        gutterBackgroundColor = theme.gutterBackgroundColor.toComposeColor(),
-        currentLineColor = theme.currentLineColor.toComposeColor(),
-        currentLineBorderColor = currentLineBorderColor(theme),
-        splitLineColor = theme.splitLineColor.toComposeColor(),
+        gutterBackgroundColor = colors.gutterBackgroundColor,
+        currentLineColor = colors.currentLineColor,
+        currentLineBorderColor = colors.currentLineBorderColor,
+        splitLineColor = colors.splitLineColor,
     )
-    val activeLineColor = currentLineAccentColor(theme)
+    val activeLineColor = colors.currentLineAccentColor
     val overlayMode = renderModel.maxGutterIcons == 0
     var currentDrawingLineNumber = -1
     renderModel.lines.forEach { line ->
@@ -677,7 +619,7 @@ private fun DrawScope.drawEditorSurface(
         val lineIconTint = if (logicalLine == renderModel.cursor.textPosition.line) {
             activeLineColor
         } else {
-            theme.inlayHintIconColor.toComposeColor()
+            colors.inlayHintIconColor
         }
 
         if (overlayMode && hasIcons) {
@@ -717,13 +659,13 @@ private fun DrawScope.drawEditorSurface(
         ) {
             drawFoldMarker(
                 marker = marker,
-                color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else theme.lineNumberColor.toComposeColor(),
+                color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else colors.lineNumberColor,
             )
         }
     }
 
-    drawScrollbar(renderModel.verticalScrollbar, theme)
-    drawScrollbar(renderModel.horizontalScrollbar, theme)
+    drawScrollbar(renderModel.verticalScrollbar, colors)
+    drawScrollbar(renderModel.horizontalScrollbar, colors)
 
     if (platformType in mobilePlatformTypes) {
         drawSelectionHandle(
@@ -731,16 +673,43 @@ private fun DrawScope.drawEditorSurface(
             position = renderModel.selectionStartHandle.position,
             handleHeight = renderModel.selectionStartHandle.height,
             visible = renderModel.selectionStartHandle.visible,
-            color = theme.cursorColor.toComposeColor(),
+            color = colors.cursorColor,
+            drawCache = drawCache,
         )
         drawSelectionHandle(
             alignment = Alignment.End,
             position = renderModel.selectionEndHandle.position,
             handleHeight = renderModel.selectionEndHandle.height,
             visible = renderModel.selectionEndHandle.visible,
-            color = theme.cursorColor.toComposeColor(),
+            color = colors.cursorColor,
+            drawCache = drawCache,
         )
     }
+}
+
+private fun buildCursorDraggerPath(handleHeight: Float): Path = Path().apply {
+    moveTo(0f, 0f)
+    cubicTo(
+        -0.2f * handleHeight, 0.2f * handleHeight,
+        -0.5f * handleHeight, 0.4f * handleHeight,
+        -0.5f * handleHeight, 0.7f * handleHeight,
+    )
+    cubicTo(
+        -0.5f * handleHeight, 0.9f * handleHeight,
+        -0.24f * handleHeight, 1f * handleHeight,
+        0f, 1f * handleHeight,
+    )
+    cubicTo(
+        0.24f * handleHeight, 1f * handleHeight,
+        0.5f * handleHeight, 0.9f * handleHeight,
+        0.5f * handleHeight, 0.7f * handleHeight,
+    )
+    cubicTo(
+        0.5f * handleHeight, 0.4f * handleHeight,
+        0.2f * handleHeight, 0.2f * handleHeight,
+        0f, 0f,
+    )
+    close()
 }
 
 private fun DrawScope.drawGutterBackground(
@@ -832,16 +801,16 @@ private fun DrawScope.drawSelectionItems(
 
 private fun DrawScope.drawGuideGroups(
     guideGroups: List<GuideRenderGroup>,
-    theme: EditorTheme,
+    colors: ResolvedEditorColors,
     drawCache: EditorDrawCache,
 ) {
     guideGroups.forEach { group ->
         drawPath(
             path = group.path,
             color = if (group.type == GuideType.Separator) {
-                theme.separatorLineColor.toComposeColor()
+                colors.separatorLineColor
             } else {
-                theme.guideColor.toComposeColor()
+                colors.guideColor
             },
             style = Stroke(
                 width = group.strokeWidth,
@@ -857,21 +826,22 @@ private fun DrawScope.drawGuideGroups(
 
 private fun DrawScope.drawDiagnosticGroups(
     diagnosticGroups: List<DiagnosticRenderGroup>,
-    theme: EditorTheme,
+    colors: ResolvedEditorColors,
+    drawCache: EditorDrawCache,
 ) {
     diagnosticGroups.forEach { group ->
         drawPath(
             path = group.path,
             color = group.colorValue.takeIf { it != 0 }?.toComposeColor() ?: when (group.severity) {
-                0 -> theme.diagnosticErrorColor.toComposeColor()
-                1 -> theme.diagnosticWarningColor.toComposeColor()
-                2 -> theme.diagnosticInfoColor.toComposeColor()
-                else -> theme.diagnosticHintColor.toComposeColor()
+                0 -> colors.diagnosticErrorColor
+                1 -> colors.diagnosticWarningColor
+                2 -> colors.diagnosticInfoColor
+                else -> colors.diagnosticHintColor
             },
             style = Stroke(
                 width = 2f,
                 pathEffect = if (group.severity == 3) {
-                    PathEffect.dashPathEffect(floatArrayOf(3f, 2f))
+                    drawCache.hintDiagnosticPathEffect
                 } else {
                     null
                 },
@@ -935,17 +905,17 @@ private fun DrawScope.drawLineNumber(
     if (!viewportBounds.intersectsLine(line, estimatedLineHeight)) {
         return
     }
-    drawBaselineText(
+    val layoutResult = drawCache.measureLineNumberText(
         textMeasurer = textMeasurer,
-        drawCache = drawCache,
         text = (line.logicalLine + 1).toString(),
+        active = line.logicalLine == renderModel.cursor.textPosition.line,
+        baselineY = line.lineNumberPosition.y,
+        estimatedLineHeight = estimatedLineHeight,
+    )
+    drawMeasuredText(
+        layoutResult = layoutResult,
         x = line.lineNumberPosition.x,
         baselineY = line.lineNumberPosition.y,
-        style = drawCache.lineNumberStyle(
-            active = line.logicalLine == renderModel.cursor.textPosition.line,
-            baselineY = line.lineNumberPosition.y,
-            estimatedLineHeight = estimatedLineHeight,
-        ),
     )
 }
 
@@ -954,6 +924,7 @@ private fun DrawScope.drawRuns(
     textMeasurer: TextMeasurer,
     line: VisualLine,
     theme: EditorTheme,
+    colors: ResolvedEditorColors,
     drawCache: EditorDrawCache,
     viewportBounds: ViewportBounds,
     estimatedLineHeight: Float,
@@ -965,21 +936,25 @@ private fun DrawScope.drawRuns(
         if (!viewportBounds.intersectsRun(run, estimatedLineHeight)) {
             return@forEach
         }
-        drawRunBackground(run, theme, estimatedLineHeight)
-        drawBaselineText(
+        drawRunBackground(run, colors, estimatedLineHeight)
+        val layoutResult = drawCache.measureRunText(
             textMeasurer = textMeasurer,
-            drawCache = drawCache,
             text = run.text,
+            style = run.style,
+            type = run.type,
+            theme = theme,
+        )
+        drawMeasuredText(
+            layoutResult = layoutResult,
             x = runTextX(run),
             baselineY = run.y,
-            style = drawCache.runTextStyle(run.style, run.type, theme),
         )
     }
 }
 
 private fun DrawScope.drawRunBackground(
     run: VisualRun,
-    theme: EditorTheme,
+    colors: ResolvedEditorColors,
     estimatedLineHeight: Float,
 ) {
     val top = run.y - estimatedLineHeight * 0.8f
@@ -991,7 +966,7 @@ private fun DrawScope.drawRunBackground(
             val width = (run.width - margin * 2f).coerceAtLeast(0f)
             val radius = height * 0.2f
             drawRoundRect(
-                color = theme.foldPlaceholderBackgroundColor.toComposeColor(),
+                color = colors.foldPlaceholderBackgroundColor,
                 topLeft = Offset(left, top),
                 size = Size(width, height),
                 cornerRadius = CornerRadius(radius, radius),
@@ -1011,7 +986,7 @@ private fun DrawScope.drawRunBackground(
                 val width = (run.width - margin * 2f).coerceAtLeast(0f)
                 val radius = height * 0.2f
                 drawRoundRect(
-                    color = theme.inlayHintBackgroundColor.toComposeColor(),
+                    color = colors.inlayHintBackgroundColor,
                     topLeft = Offset(left, top),
                     size = Size(width, height),
                     cornerRadius = CornerRadius(radius, radius),
@@ -1024,15 +999,11 @@ private fun DrawScope.drawRunBackground(
 }
 
 @OptIn(ExperimentalTextApi::class)
-private fun DrawScope.drawBaselineText(
-    textMeasurer: TextMeasurer,
-    drawCache: EditorDrawCache,
-    text: String,
+private fun DrawScope.drawMeasuredText(
+    layoutResult: TextLayoutResult,
     x: Float,
     baselineY: Float,
-    style: TextStyle,
 ) {
-    val layoutResult = drawCache.measureText(textMeasurer, text, style)
     drawText(
         textLayoutResult = layoutResult,
         topLeft = Offset(
@@ -1098,16 +1069,17 @@ private fun DrawScope.drawFoldMarker(
 }
 
 private fun DrawScope.drawCursor(
-    theme: EditorTheme,
     cornerRadius: Float,
     animatedCursor: AnimatedCursorRenderState,
     renderModel: EditorRenderModel,
+    drawCache: EditorDrawCache,
+    cursorColor: Color,
 ) {
     val cursor = renderModel.cursor
 
     if (animatedCursor.visible) {
         drawRoundRect(
-            color = theme.cursorColor.toComposeColor(),
+            color = cursorColor,
             topLeft = Offset(
                 x = animatedCursor.x,
                 y = animatedCursor.y + cornerRadius,
@@ -1122,35 +1094,9 @@ private fun DrawScope.drawCursor(
 
     if (cursor.showDragger) {
         val handleHeight = renderModel.selectionEndHandle.height
-
-        val path = Path().apply {
-            moveTo(0f, 0f)
-            cubicTo(
-                -0.2f * handleHeight, 0.2f * handleHeight,
-                -0.5f * handleHeight, 0.4f * handleHeight,
-                -0.5f * handleHeight, 0.7f * handleHeight
-            )
-            cubicTo(
-                -0.5f * handleHeight, 0.9f * handleHeight,
-                -0.24f * handleHeight, 1f * handleHeight,
-                0f, 1f * handleHeight
-            )
-            cubicTo(
-                0.24f * handleHeight, 1f * handleHeight,
-                0.5f * handleHeight, 0.9f * handleHeight,
-                0.5f * handleHeight, 0.7f * handleHeight
-            )
-            cubicTo(
-                0.5f * handleHeight, 0.4f * handleHeight,
-                0.2f * handleHeight, 0.2f * handleHeight,
-                0f, 0f
-            )
-
-            close()
-        }
         drawPath(
-            path = path,
-            color = theme.cursorColor.toComposeColor(),
+            path = drawCache.cursorDraggerPath(handleHeight),
+            color = cursorColor,
         )
     }
 }
@@ -1161,6 +1107,7 @@ private fun DrawScope.drawSelectionHandle(
     handleHeight: Float,
     visible: Boolean,
     color: Color,
+    drawCache: EditorDrawCache,
 ) {
     if (!visible && alignment in listOf(Alignment.Start, Alignment.End)) {
         return
@@ -1168,7 +1115,7 @@ private fun DrawScope.drawSelectionHandle(
     val stemHeight = handleHeight.coerceAtLeast(18f * density)
 
     drawPath(
-        path = selectionHandlePath(
+        path = drawCache.selectionHandlePath(
             alignment = alignment,
             position = position,
             stemHeight = stemHeight,
@@ -1177,7 +1124,7 @@ private fun DrawScope.drawSelectionHandle(
     )
 }
 
-private fun selectionHandlePath(
+private fun buildSelectionHandlePath(
     alignment: Alignment.Horizontal,
     position: PointF,
     stemHeight: Float,
@@ -1225,15 +1172,12 @@ private fun selectionHandlePath(
     return path
 }
 
-private fun DrawScope.drawScrollbar(
-    scrollbar: ScrollbarModel,
-    theme: EditorTheme,
-) {
+private fun DrawScope.drawScrollbar(scrollbar: ScrollbarModel, colors: ResolvedEditorColors) {
     if (!scrollbar.visible) {
         return
     }
     drawRect(
-        color = theme.scrollbarTrackColor.toComposeColor().copy(alpha = scrollbar.alpha.coerceIn(0f, 1f)),
+        color = colors.scrollbarTrackColor.copy(alpha = scrollbar.alpha.coerceIn(0f, 1f)),
         topLeft = Offset(
             x = scrollbar.track.origin.x,
             y = scrollbar.track.origin.y,
@@ -1242,9 +1186,9 @@ private fun DrawScope.drawScrollbar(
     )
     drawRect(
         color = if (scrollbar.thumbActive) {
-            theme.scrollbarThumbActiveColor.toComposeColor()
+            colors.scrollbarThumbActiveColor
         } else {
-            theme.scrollbarThumbColor.toComposeColor()
+            colors.scrollbarThumbColor
         },
         topLeft = Offset(
             x = scrollbar.thumb.origin.x,
@@ -1308,9 +1252,35 @@ private fun buildRenderSurfaceCache(
         selectionItems = buildSelectionRenderItems(renderModel.selectionRects, cornerRadius),
         guideGroups = buildGuideRenderGroups(renderModel.guideSegments),
         diagnosticGroups = buildDiagnosticRenderGroups(renderModel.diagnosticDecorations),
-        gutterIconsByLine = renderModel.gutterIcons.groupBy { it.logicalLine },
-        foldMarkerByLine = renderModel.foldMarkers.associateBy { it.logicalLine },
+        gutterIconsByLine = buildGutterIconsByLine(renderModel.gutterIcons),
+        foldMarkerByLine = buildFoldMarkerByLine(renderModel.foldMarkers),
     )
+}
+
+internal fun buildGutterIconsByLine(
+    gutterIcons: List<GutterIconRenderItem>,
+): Map<Int, List<GutterIconRenderItem>> {
+    if (gutterIcons.isEmpty()) {
+        return emptyMap()
+    }
+    val groupedIcons = linkedMapOf<Int, MutableList<GutterIconRenderItem>>()
+    gutterIcons.forEach { item ->
+        groupedIcons.getOrPut(item.logicalLine) { mutableListOf() }.add(item)
+    }
+    return groupedIcons
+}
+
+internal fun buildFoldMarkerByLine(
+    foldMarkers: List<FoldMarkerRenderItem>,
+): Map<Int, FoldMarkerRenderItem> {
+    if (foldMarkers.isEmpty()) {
+        return emptyMap()
+    }
+    val markersByLine = linkedMapOf<Int, FoldMarkerRenderItem>()
+    foldMarkers.forEach { marker ->
+        markersByLine[marker.logicalLine] = marker
+    }
+    return markersByLine
 }
 
 private data class GuideRenderGroupKey(
@@ -1717,6 +1687,64 @@ private fun currentLineAccentColor(theme: EditorTheme): Color {
     return accent.copy(alpha = 1f)
 }
 
+internal data class ResolvedEditorColors(
+    val backgroundColor: Color,
+    val currentLineColor: Color,
+    val currentLineBorderColor: Color,
+    val currentLineAccentColor: Color,
+    val selectionColor: Color,
+    val guideColor: Color,
+    val separatorLineColor: Color,
+    val compositionUnderlineColor: Color,
+    val linkedEditingActiveColor: Color,
+    val linkedEditingInactiveColor: Color,
+    val bracketHighlightBackgroundColor: Color,
+    val bracketHighlightBorderColor: Color,
+    val gutterBackgroundColor: Color,
+    val splitLineColor: Color,
+    val inlayHintBackgroundColor: Color,
+    val foldPlaceholderBackgroundColor: Color,
+    val inlayHintIconColor: Color,
+    val lineNumberColor: Color,
+    val cursorColor: Color,
+    val diagnosticErrorColor: Color,
+    val diagnosticWarningColor: Color,
+    val diagnosticInfoColor: Color,
+    val diagnosticHintColor: Color,
+    val scrollbarTrackColor: Color,
+    val scrollbarThumbColor: Color,
+    val scrollbarThumbActiveColor: Color,
+)
+
+internal fun resolveEditorColors(theme: EditorTheme): ResolvedEditorColors = ResolvedEditorColors(
+    backgroundColor = theme.backgroundColor.toComposeColor(),
+    currentLineColor = theme.currentLineColor.toComposeColor(),
+    currentLineBorderColor = currentLineBorderColor(theme),
+    currentLineAccentColor = currentLineAccentColor(theme),
+    selectionColor = theme.selectionColor.toComposeColor(),
+    guideColor = theme.guideColor.toComposeColor(),
+    separatorLineColor = theme.separatorLineColor.toComposeColor(),
+    compositionUnderlineColor = theme.compositionUnderlineColor.toComposeColor(),
+    linkedEditingActiveColor = theme.linkedEditingActiveColor.toComposeColor(),
+    linkedEditingInactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
+    bracketHighlightBackgroundColor = theme.bracketHighlightBackgroundColor.toComposeColor(),
+    bracketHighlightBorderColor = theme.bracketHighlightBorderColor.toComposeColor(),
+    gutterBackgroundColor = theme.gutterBackgroundColor.toComposeColor(),
+    splitLineColor = theme.splitLineColor.toComposeColor(),
+    inlayHintBackgroundColor = theme.inlayHintBackgroundColor.toComposeColor(),
+    foldPlaceholderBackgroundColor = theme.foldPlaceholderBackgroundColor.toComposeColor(),
+    inlayHintIconColor = theme.inlayHintIconColor.toComposeColor(),
+    lineNumberColor = theme.lineNumberColor.toComposeColor(),
+    cursorColor = theme.cursorColor.toComposeColor(),
+    diagnosticErrorColor = theme.diagnosticErrorColor.toComposeColor(),
+    diagnosticWarningColor = theme.diagnosticWarningColor.toComposeColor(),
+    diagnosticInfoColor = theme.diagnosticInfoColor.toComposeColor(),
+    diagnosticHintColor = theme.diagnosticHintColor.toComposeColor(),
+    scrollbarTrackColor = theme.scrollbarTrackColor.toComposeColor(),
+    scrollbarThumbColor = theme.scrollbarThumbColor.toComposeColor(),
+    scrollbarThumbActiveColor = theme.scrollbarThumbActiveColor.toComposeColor(),
+)
+
 private fun runTextX(run: VisualRun): Float = when (run.type) {
     VisualRunType.FoldPlaceholder,
     VisualRunType.InlayHint,
@@ -1846,15 +1874,19 @@ private fun VisualLine.firstBaseline(): Float =
  *
  * @property theme scaled theme snapshot used to create Compose text styles.
  */
-private class EditorDrawCache(
+internal class EditorDrawCache(
     private val theme: EditorTheme,
 ) {
     private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
-    private val lineNumberTextStyles = mutableMapOf<Boolean, TextStyle>()
-    private val textLayouts = SimpleLruCache<TextLayoutCacheKey, TextLayoutResult>(maxSize = 1024)
+    private val lineNumberTextStyles = mutableMapOf<LineNumberTextStyleKey, TextStyle>()
+    private val selectionHandlePaths = mutableMapOf<SelectionHandlePathKey, Path>()
+    private val cursorDraggerPaths = mutableMapOf<Int, Path>()
+    private val runTextLayouts = SimpleLruCache<RunTextLayoutCacheKey, TextLayoutResult>(maxSize = 1024)
+    private val lineNumberTextLayouts = SimpleLruCache<LineNumberTextLayoutCacheKey, TextLayoutResult>(maxSize = 256)
 
     val dashedGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
     val doubleGuidePathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(1f, 3f))
+    val hintDiagnosticPathEffect: PathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 2f))
 
     /**
      * Returns a cached Compose text style for one editor text style.
@@ -1881,8 +1913,10 @@ private class EditorDrawCache(
         active: Boolean,
         baselineY: Float,
         estimatedLineHeight: Float,
-    ): TextStyle =
-        lineNumberTextStyles.getOrPut(active) {
+    ): TextStyle {
+        val baselineShift = computeLineNumberBaselineShift(baselineY, estimatedLineHeight)
+        val key = computeLineNumberTextStyleKey(active, baselineShift)
+        return lineNumberTextStyles.getOrPut(key) {
             TextStyle(
                 color = if (active) {
                     theme.currentLineNumberColor.toComposeColor()
@@ -1891,11 +1925,10 @@ private class EditorDrawCache(
                 },
                 fontFamily = theme.fontFamily,
                 fontSize = theme.lineNumberFontSize,
-                baselineShift = androidx.compose.ui.text.style.BaselineShift(
-                    ((baselineY % estimatedLineHeight) / estimatedLineHeight - 0.5f) * 0.03f,
-                ),
+                baselineShift = androidx.compose.ui.text.style.BaselineShift(baselineShift),
             )
         }
+    }
 
     /**
      * Measures text with a bounded cache to avoid repeated layout work.
@@ -1905,24 +1938,82 @@ private class EditorDrawCache(
      * @param style Compose text style used for measurement.
      * @return measured text layout result.
      */
-    fun measureText(
+    fun measureRunText(
         textMeasurer: TextMeasurer,
         text: String,
-        style: TextStyle,
+        style: EditorTextStyle,
+        type: VisualRunType,
+        theme: EditorTheme,
     ): TextLayoutResult {
+        val resolvedStyle = runTextStyle(style, type, theme)
         if (text.length > 2048) {
             return textMeasurer.measure(
                 text = text,
-                style = style,
+                style = resolvedStyle,
             )
         }
-        val key = TextLayoutCacheKey(text = text, style = style)
-        textLayouts[key]?.let { return it }
+        val key = RunTextLayoutCacheKey(
+            text = text,
+            style = RunTextStyleKey(style, type),
+        )
+        runTextLayouts[key]?.let { return it }
+        return textMeasurer.measure(
+            text = text,
+            style = resolvedStyle,
+        ).also { layoutResult ->
+            runTextLayouts[key] = layoutResult
+        }
+    }
+
+    fun measureLineNumberText(
+        textMeasurer: TextMeasurer,
+        text: String,
+        active: Boolean,
+        baselineY: Float,
+        estimatedLineHeight: Float,
+    ): TextLayoutResult {
+        val styleKey = computeLineNumberTextStyleKey(
+            active = active,
+            baselineShift = computeLineNumberBaselineShift(baselineY, estimatedLineHeight),
+        )
+        val style = lineNumberStyle(
+            active = active,
+            baselineY = baselineY,
+            estimatedLineHeight = estimatedLineHeight,
+        )
+        val key = LineNumberTextLayoutCacheKey(
+            text = text,
+            style = styleKey,
+        )
+        lineNumberTextLayouts[key]?.let { return it }
         return textMeasurer.measure(
             text = text,
             style = style,
         ).also { layoutResult ->
-            textLayouts[key] = layoutResult
+            lineNumberTextLayouts[key] = layoutResult
+        }
+    }
+
+    fun cursorDraggerPath(handleHeight: Float): Path {
+        val key = (handleHeight * 100f).roundToInt()
+        return cursorDraggerPaths.getOrPut(key) {
+            buildCursorDraggerPath(handleHeight)
+        }
+    }
+
+    fun selectionHandlePath(
+        alignment: Alignment.Horizontal,
+        position: PointF,
+        stemHeight: Float,
+    ): Path {
+        val key = SelectionHandlePathKey(
+            alignment = alignment,
+            xBucket = (position.x * 100f).roundToInt(),
+            yBucket = (position.y * 100f).roundToInt(),
+            stemHeightBucket = (stemHeight * 100f).roundToInt(),
+        )
+        return selectionHandlePaths.getOrPut(key) {
+            buildSelectionHandlePath(alignment, position, stemHeight)
         }
     }
 }
@@ -1957,10 +2048,65 @@ private class SimpleLruCache<K, V>(
 /**
  * Cache key used by [EditorDrawCache] for measured text layouts.
  */
-private data class TextLayoutCacheKey(
+private data class RunTextLayoutCacheKey(
     val text: String,
-    val style: TextStyle,
+    val style: RunTextStyleKey,
 )
+
+private data class LineNumberTextLayoutCacheKey(
+    val text: String,
+    val style: LineNumberTextStyleKey,
+)
+
+internal fun computeRunTextLayoutCacheIdentity(
+    text: String,
+    style: EditorTextStyle,
+    type: VisualRunType,
+): Pair<String, RunTextStyleKey> = text to RunTextStyleKey(style, type)
+
+internal fun computeLineNumberTextLayoutCacheIdentity(
+    text: String,
+    active: Boolean,
+    baselineY: Float,
+    estimatedLineHeight: Float,
+): Pair<String, LineNumberTextStyleKey> = text to computeLineNumberTextStyleKey(
+    active = active,
+    baselineShift = computeLineNumberBaselineShift(
+        baselineY = baselineY,
+        estimatedLineHeight = estimatedLineHeight,
+    ),
+)
+
+private data class SelectionHandlePathKey(
+    val alignment: Alignment.Horizontal,
+    val xBucket: Int,
+    val yBucket: Int,
+    val stemHeightBucket: Int,
+)
+
+internal data class LineNumberTextStyleKey(
+    val active: Boolean,
+    val baselineShiftBucket: Int,
+)
+
+internal fun computeLineNumberTextStyleKey(
+    active: Boolean,
+    baselineShift: Float,
+): LineNumberTextStyleKey = LineNumberTextStyleKey(
+    active = active,
+    baselineShiftBucket = (baselineShift * 10_000f).roundToInt(),
+)
+
+internal fun computeLineNumberBaselineShift(
+    baselineY: Float,
+    estimatedLineHeight: Float,
+): Float {
+    if (estimatedLineHeight <= 0f) {
+        return 0f
+    }
+    val normalizedBaseline = (baselineY % estimatedLineHeight) / estimatedLineHeight
+    return (normalizedBaseline - 0.5f) * 0.03f
+}
 
 private fun buildDefaultScrollbarConfig(
     platformType: PlatformType,
@@ -2028,7 +2174,7 @@ private fun buildDefaultHandleConfig(
     )
 }
 
-private data class RunTextStyleKey(
+internal data class RunTextStyleKey(
     val style: EditorTextStyle,
     val type: VisualRunType,
 )
@@ -2094,7 +2240,117 @@ private fun PointerType.toUpEventType(): EditorGestureEventType = when (this) {
 
 private fun Offset.toGesturePoint(): GesturePoint = GesturePoint(x = x, y = y)
 
-private fun List<PointerInputChange>.calculateCentroidPoint(): GesturePoint {
+internal data class PointerChangeSnapshot(
+    val type: PointerType,
+    val position: GesturePoint,
+    val previousPosition: GesturePoint,
+    val pressed: Boolean,
+    val changedToDown: Boolean,
+    val changedToUp: Boolean,
+)
+
+internal data class PointerGestureDispatch(
+    val type: EditorGestureEventType,
+    val points: List<GesturePoint>,
+    val wheelDeltaX: Float = 0f,
+    val wheelDeltaY: Float = 0f,
+    val directScale: Float = 1f,
+)
+
+internal data class PointerDispatchPlan(
+    val requestFocus: Boolean = false,
+    val dispatches: List<PointerGestureDispatch> = emptyList(),
+)
+
+internal fun buildPointerDispatchPlan(
+    scrollDelta: Offset,
+    isSecondaryPressed: Boolean,
+    changes: List<PointerChangeSnapshot>,
+): PointerDispatchPlan {
+    val dispatches = mutableListOf<PointerGestureDispatch>()
+    if (scrollDelta != Offset.Zero) {
+        dispatches += PointerGestureDispatch(
+            type = EditorGestureEventType.MouseWheel,
+            points = emptyList(),
+            wheelDeltaX = scrollDelta.x,
+            wheelDeltaY = scrollDelta.y,
+        )
+    }
+
+    val allPoints = changes.map { it.position }
+    val downChanges = changes.filter { it.changedToDown }
+    val upChanges = changes.filter { it.changedToUp }
+    val pressedChanges = changes.filter { it.pressed }
+    val movedPressedPoints = pressedChanges
+        .filter { it.position != it.previousPosition }
+        .map { it.position }
+
+    if (downChanges.isNotEmpty()) {
+        val primaryDown = downChanges.first()
+        dispatches += if (primaryDown.type == PointerType.Touch && pressedChanges.size > 1 && allPoints.isNotEmpty()) {
+            PointerGestureDispatch(
+                type = EditorGestureEventType.TouchPointerDown,
+                points = allPoints,
+            )
+        } else {
+            PointerGestureDispatch(
+                type = primaryDown.type.toDownEventType(
+                    isSecondaryPressed = isSecondaryPressed,
+                ),
+                points = listOf(primaryDown.position),
+            )
+        }
+        return PointerDispatchPlan(
+            requestFocus = true,
+            dispatches = dispatches,
+        )
+    }
+
+    if (upChanges.isNotEmpty()) {
+        val primaryUp = upChanges.first()
+        dispatches += if (primaryUp.type == PointerType.Touch && pressedChanges.isNotEmpty() && allPoints.isNotEmpty()) {
+            PointerGestureDispatch(
+                type = EditorGestureEventType.TouchPointerUp,
+                points = allPoints,
+            )
+        } else {
+            PointerGestureDispatch(
+                type = primaryUp.type.toUpEventType(),
+                points = listOf(primaryUp.position),
+            )
+        }
+        return PointerDispatchPlan(dispatches = dispatches)
+    }
+
+    if (movedPressedPoints.isNotEmpty()) {
+        val pointerType = pressedChanges.firstOrNull()?.type ?: PointerType.Touch
+        val scaleDelta = if (pointerType == PointerType.Touch && pressedChanges.size >= 2) {
+            pressedChanges.calculateScaleDelta()
+        } else {
+            1f
+        }
+        val movePoints = if (pointerType == PointerType.Touch) {
+            pressedChanges.map { it.position }
+        } else {
+            movedPressedPoints
+        }
+        dispatches += PointerGestureDispatch(
+            type = pointerType.toMoveEventType(),
+            points = movePoints,
+        )
+        if (pointerType == PointerType.Touch && pressedChanges.size >= 2 && scaleDelta != 1f) {
+            dispatches += PointerGestureDispatch(
+                type = EditorGestureEventType.DirectScale,
+                points = listOf(pressedChanges.calculateCentroidPoint()),
+                directScale = scaleDelta,
+            )
+        }
+    }
+
+    return PointerDispatchPlan(dispatches = dispatches)
+}
+
+private fun List<PointerChangeSnapshot>.calculateCentroidPoint(): GesturePoint {
     if (isEmpty()) {
         return GesturePoint()
     }
@@ -2103,7 +2359,7 @@ private fun List<PointerInputChange>.calculateCentroidPoint(): GesturePoint {
     return GesturePoint(centerX, centerY)
 }
 
-private fun List<PointerInputChange>.calculateScaleDelta(): Float {
+private fun List<PointerChangeSnapshot>.calculateScaleDelta(): Float {
     if (size < 2) {
         return 1f
     }

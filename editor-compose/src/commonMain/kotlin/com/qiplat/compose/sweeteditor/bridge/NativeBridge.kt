@@ -193,6 +193,8 @@ internal interface NativeEditorBridge {
 
     fun gotoPosition(line: Int, column: Int)
 
+    fun ensureCursorVisible()
+
     fun setScroll(scrollX: Float, scrollY: Float)
 
     fun getPositionRect(line: Int, column: Int): com.qiplat.compose.sweeteditor.model.visual.CursorRect

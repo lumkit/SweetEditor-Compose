@@ -366,6 +366,10 @@ private class AndroidNativeEditorBridge(
         AndroidNativeBindings.nativeGotoPosition(handle, line, column)
     }
 
+    override fun ensureCursorVisible() {
+        AndroidNativeBindings.nativeEnsureCursorVisible(handle)
+    }
+
     override fun setScroll(scrollX: Float, scrollY: Float) {
         AndroidNativeBindings.nativeSetScroll(handle, scrollX, scrollY)
     }

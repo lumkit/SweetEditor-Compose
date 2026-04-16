@@ -1,6 +1,7 @@
 package com.qiplat.compose.sweeteditor.runtime
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.qiplat.compose.sweeteditor.CompletionItemRenderer
@@ -104,36 +105,42 @@ class EditorState internal constructor(
     /**
      * Marks whether the render model must be rebuilt before the next frame.
      */
-    var isRenderModelDirty: Boolean by mutableStateOf(false)
+    var isRenderModelDirty: Boolean = false
         internal set
 
     /**
      * Monotonic counter used to trigger render model refresh effects.
      */
-    var renderModelRequestVersion: Int by mutableStateOf(0)
+    var renderModelRequestVersion: Int = 0
         internal set
 
     /**
      * Marks whether scroll metrics must be refreshed before the next frame.
      */
-    var isScrollMetricsDirty: Boolean by mutableStateOf(false)
+    var isScrollMetricsDirty: Boolean = false
         internal set
 
     /**
      * Monotonic counter used to trigger scroll metrics refresh effects.
      */
-    var scrollMetricsRequestVersion: Int by mutableStateOf(0)
+    var scrollMetricsRequestVersion: Int = 0
         internal set
 
     /**
      * Marks whether decoration providers should recompute their output.
      */
-    var isDecorationDirty: Boolean by mutableStateOf(false)
+    var isDecorationDirty: Boolean = false
         internal set
 
     /**
      * Monotonic counter used to trigger decoration provider refresh effects.
      */
-    var decorationRequestVersion: Int by mutableStateOf(0)
+    var decorationRequestVersion: Int = 0
+        internal set
+
+    internal var frameRefreshSignal: Int by mutableIntStateOf(0)
+        internal set
+
+    internal var decorationRefreshSignal: Int by mutableIntStateOf(0)
         internal set
 }

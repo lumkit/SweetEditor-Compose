@@ -21,7 +21,7 @@ internal fun InstallDecorationProviders(
     val lastEditResult = state.lastEditResult
     val languageConfiguration = state.languageConfiguration
     val metadata = state.metadata
-    val decorationRequestVersion = state.decorationRequestVersion
+    val decorationRefreshSignal = state.decorationRefreshSignal
     val providerIds = providers.map { it.id }
     val visibleLineRange = remember(renderModel, document) {
         document?.let { computeVisibleLineRange(renderModel, it) }
@@ -53,7 +53,7 @@ internal fun InstallDecorationProviders(
             controller,
             document,
             provider.id,
-            decorationRequestVersion,
+            decorationRefreshSignal,
             visibleLineRange,
             scrollMetrics.viewportWidth,
             scrollMetrics.viewportHeight,
@@ -128,7 +128,7 @@ internal fun InstallDecorationProviders(
 
 internal class DecorationProviderManager {
     private data class BatchProjectionKey(
-        val aggregateBatch: DecorationBatch,
+        val aggregateVersion: Int,
         val visibleLineRange: IntRange?,
     )
 
@@ -140,6 +140,7 @@ internal class DecorationProviderManager {
 
     private val providerEntries = linkedMapOf<String, ProviderEntry>()
     private var cachedBatch: DecorationBatch = DecorationBatch()
+    private var cachedBatchVersion: Int = 0
     private var isCachedBatchDirty: Boolean = false
     private var cachedProjectionKey: BatchProjectionKey? = null
     private var cachedProjectedBatch: DecorationBatch = DecorationBatch()
@@ -257,6 +258,7 @@ internal class DecorationProviderManager {
         }
         providerEntries.clear()
         cachedBatch = DecorationBatch()
+        cachedBatchVersion = 0
         isCachedBatchDirty = false
         cachedProjectionKey = null
         cachedProjectedBatch = DecorationBatch()
@@ -269,7 +271,7 @@ internal class DecorationProviderManager {
         visibleLineRange: IntRange? = null,
     ): DecorationBatch {
         val aggregateBatch = buildAggregateBatch()
-        val projectionKey = BatchProjectionKey(aggregateBatch, visibleLineRange)
+        val projectionKey = BatchProjectionKey(cachedBatchVersion, visibleLineRange)
         if (cachedProjectionKey == projectionKey) {
             return cachedProjectedBatch
         }
@@ -448,6 +450,7 @@ internal class DecorationProviderManager {
     private fun ProviderEntry?.orEmpty(): ProviderEntry = this ?: ProviderEntry()
 
     private fun invalidateCachedBatch() {
+        cachedBatchVersion += 1
         isCachedBatchDirty = true
         cachedProjectionKey = null
     }
@@ -538,7 +541,19 @@ private fun projectBatchForVisibleRange(
         return batch
     }
     val projectedRange = visibleLineRange.expandUnbounded(64)
+    val projectedSyntaxSpans = batch.spansByLayer[SpanLayer.Syntax].orEmpty().filterToLineRange(projectedRange)
+    val projectedSemanticSpans = batch.spansByLayer[SpanLayer.Semantic].orEmpty().filterToLineRange(projectedRange)
+    val usedStyleIds = projectedSyntaxSpans.collectUsedStyleIds() + projectedSemanticSpans.collectUsedStyleIds()
     return batch.copy(
+        textStyles = batch.textStyles.filterKeys { it in usedStyleIds },
+        spansByLayer = mapOf(
+            SpanLayer.Syntax to projectedSyntaxSpans,
+            SpanLayer.Semantic to projectedSemanticSpans,
+        ),
+        inlayHints = batch.inlayHints.filterToLineRange(projectedRange),
+        phantomTexts = batch.phantomTexts.filterToLineRange(projectedRange),
+        gutterIcons = batch.gutterIcons.filterToLineRange(projectedRange),
+        diagnostics = batch.diagnostics.filterToLineRange(projectedRange),
         indentGuides = batch.indentGuides.filter { it.intersects(projectedRange) },
         bracketGuides = batch.bracketGuides.filter { it.intersects(projectedRange) },
         flowGuides = batch.flowGuides.filter { it.intersects(projectedRange) },
@@ -550,6 +565,28 @@ private fun IntRange.expandUnbounded(padding: Int): IntRange {
     val start = (first - padding).coerceAtLeast(0)
     val end = if (last > Int.MAX_VALUE - padding) Int.MAX_VALUE else last + padding
     return start..end
+}
+
+private fun <T> Map<Int, List<T>>.filterToLineRange(lineRange: IntRange): Map<Int, List<T>> {
+    if (isEmpty()) {
+        return this
+    }
+    return entries.asSequence()
+        .filter { it.key in lineRange }
+        .associate { it.key to it.value }
+}
+
+private fun Map<Int, List<StyleSpan>>.collectUsedStyleIds(): Set<Int> {
+    if (isEmpty()) {
+        return emptySet()
+    }
+    return buildSet {
+        values.forEach { spans ->
+            spans.forEach { span ->
+                add(span.styleId)
+            }
+        }
+    }
 }
 
 private fun IndentGuide.intersects(lineRange: IntRange): Boolean =
