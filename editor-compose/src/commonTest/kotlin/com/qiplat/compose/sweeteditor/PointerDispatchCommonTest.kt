@@ -10,6 +10,24 @@ import kotlin.test.assertTrue
 
 class PointerDispatchCommonTest {
     @Test
+    fun normalizeMouseWheelScrollDeltaScalesDesktopWheelToSwingRange() {
+        val normalized = normalizeMouseWheelScrollDelta(
+            Offset(0f, -1f),
+        )
+
+        assertEquals(Offset(0f, -40f), normalized)
+    }
+
+    @Test
+    fun normalizeMouseWheelScrollDeltaKeepsZeroStable() {
+        val normalized = normalizeMouseWheelScrollDelta(
+            Offset.Zero,
+        )
+
+        assertEquals(Offset.Zero, normalized)
+    }
+
+    @Test
     fun scrollAndMouseDownDispatchInSamePlan() {
         val plan = buildPointerDispatchPlan(
             scrollDelta = Offset(3f, -5f),

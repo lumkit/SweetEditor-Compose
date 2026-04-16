@@ -1,6 +1,7 @@
 package com.qiplat.compose.sweeteditor
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Offset
 
 enum class PlatformType {
     Android, IOS, Desktop, Web
@@ -11,3 +12,5 @@ internal val LocalPlatformType = staticCompositionLocalOf {
 }
 
 expect fun getPlatformType(): PlatformType
+
+expect fun normalizePlatformMouseWheelScrollDelta(scrollDelta: Offset): Offset

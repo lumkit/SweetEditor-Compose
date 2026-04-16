@@ -1,7 +1,7 @@
 
 <div align="center">
 
-**English** | [简体中文](README_zh.md)
+**English** | [简体中文](docs/README_zh.md)
 
 # SweetEditor
 
@@ -28,15 +28,19 @@
 - [x] Syntax/semantic span rendering with batch style registration
 - [x] Decoration pipeline: inlay hints, phantom text, gutter icons, diagnostics
 - [x] Guide and structure rendering: indent guides, bracket guides, flow guides, separator guides, fold regions
+- [x] Rich visual affordances: fold markers, linked-editing highlights, bracket highlights, active scrollbars, pointer cursor hints
 - [x] Cursor and selection operations with 0-based line/column semantics
+- [x] Selection handle drag state callbacks, hit-target reporting, and context-menu request callbacks
 - [x] Editing primitives: insert, replace, delete, backspace, delete-forward
 - [x] Line operations: move/copy line up/down, delete line, insert line above/below
 - [x] Undo/redo stack integration
 - [x] Snippet insertion and linked-editing session support
+- [x] Completion pipeline with provider API, popup anchoring, item selection, and custom item renderer
 - [x] IME composition lifecycle: start/update/end/cancel
 - [x] Gesture and key event bridge to native input model
 - [x] Document loading from UTF-16 text and file path
 - [x] Read-only mode, wrap mode, auto-indent mode, gutter visibility/sticky options
+- [x] Configurable appearance: theme content loading, font configuration, current-line render mode, line spacing, fold arrow mode
 
 ## Screenshots
 

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import com.qiplat.compose.sweeteditor.copilot.InlineSuggestionController
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
@@ -36,6 +37,7 @@ class SweetEditorController(
     private val newLineActionProviderManager = NewLineActionProviderManager()
     private val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val eventBus = EditorEventBus()
+    private var inlineSuggestionController: InlineSuggestionController? = null
     private val _documentState = mutableStateOf(state.document)
     val documentState: State<EditorDocument?> = _documentState
     private val _totalLineCountState = mutableStateOf(getTotalLineCount())
@@ -146,6 +148,8 @@ class SweetEditorController(
         readyCallbacks.clear()
         isBound = false
         completionScope.cancel()
+        inlineSuggestionController?.dispose()
+        inlineSuggestionController = null
         editorController.close()
     }
 
@@ -154,6 +158,11 @@ class SweetEditorController(
     }
 
     fun events(): EditorEventBus = eventBus
+
+    fun inlineSuggestions(): InlineSuggestionController =
+        inlineSuggestionController ?: InlineSuggestionController(this).also {
+            inlineSuggestionController = it
+        }
 
     fun <T : EditorEvent> subscribe(
         eventType: KClass<T>,

@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.qiplat.compose.sweeteditor.bridge.NativeHandleConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
+import com.qiplat.compose.sweeteditor.copilot.InlineSuggestionActionBar
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 import com.qiplat.compose.sweeteditor.runtime.EditorController
@@ -113,6 +114,14 @@ fun SweetEditor(
         completions = completions,
         controller = controller,
         editorWindowOffset = editorWindowOffset,
+    )
+    InlineSuggestionActionBar(
+        suggestion = controller.inlineSuggestions().suggestionState.value,
+        cursor = controller.state.renderModel?.cursor,
+        theme = controller.themeState.value,
+        editorWindowOffset = editorWindowOffset,
+        onAccept = { controller.inlineSuggestions().accept() },
+        onDismiss = { controller.inlineSuggestions().dismiss() },
     )
 }
 
@@ -296,7 +305,9 @@ fun SweetEditor(
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val eventModifiers = event.toNativeModifiers()
                         val plan = buildPointerDispatchPlan(
-                            scrollDelta = event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero,
+                            scrollDelta = normalizeMouseWheelScrollDelta(
+                                event.changes.firstOrNull()?.scrollDelta ?: Offset.Zero,
+                            ),
                             isSecondaryPressed = event.buttons.isSecondaryPressed,
                             changes = event.changes.map { change ->
                                 PointerChangeSnapshot(
@@ -336,7 +347,7 @@ fun SweetEditor(
             theme = scaledTheme,
             colors = resolvedColors,
             platformType = platformType,
-            mobilePlatformTypes = mobilePlatformTypes
+            mobilePlatformTypes = mobilePlatformTypes,
         )
     }
 }
@@ -2262,6 +2273,10 @@ internal data class PointerDispatchPlan(
     val dispatches: List<PointerGestureDispatch> = emptyList(),
 )
 
+internal fun normalizeMouseWheelScrollDelta(
+    scrollDelta: Offset,
+): Offset = normalizePlatformMouseWheelScrollDelta(scrollDelta)
+
 internal fun buildPointerDispatchPlan(
     scrollDelta: Offset,
     isSecondaryPressed: Boolean,
@@ -2485,12 +2500,18 @@ private fun SweetEditorController.handleComposeKeyEvent(
         }
 
         Key.Tab -> {
+            if (inlineSuggestions().handleKeyEvent(event.key)) {
+                return true
+            }
             if (handleTabAction(reverse = event.isShiftPressed)) {
                 return true
             }
         }
 
         Key.Escape -> {
+            if (inlineSuggestions().handleKeyEvent(event.key)) {
+                return true
+            }
             if (handleEscapeAction()) {
                 return true
             }

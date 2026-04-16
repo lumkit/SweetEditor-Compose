@@ -15,15 +15,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
+import com.qiplat.compose.sweeteditor.model.visual.PointF
 import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
@@ -85,6 +89,7 @@ fun App() {
                 ExampleDemoDecorationProvider(),
             )
         }
+        val demoIconProvider = remember { ExampleDemoIconProvider }
         val completionProvider = remember { ExampleDemoCompletionProvider() }
         val wrapMode = WrapMode.entries[wrapModeOrdinal.coerceIn(0, WrapMode.entries.lastIndex)]
         val currentLineRenderMode = CurrentLineRenderMode.entries[
@@ -146,6 +151,13 @@ fun App() {
             }
         }
 
+        DisposableEffect(editorController, demoIconProvider) {
+            editorController.setEditorIconProvider(demoIconProvider)
+            onDispose {
+                editorController.setEditorIconProvider(null)
+            }
+        }
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color(editorAppearance.theme.gutterBackgroundColor),
@@ -188,6 +200,23 @@ fun App() {
                             onCycleCurrentLineRenderMode = {
                                 currentLineRenderModeOrdinal =
                                     (currentLineRenderModeOrdinal + 1) % CurrentLineRenderMode.entries.size
+                            },
+                            onShowInlineSuggestion = {
+                                val cursor = editorController.cursorPositionState.value
+                                val suggestionText = when {
+                                    loadedSamples.getOrNull(selectedSampleIndex)?.spec?.title?.contains("Kotlin", ignoreCase = true) == true ->
+                                        "\n    println(\"Inline suggestion accepted\")"
+                                    loadedSamples.getOrNull(selectedSampleIndex)?.spec?.title?.contains("C++", ignoreCase = true) == true ->
+                                        "\n    std::cout << \"inline suggestion\" << std::endl;"
+                                    else -> " // inline suggestion"
+                                }
+                                editorController.inlineSuggestions().show(
+                                    InlineSuggestion(
+                                        line = cursor.line,
+                                        column = cursor.column,
+                                        text = suggestionText,
+                                    ),
+                                )
                             },
                         )
                     }
@@ -355,6 +384,7 @@ private fun RowScope.Actions(
     onToggleGutterVisible: () -> Unit,
     onToggleSplitLine: () -> Unit,
     onCycleCurrentLineRenderMode: () -> Unit,
+    onShowInlineSuggestion: () -> Unit,
 ) {
     var menuState by rememberSaveable { mutableStateOf(false) }
     val canUndo by editorController.canUndoState
@@ -478,6 +508,16 @@ private fun RowScope.Actions(
                 },
                 onClick = {
                     onCycleCurrentLineRenderMode()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text("Show Inline Suggestion")
+                },
+                onClick = {
+                    onShowInlineSuggestion()
                     menuState = false
                 }
             )
@@ -612,7 +652,9 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
     override val overscanLines: Int = 8
     override val debounceMillis: Long = 80L
     override val capabilities: Set<DecorationType> = setOf(
+        DecorationType.SyntaxHighlight,
         DecorationType.InlayHint,
+        DecorationType.PhantomText,
         DecorationType.Diagnostic,
         DecorationType.IndentGuide,
         DecorationType.FoldRegion,
@@ -628,20 +670,17 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
 
     override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
         val inlayHints = linkedMapOf<Int, MutableList<InlayHint>>()
+        val phantomTexts = linkedMapOf<Int, MutableList<PhantomText>>()
         val gutterIcons = linkedMapOf<Int, MutableList<GutterIcon>>()
         val separatorGuides = mutableListOf<SeparatorGuide>()
         val (foldRegions, indentGuides) = buildStructuralDecorations(context)
-        val styleIdColorToken = EditorThemeStyleIds.UserBase + 1
-        val textStyles = mapOf(
-            styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
-        )
         val syntaxSpans = linkedMapOf<Int, MutableList<StyleSpan>>()
-        val diagnostics = linkedMapOf<Int, List<DiagnosticItem>>()
-        val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
+        val diagnostics = linkedMapOf<Int, MutableList<DiagnosticItem>>()
+        var phantomInserted = false
 
         for (line in context.requestedLineRange) {
             val lineText = context.document.getLineText(line)
-            val lineDiagnostics = mutableListOf<DiagnosticItem>()
+            val lineDiagnostics = diagnostics.getOrPut(line) { mutableListOf() }
             lineText.indexOf("TODO").takeIf { it >= 0 }?.let { column ->
                 lineDiagnostics += DiagnosticItem(
                     column = column,
@@ -656,17 +695,34 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                     severity = DiagnosticSeverity.Warning,
                 )
             }
-            if (lineDiagnostics.isNotEmpty()) {
-                diagnostics[line] = lineDiagnostics
+            lineText.indexOf('@').takeIf { it >= 0 }?.let { column ->
+                lineDiagnostics += DiagnosticItem(
+                    column = column,
+                    length = 1,
+                    severity = DiagnosticSeverity.Info,
+                )
             }
 
+            if (lineText.contains("class") || lineText.contains("struct")) {
+                gutterIcons.getOrPut(line) { mutableListOf() }.add(
+                    GutterIcon(iconId = 1),
+                )
+            }
             lineText.indexOf('@').takeIf { it >= 0 }?.let {
                 gutterIcons.getOrPut(line) { mutableListOf() }.add(
-                    GutterIcon(iconId = if (line % 2 == 0) 1 else 2),
+                    GutterIcon(iconId = 2),
                 )
             }
 
             if ("#region" in lineText || "// region" in lineText.lowercase()) {
+                separatorGuides += SeparatorGuide(
+                    line = line,
+                    style = SeparatorStyle.Double,
+                    count = 1,
+                    textEndColumn = lineText.length,
+                )
+            }
+            if (lineText.trimStart('/', ' ', '\t').startsWith("-----")) {
                 separatorGuides += SeparatorGuide(
                     line = line,
                     style = SeparatorStyle.Single,
@@ -691,21 +747,70 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                     ),
                 )
             }
+
+            appendKeywordTextHints(inlayHints, line, lineText)
+
+            if (!phantomInserted) {
+                when {
+                    Regex("""\b(class|struct)\b""").containsMatchIn(lineText) -> {
+                        phantomTexts.getOrPut(line) { mutableListOf() }.add(
+                            PhantomText(
+                                column = lineText.length,
+                                text = "\n    void debugTrace(const std::string& tag) {\n        log(DEBUG, tag);\n    }",
+                            ),
+                        )
+                        phantomInserted = true
+                    }
+                    Regex("""\breturn\b""").containsMatchIn(lineText) -> {
+                        val column = lineText.indexOf("return") + "return".length
+                        phantomTexts.getOrPut(line) { mutableListOf() }.add(
+                            PhantomText(
+                                column = column,
+                                text = " /* demo phantom */",
+                            ),
+                        )
+                        phantomInserted = true
+                    }
+                }
+            }
         }
         return DecorationUpdate(
             decorations = DecorationSet(
                 textStyles = textStyles,
                 syntaxSpans = syntaxSpans,
                 inlayHints = inlayHints,
+                phantomTexts = phantomTexts,
                 gutterIcons = gutterIcons,
-                diagnostics = diagnostics,
+                diagnostics = diagnostics.mapValues { it.value },
                 separatorGuides = separatorGuides,
                 indentGuides = indentGuides,
                 foldRegions = foldRegions,
             ),
-            applyMode = DecorationApplyMode.Merge,
+            applyMode = DecorationApplyMode.ReplaceRange,
             lineRange = context.requestedLineRange,
         )
+    }
+
+    private fun appendKeywordTextHints(
+        inlayHints: MutableMap<Int, MutableList<InlayHint>>,
+        line: Int,
+        lineText: String,
+    ) {
+        fun addHint(keyword: String, hint: String) {
+            val index = lineText.indexOf(keyword)
+            if (index >= 0) {
+                inlayHints.getOrPut(line) { mutableListOf() }.add(
+                    InlayHint(
+                        type = InlayType.Text,
+                        column = index + keyword.length + 1,
+                        text = hint,
+                    ),
+                )
+            }
+        }
+        addHint("const", "immutable")
+        addHint("return", "value: ")
+        addHint("case", "condition: ")
     }
 
     private fun buildStructuralDecorations(
@@ -863,6 +968,42 @@ private data class StructuralDecorationCache(
     val indentGuides: List<IndentGuide>,
     val lineSnapshots: List<String>,
 )
+
+private object ExampleDemoIconProvider : EditorIconProvider {
+    override fun paint(
+        drawScope: DrawScope,
+        iconId: Int,
+        origin: PointF,
+        size: Size,
+        tint: Color,
+    ): Boolean = with(drawScope) {
+        when (iconId) {
+            1 -> {
+                drawCircle(
+                    color = tint,
+                    radius = minOf(size.width, size.height) * 0.34f,
+                    center = androidx.compose.ui.geometry.Offset(
+                        origin.x + size.width / 2f,
+                        origin.y + size.height / 2f,
+                    ),
+                )
+                true
+            }
+            2 -> {
+                drawRect(
+                    color = tint,
+                    topLeft = androidx.compose.ui.geometry.Offset(
+                        origin.x + size.width * 0.22f,
+                        origin.y + size.height * 0.22f,
+                    ),
+                    size = Size(size.width * 0.56f, size.height * 0.56f),
+                )
+                true
+            }
+            else -> false
+        }
+    }
+}
 
 private val structuralPattern = Regex("""\{|\}|#region|#endregion|//\s*region|//\s*endregion|/\*|\*/|'|" """.trim())
 
