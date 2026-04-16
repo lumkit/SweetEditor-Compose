@@ -5,14 +5,20 @@ hero:
   name: "SweetEditor"
   text: "High-performance code editor for Compose Multiplatform"
   tagline: "A native C++17 editor core wrapped by Kotlin Multiplatform and Compose, built for IDEs, AI coding tools, cloud workspaces, and long-term editor infrastructure."
+  image:
+    src: /snapshot/Screenshot_Desktop.png
+    alt: SweetEditor Desktop Screenshot
   actions:
     - theme: brand
       text: Getting Started
       link: /guide/getting-started
     - theme: alt
+      text: Usage Guide
+      link: /guide/usage
+    - theme: alt
       text: GitHub
       link: https://github.com/lumkit/SweetEditor-Compose
-    - theme: alt
+    - theme: brand
       text: 中文文档
       link: /README_zh
 
@@ -34,6 +40,8 @@ features:
 ## Quick Links
 
 - [Repository README](https://github.com/lumkit/SweetEditor-Compose/blob/main/README.md)
+- [Usage Guide](./guide/usage.md)
+- [API Overview](./guide/api-overview.md)
 - [Core Library: OpenSweetEditor](https://github.com/FinalScave/OpenSweetEditor)
 - [License](https://github.com/lumkit/SweetEditor-Compose/blob/main/LICENSE)
 - [Static Linking Exception](https://github.com/lumkit/SweetEditor-Compose/blob/main/EXCEPTION)

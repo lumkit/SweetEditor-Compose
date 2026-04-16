@@ -12,7 +12,8 @@ export default defineConfig({
     nav: [
       { text: "Home", link: "/" },
       { text: "Getting Started", link: "/guide/getting-started" },
-      { text: "Features", link: "/guide/features" },
+      { text: "Usage", link: "/guide/usage" },
+      { text: "API Overview", link: "/guide/api-overview" },
       { text: "中文文档", link: "/README_zh" },
       { text: "GitHub", link: "https://github.com/lumkit/SweetEditor-Compose" }
     ],
@@ -23,25 +24,31 @@ export default defineConfig({
           { text: "Introduction", link: "/" },
           { text: "Getting Started", link: "/guide/getting-started" },
           { text: "Features", link: "/guide/features" },
+          { text: "Usage", link: "/guide/usage" },
+          { text: "API Overview", link: "/guide/api-overview" },
           { text: "Core Library", link: "/guide/core-library" }
         ]
       },
       {
         text: "Docs",
         items: [
-          { text: "中文文档", link: "/README_zh" }
+          { text: "中文文档", link: "/README_zh" },
+          { text: "Platform Implementation Standard", link: "/platform-implementation-standard" }
         ]
       }
     ],
     socialLinks: [
       { icon: "github", link: "https://github.com/lumkit/SweetEditor-Compose" }
     ],
+    search: {
+      provider: "local"
+    },
+    outline: {
+      level: [2, 3]
+    },
     footer: {
       message: "SweetEditor documentation site powered by VitePress.",
       copyright: "Copyright © SweetEditor Contributors"
-    },
-    search: {
-      provider: "local"
     }
   }
 })
