@@ -52,11 +52,11 @@
 <div align="center">
   <table>
     <tr>
-      <td align="center"><b>Android</b><br/><img src="snapshot/Screenshot_Android.jpg" alt="Android 截图" width="360"/></td>
-      <td align="center"><b>iOS</b><br/><img src="snapshot/Screenshot_IOS.png" alt="iOS 截图" width="360"/></td>
+      <td align="center"><b>Android</b><br/><img src="./snapshot/Screenshot_Android.jpg" alt="Android 截图" width="360"/></td>
+      <td align="center"><b>iOS</b><br/><img src="./snapshot/Screenshot_IOS.png" alt="iOS 截图" width="360"/></td>
     </tr>
     <tr>
-      <td align="center"><b>Desktop</b><br/><img src="snapshot/Screenshot_Desktop.png" alt="Desktop 截图" width="360"/></td>
+      <td align="center"><b>Desktop</b><br/><img src="./snapshot/Screenshot_Desktop.png" alt="Desktop 截图" width="360"/></td>
       <td align="center"><b>Web</b><br/><img src="" alt="Web 截图" width="360"/></td>
     </tr>
   </table>
