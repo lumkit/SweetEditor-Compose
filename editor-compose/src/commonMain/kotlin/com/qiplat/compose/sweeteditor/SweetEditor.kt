@@ -158,9 +158,7 @@ fun SweetEditor(
     val density = LocalDensity.current.density
     val renderModel = state.renderModel
     val controllerScale = controller.scaleState.value
-    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f }
-        ?: controllerScale.takeIf { it > 0f }
-        ?: 1f
+    val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: controllerScale.takeIf { it > 0f } ?: 1f
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
     }
@@ -186,9 +184,13 @@ fun SweetEditor(
     }
     val cursorTarget = renderModel?.cursor
     var lastCursorTextPosition by remember { mutableStateOf<TextPosition?>(null) }
-    val shouldAnimateCursorMove = cursorTarget?.textPosition != null &&
-            lastCursorTextPosition != null &&
-            cursorTarget.textPosition != lastCursorTextPosition
+    val shouldAnimateCursorMove by remember(cursorTarget, lastCursorTextPosition) {
+        derivedStateOf {
+            cursorTarget?.textPosition != null &&
+                    lastCursorTextPosition != null &&
+                    cursorTarget.textPosition != lastCursorTextPosition
+        }
+    }
     val animatedCursorX by animateFloatAsState(
         targetValue = cursorTarget?.position?.x ?: 0f,
         animationSpec = if (shouldAnimateCursorMove) {
@@ -1164,19 +1166,12 @@ private fun DrawScope.drawSelectionHandle(
         return
     }
     val stemHeight = handleHeight.coerceAtLeast(18f * density)
-    val stemWidth = 1.5f * density
-    drawRect(
-        color = color,
-        topLeft = Offset(position.x - stemWidth / 2f, position.y),
-        size = Size(stemWidth, stemHeight),
-    )
+
     drawPath(
         path = selectionHandlePath(
             alignment = alignment,
             position = position,
             stemHeight = stemHeight,
-            dropRadius = 10f * density,
-            dropLength = 24f * density,
         ),
         color = color,
     )
@@ -1186,29 +1181,47 @@ private fun selectionHandlePath(
     alignment: Alignment.Horizontal,
     position: PointF,
     stemHeight: Float,
-    dropRadius: Float,
-    dropLength: Float,
 ): Path {
     val path = Path()
-    val tipX = position.x
-    val tipY = position.y + stemHeight
-    val centerX = tipX
-    val centerY = tipY + dropLength
-    val rotationDegrees = if (alignment == Alignment.Start) 45f else -45f
-    val tip = rotateAround(tipX, tipY, tipX, tipY, rotationDegrees)
-    val control1 = rotateAround(tipX, tipY + dropLength * 0.4f, tipX, tipY, rotationDegrees)
-    val control2 = rotateAround(centerX - dropRadius, centerY - dropRadius * 0.8f, tipX, tipY, rotationDegrees)
-    val left = rotateAround(centerX - dropRadius, centerY, tipX, tipY, rotationDegrees)
-    val bottom = rotateAround(centerX, centerY + dropRadius, tipX, tipY, rotationDegrees)
-    val right = rotateAround(centerX + dropRadius, centerY, tipX, tipY, rotationDegrees)
-    val control3 = rotateAround(centerX + dropRadius, centerY - dropRadius * 0.8f, tipX, tipY, rotationDegrees)
+    when (alignment) {
+        Alignment.Start -> {
+            path.apply {
+                moveTo(position.x, position.y + stemHeight)
+                lineTo(position.x - stemHeight, position.y + stemHeight)
+                arcTo(
+                    rect = Rect(
+                        left = position.x - stemHeight,
+                        top = position.y + stemHeight,
+                        right = position.x,
+                        bottom = position.y + stemHeight * 2
+                    ),
+                    startAngleDegrees = -90f,
+                    sweepAngleDegrees = -270f,
+                    forceMoveTo = false
+                )
+                close()
+            }
+        }
 
-    path.moveTo(tip.x, tip.y)
-    path.cubicTo(control1.x, control1.y, control2.x, control2.y, left.x, left.y)
-    path.cubicTo(left.x, left.y, left.x, left.y, bottom.x, bottom.y)
-    path.cubicTo(bottom.x, bottom.y, right.x, right.y, right.x, right.y)
-    path.cubicTo(control3.x, control3.y, control1.x, control1.y, tip.x, tip.y)
-    path.close()
+        Alignment.End -> {
+            path.apply {
+                moveTo(position.x, position.y + stemHeight)
+                lineTo(position.x + stemHeight, position.y + stemHeight)
+                arcTo(
+                    rect = Rect(
+                        left = position.x,
+                        top = position.y + stemHeight,
+                        right = position.x + stemHeight,
+                        bottom = position.y + stemHeight * 2
+                    ),
+                    startAngleDegrees = -90f,
+                    sweepAngleDegrees = 270f,
+                    forceMoveTo = false
+                )
+                close()
+            }
+        }
+    }
     return path
 }
 
@@ -1954,14 +1967,15 @@ private fun buildDefaultScrollbarConfig(
     density: Float,
 ): NativeScrollbarConfig {
     val isMobile = platformType == PlatformType.Android || platformType == PlatformType.IOS
-    val thicknessDp = if (isMobile) 3f else 6f
+    val thicknessDp = if (isMobile) 8f else 8f
     val minThumbDp = if (isMobile) 36f else 24f
     val hitPaddingDp = if (isMobile) 8f else 6f
+    val showMode = if (isMobile) 1 else 0
     return NativeScrollbarConfig(
         thickness = thicknessDp * density,
         minThumb = minThumbDp * density,
         thumbHitPadding = hitPaddingDp * density,
-        mode = 0,
+        mode = showMode,
         thumbDraggable = true,
         trackTapMode = 0,
         fadeDelayMillis = if (isMobile) 900 else 600,
@@ -2011,24 +2025,6 @@ private fun buildDefaultHandleConfig(
         endTop = (minY - pad) * density,
         endRight = (-minX + pad) * density,
         endBottom = (maxY + pad) * density,
-    )
-}
-
-private fun rotateAround(
-    x: Float,
-    y: Float,
-    pivotX: Float,
-    pivotY: Float,
-    degrees: Float,
-): Offset {
-    val radians = (degrees * (PI / 180.0)).toFloat()
-    val cos = kotlin.math.cos(radians)
-    val sin = kotlin.math.sin(radians)
-    val dx = x - pivotX
-    val dy = y - pivotY
-    return Offset(
-        x = pivotX + dx * cos - dy * sin,
-        y = pivotY + dx * sin + dy * cos,
     )
 }
 
