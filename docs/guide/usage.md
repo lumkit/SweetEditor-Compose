@@ -48,6 +48,14 @@ SweetEditor also supports copilot-style inline suggestions in the Compose layer:
 - accept with `Tab`
 - dismiss with `Escape`
 
+## Related Guides
+
+- [Theme / Appearance](./theme-appearance.md)
+- [API Cookbook](./api-cookbook.md)
+- [Decorations](./decorations.md)
+- [Completion](./completion.md)
+- [Copilot / Inline Suggestion](./copilot-inline-suggestion.md)
+
 ## Example Modules
 
 - [Example App](https://github.com/lumkit/SweetEditor-Compose/tree/main/example)

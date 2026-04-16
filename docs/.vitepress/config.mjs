@@ -14,7 +14,9 @@ export default defineConfig({
       { text: "Installation", link: "/guide/installation" },
       { text: "Getting Started", link: "/guide/getting-started" },
       { text: "Quick Start", link: "/guide/quick-start" },
+      { text: "Theme", link: "/guide/theme-appearance" },
       { text: "Usage", link: "/guide/usage" },
+      { text: "Cookbook", link: "/guide/api-cookbook" },
       { text: "API Overview", link: "/guide/api-overview" },
       { text: "中文文档", link: "/README_zh" },
       { text: "GitHub", link: "https://github.com/lumkit/SweetEditor-Compose" }
@@ -28,11 +30,13 @@ export default defineConfig({
           { text: "Getting Started", link: "/guide/getting-started" },
           { text: "Quick Start", link: "/guide/quick-start" },
           { text: "Features", link: "/guide/features" },
+          { text: "Theme / Appearance", link: "/guide/theme-appearance" },
           { text: "Decorations", link: "/guide/decorations" },
           { text: "Completion", link: "/guide/completion" },
           { text: "Copilot / Inline Suggestion", link: "/guide/copilot-inline-suggestion" },
           { text: "Platform Support", link: "/guide/platform-support" },
           { text: "Usage", link: "/guide/usage" },
+          { text: "API Cookbook", link: "/guide/api-cookbook" },
           { text: "API Overview", link: "/guide/api-overview" },
           { text: "Core Library", link: "/guide/core-library" }
         ]

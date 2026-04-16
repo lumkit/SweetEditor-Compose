@@ -47,6 +47,8 @@ This page summarizes the major public-facing concepts exposed by the Compose lay
 ## Related Docs
 
 - [Getting Started](./getting-started.md)
+- [Theme / Appearance](./theme-appearance.md)
 - [Usage](./usage.md)
+- [API Cookbook](./api-cookbook.md)
 - [Features](./features.md)
 - [Core Library](./core-library.md)
