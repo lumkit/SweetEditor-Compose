@@ -13,14 +13,8 @@ hero:
       text: Getting Started
       link: /guide/getting-started
     - theme: alt
-      text: Usage Guide
-      link: /guide/usage
-    - theme: alt
       text: GitHub
       link: https://github.com/lumkit/SweetEditor-Compose
-    - theme: brand
-      text: 中文文档
-      link: /zh/
 
 features:
   - title: Fast Integration

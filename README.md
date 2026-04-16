@@ -16,6 +16,7 @@
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=cplusplus)](https://isocpp.org/)
 [![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Desktop%20%7C%20Web*%20-brightgreen.svg)](#platform-support-status)
 [![License](https://img.shields.io/badge/License-LGPL--2.1%2B-yellow.svg)](LICENSE)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.lumkit/sweet-editor-compose.svg?label=Maven%20Central)](https://search.maven.org/artifact/io.github.lumkit/sweet-editor-compose)
 
 </div>
 

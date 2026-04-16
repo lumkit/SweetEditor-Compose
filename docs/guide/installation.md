@@ -2,7 +2,7 @@
 
 SweetEditor Compose is published as a Kotlin Multiplatform library.
 
-## Maven Coordinate
+## Maven Coordinate [![Maven Central](https://img.shields.io/maven-central/v/io.github.lumkit/sweet-editor-compose.svg?label=Maven%20Central)](https://search.maven.org/artifact/io.github.lumkit/sweet-editor-compose)
 
 ```kotlin
 dependencies {

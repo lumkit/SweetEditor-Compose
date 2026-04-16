@@ -14,16 +14,7 @@ export default defineConfig({
       themeConfig: {
         logo: "/snapshot/Screenshot_Desktop.png",
         nav: [
-          { text: "Home", link: "/" },
-          { text: "Installation", link: "/guide/installation" },
-          { text: "Getting Started", link: "/guide/getting-started" },
-          { text: "Architecture", link: "/guide/architecture" },
-          { text: "Quick Start", link: "/guide/quick-start" },
-          { text: "Theme", link: "/guide/theme-appearance" },
-          { text: "Usage", link: "/guide/usage" },
-          { text: "Cookbook", link: "/guide/api-cookbook" },
-          { text: "API Overview", link: "/guide/api-overview" },
-          { text: "GitHub", link: "https://github.com/lumkit/SweetEditor-Compose" }
+          { text: "Guide", link: "/guide/installation" },
         ],
         sidebar: [
           {

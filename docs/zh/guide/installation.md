@@ -2,7 +2,7 @@
 
 SweetEditor Compose 以 Kotlin Multiplatform 库的形式提供。
 
-## Maven 坐标
+## Maven 坐标 [![Maven Central](https://img.shields.io/maven-central/v/io.github.lumkit/sweet-editor-compose.svg?label=Maven%20Central)](https://search.maven.org/artifact/io.github.lumkit/sweet-editor-compose)
 
 ```kotlin
 dependencies {
