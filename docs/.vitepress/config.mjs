@@ -67,7 +67,7 @@ export default defineConfig({
       lang: "zh-CN",
       link: "/zh/",
       themeConfig: {
-        logo: "sweeteditor_icon_only.svg",
+        logo: "../sweeteditor_icon_only.svg",
         nav: [
             { text: "入门", link: "/guide/installation" },
         ],
