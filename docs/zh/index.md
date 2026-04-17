@@ -6,7 +6,7 @@ hero:
   text: "面向 Compose Multiplatform 的代码编辑器"
   tagline: "基于原生 C++17 编辑器内核与 Kotlin Multiplatform / Compose 封装，适用于 IDE、AI 编程工具、云开发工作区以及长期演进的编辑器基础设施。"
   image:
-    src: /snapshot/Screenshot_Desktop.png
+    src: /Screenshot_Xiaomi_14_Ultra.png
     alt: SweetEditor Desktop Screenshot
   actions:
     - theme: brand

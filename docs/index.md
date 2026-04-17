@@ -6,7 +6,7 @@ hero:
   text: "Code editor for Compose Multiplatform"
   tagline: "A native C++17 editor core wrapped by Kotlin Multiplatform and Compose, built for IDEs, AI coding tools, cloud workspaces, and long-term editor infrastructure."
   image:
-    src: /snapshot/Screenshot_Desktop.png
+    src: /Screenshot_Xiaomi_14_Ultra.png
     alt: SweetEditor Desktop Screenshot
   actions:
     - theme: brand
