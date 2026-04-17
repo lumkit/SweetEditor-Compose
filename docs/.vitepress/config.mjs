@@ -69,7 +69,7 @@ export default defineConfig({
       themeConfig: {
         logo: "sweeteditor_icon_only.svg",
         nav: [
-            { text: "Guide", link: "/guide/installation" },
+            { text: "入门", link: "/guide/installation" },
         ],
         sidebar: [
           {

@@ -13,14 +13,8 @@ hero:
       text: 快速开始
       link: /zh/guide/quick-start
     - theme: alt
-      text: 安装
-      link: /zh/guide/installation
-    - theme: alt
       text: GitHub
       link: https://github.com/lumkit/SweetEditor-Compose
-    - theme: brand
-      text: English
-      link: /
 
 features:
   - title: 快速接入
