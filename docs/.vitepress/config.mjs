@@ -12,7 +12,7 @@ export default defineConfig({
       label: "English",
       lang: "en-US",
       themeConfig: {
-        logo: "/snapshot/Screenshot_Desktop.png",
+        logo: "sweeteditor_icon_only.svg",
         nav: [
           { text: "Guide", link: "/guide/installation" },
         ],
@@ -20,7 +20,6 @@ export default defineConfig({
           {
             text: "Guide",
             items: [
-              { text: "Introduction", link: "/" },
               { text: "Installation", link: "/guide/installation" },
               { text: "Getting Started", link: "/guide/getting-started" },
               { text: "Architecture", link: "/guide/architecture" },
@@ -68,24 +67,14 @@ export default defineConfig({
       lang: "zh-CN",
       link: "/zh/",
       themeConfig: {
-        logo: "/snapshot/Screenshot_Desktop.png",
+        logo: "sweeteditor_icon_only.svg",
         nav: [
-          { text: "首页", link: "/zh/" },
-          { text: "安装", link: "/zh/guide/installation" },
-          { text: "入门", link: "/zh/guide/getting-started" },
-          { text: "架构", link: "/zh/guide/architecture" },
-          { text: "快速开始", link: "/zh/guide/quick-start" },
-          { text: "主题", link: "/zh/guide/theme-appearance" },
-          { text: "Cookbook", link: "/zh/guide/api-cookbook" },
-          { text: "排障", link: "/zh/guide/troubleshooting" },
-          { text: "FAQ", link: "/zh/guide/faq" },
-          { text: "GitHub", link: "https://github.com/lumkit/SweetEditor-Compose" }
+            { text: "Guide", link: "/guide/installation" },
         ],
         sidebar: [
           {
             text: "中文指南",
             items: [
-              { text: "首页", link: "/zh/" },
               { text: "安装", link: "/zh/guide/installation" },
               { text: "入门", link: "/zh/guide/getting-started" },
               { text: "架构", link: "/zh/guide/architecture" },
