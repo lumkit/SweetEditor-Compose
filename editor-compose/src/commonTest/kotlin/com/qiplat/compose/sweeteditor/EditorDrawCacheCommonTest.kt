@@ -105,6 +105,14 @@ class EditorDrawCacheCommonTest {
     }
 
     @Test
+    fun reusableTextLayoutCacheIsDisabledOnAndroidOnly() {
+        assertEquals(false, supportsReusableTextLayoutCache(PlatformType.Android))
+        assertEquals(true, supportsReusableTextLayoutCache(PlatformType.IOS))
+        assertEquals(true, supportsReusableTextLayoutCache(PlatformType.Desktop))
+        assertEquals(true, supportsReusableTextLayoutCache(PlatformType.Web))
+    }
+
+    @Test
     fun resolveEditorColorsUsesCurrentLineHelpers() {
         val theme = EditorTheme.dark().copy(
             currentLineColor = 0x11010203,

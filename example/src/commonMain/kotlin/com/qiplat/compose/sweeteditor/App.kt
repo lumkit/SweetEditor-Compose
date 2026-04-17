@@ -86,7 +86,7 @@ fun App() {
         val decorationProviders: List<DecorationProvider> = remember {
             listOf(
                 LanguageConfigDecorationProvider(),
-                ExampleDemoDecorationProvider(),
+//                ExampleDemoDecorationProvider(),
             )
         }
         val demoIconProvider = remember { ExampleDemoIconProvider }
@@ -667,9 +667,14 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
         styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
     )
     private val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
+    private val classOrStructRegex = Regex("""\b(class|struct)\b""")
+    private val returnRegex = Regex("""\breturn\b""")
     private var structuralCache: StructuralDecorationCache? = null
 
-    override suspend fun provide(context: DecorationProviderContext): DecorationUpdate {
+    override suspend fun provideDecorations(
+        context: DecorationProviderContext,
+        receiver: DecorationReceiver,
+    ) {
         val inlayHints = linkedMapOf<Int, MutableList<InlayHint>>()
         val phantomTexts = linkedMapOf<Int, MutableList<PhantomText>>()
         val gutterIcons = linkedMapOf<Int, MutableList<GutterIcon>>()
@@ -753,16 +758,16 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
 
             if (!phantomInserted) {
                 when {
-                    Regex("""\b(class|struct)\b""").containsMatchIn(lineText) -> {
+                    classOrStructRegex.containsMatchIn(lineText) -> {
                         phantomTexts.getOrPut(line) { mutableListOf() }.add(
                             PhantomText(
                                 column = lineText.length,
-                                text = "\n    void debugTrace(const std::string& tag) {\n        log(DEBUG, tag);\n    }",
+                                text = " /* demo phantom: debugTrace(tag) */",
                             ),
                         )
                         phantomInserted = true
                     }
-                    Regex("""\breturn\b""").containsMatchIn(lineText) -> {
+                    returnRegex.containsMatchIn(lineText) -> {
                         val column = lineText.indexOf("return") + "return".length
                         phantomTexts.getOrPut(line) { mutableListOf() }.add(
                             PhantomText(
@@ -775,20 +780,35 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
                 }
             }
         }
-        return DecorationUpdate(
-            decorations = DecorationSet(
-                textStyles = textStyles,
-                syntaxSpans = syntaxSpans,
-                inlayHints = inlayHints,
-                phantomTexts = phantomTexts,
-                gutterIcons = gutterIcons,
-                diagnostics = diagnostics.mapValues { it.value },
-                separatorGuides = separatorGuides,
+        if (!receiver.accept(
+                DecorationResult(
+                    textStyles = textStyles,
+                    textStylesMode = DecorationApplyMode.Merge,
+                    syntaxSpans = syntaxSpans,
+                    syntaxSpansMode = DecorationApplyMode.ReplaceRange,
+                    inlayHints = inlayHints,
+                    inlayHintsMode = DecorationApplyMode.ReplaceRange,
+                    phantomTexts = phantomTexts,
+                    phantomTextsMode = DecorationApplyMode.ReplaceRange,
+                    diagnostics = diagnostics.mapValues { it.value },
+                    diagnosticsMode = DecorationApplyMode.ReplaceRange,
+                    gutterIcons = gutterIcons,
+                    gutterIconsMode = DecorationApplyMode.ReplaceRange,
+                    separatorGuides = separatorGuides,
+                    separatorGuidesMode = DecorationApplyMode.ReplaceRange,
+                    lineRange = context.requestedLineRange,
+                ),
+            )
+        ) {
+            return
+        }
+        receiver.accept(
+            DecorationResult(
                 indentGuides = indentGuides,
+                indentGuidesMode = DecorationApplyMode.ReplaceAll,
                 foldRegions = foldRegions,
+                foldRegionsMode = DecorationApplyMode.ReplaceAll,
             ),
-            applyMode = DecorationApplyMode.ReplaceRange,
-            lineRange = context.requestedLineRange,
         )
     }
 

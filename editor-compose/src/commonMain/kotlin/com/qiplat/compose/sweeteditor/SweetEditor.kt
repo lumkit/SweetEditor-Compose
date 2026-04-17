@@ -171,8 +171,14 @@ fun SweetEditor(
     val scaledTheme = remember(theme, renderScale) {
         theme.scaled(renderScale)
     }
-    val drawCache = remember(scaledTheme, LocalDensity.current) {
-        EditorDrawCache(scaledTheme)
+    val enableTextLayoutCache = remember(platformType) {
+        supportsReusableTextLayoutCache(platformType)
+    }
+    val drawCache = remember(scaledTheme, LocalDensity.current, enableTextLayoutCache) {
+        EditorDrawCache(
+            theme = scaledTheme,
+            enableTextLayoutCache = enableTextLayoutCache,
+        )
     }
     val resolvedColors = remember(scaledTheme) {
         resolveEditorColors(scaledTheme)
@@ -1887,6 +1893,7 @@ private fun VisualLine.firstBaseline(): Float =
  */
 internal class EditorDrawCache(
     private val theme: EditorTheme,
+    private val enableTextLayoutCache: Boolean,
 ) {
     private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
     private val lineNumberTextStyles = mutableMapOf<LineNumberTextStyleKey, TextStyle>()
@@ -1957,7 +1964,7 @@ internal class EditorDrawCache(
         theme: EditorTheme,
     ): TextLayoutResult {
         val resolvedStyle = runTextStyle(style, type, theme)
-        if (text.length > 2048) {
+        if (!enableTextLayoutCache || text.length > 2048) {
             return textMeasurer.measure(
                 text = text,
                 style = resolvedStyle,
@@ -1996,6 +2003,12 @@ internal class EditorDrawCache(
             text = text,
             style = styleKey,
         )
+        if (!enableTextLayoutCache) {
+            return textMeasurer.measure(
+                text = text,
+                style = style,
+            )
+        }
         lineNumberTextLayouts[key]?.let { return it }
         return textMeasurer.measure(
             text = text,
@@ -2055,6 +2068,9 @@ private class SimpleLruCache<K, V>(
         }
     }
 }
+
+internal fun supportsReusableTextLayoutCache(platformType: PlatformType): Boolean =
+    platformType != PlatformType.Android
 
 /**
  * Cache key used by [EditorDrawCache] for measured text layouts.
