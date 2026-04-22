@@ -1,12 +1,13 @@
-:root {
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #5b8cff 10%, #46d5ff 55%, #6df2c1 100%);
-  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(91, 140, 255, 0.28), rgba(70, 213, 255, 0.18));
-  --vp-home-hero-image-filter: blur(56px);
-  --vp-c-brand-1: #5b8cff;
-  --vp-c-brand-2: #6f9bff;
-  --vp-c-brand-3: #4779f2;
+
+.VPNav .VPNavBar.home {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
+
+.VPNav .VPNavBar.has-sidebar {
+  backdrop-filter: none;
+}
+
 
 .VPFeature {
   border: 1px solid var(--vp-c-divider);
