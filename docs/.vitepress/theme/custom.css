@@ -12,3 +12,15 @@
 .VPFeature {
   border: 1px solid var(--vp-c-divider);
 }
+
+@media (max-width: 768px) {
+  .vp-doc div[class*='language-'] {
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 12px;
+  }
+
+  .vp-doc div[class*='language-'] span.lang {
+    right: 10px;
+  }
+}
