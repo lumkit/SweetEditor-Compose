@@ -1,6 +1,9 @@
-import {defineConfig} from "vitepress"
+import { defineConfig } from "vitepress"
 
 export default defineConfig({
+  head: [
+    ['link', { rel: 'icon', href: '/SweetEditor-Compose/sweeteditor_favicon.ico' }]
+  ],
   title: "SweetEditor",
   description: "Code editor for Compose Multiplatform",
   base: "/SweetEditor-Compose/",
@@ -12,7 +15,7 @@ export default defineConfig({
       label: "English",
       lang: "en-US",
       themeConfig: {
-        logo: "sweeteditor_icon_only.svg",
+        logo: "/sweeteditor_favicon.ico",
         nav: [
           { text: "Guide", link: "/guide/installation" },
         ],
@@ -67,9 +70,9 @@ export default defineConfig({
       lang: "zh-CN",
       link: "/zh/",
       themeConfig: {
-        logo: "../sweeteditor_icon_only.svg",
+        logo: "/sweeteditor_favicon.ico",
         nav: [
-            { text: "入门", link: "/guide/installation" },
+            { text: "入门", link: "/zh/guide/installation" },
         ],
         sidebar: [
           {
@@ -105,12 +108,40 @@ export default defineConfig({
         socialLinks: [
           { icon: "github", link: "https://github.com/lumkit/SweetEditor-Compose" }
         ],
-        search: {
-          provider: "local"
-        },
         outline: {
-          level: [2, 3]
+          level: [2, 3],
+          label: '页面导航'
         },
+        docFooter: {
+          prev: '上一页',
+          next: '下一页'
+        },
+        search: {
+          provider: 'local',
+          options: {
+            translations: {
+              button: {
+                buttonText: '搜索',
+                buttonAriaLabel: '搜索'
+              },
+              modal: {
+                noResultsText: '无法找到相关结果',
+                resetButtonTitle: '清除查询',
+                footer: {
+                  selectText: '选择',
+                  navigateText: '切换'
+                }
+              }
+            }
+          }
+        },
+        lastUpdated: {
+          text: '最后更新于'
+        },
+        returnToTopLabel: '回到顶部',
+        sidebarMenuLabel: '菜单',
+        darkModeSwitchLabel: '深色模式',
+        lightModeSwitchLabel: '浅色模式',
         footer: {
           message: "SweetEditor 文档站由 VitePress 驱动。",
           copyright: "Copyright © SweetEditor Contributors"
