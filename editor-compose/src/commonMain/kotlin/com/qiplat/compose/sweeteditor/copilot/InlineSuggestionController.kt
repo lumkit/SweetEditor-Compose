@@ -15,7 +15,7 @@ class InlineSuggestionController internal constructor(
     private val inlineSuggestionState = mutableStateOf<InlineSuggestion?>(null)
     private var listener: InlineSuggestionListener? = null
     private var isProviderAttached: Boolean = false
-    private var subscriptions: List<EditorEventSubscription> = emptyList()
+    private var subscriptions: List<SweetEditorEventSubscription> = emptyList()
 
     val suggestionState: State<InlineSuggestion?> = inlineSuggestionState
 
@@ -80,7 +80,7 @@ class InlineSuggestionController internal constructor(
 
     internal fun dispose() {
         clearCurrentSuggestion(notifyDismiss = false)
-        subscriptions.forEach(EditorEventSubscription::dispose)
+        subscriptions.forEach(SweetEditorEventSubscription::dispose)
         subscriptions = emptyList()
         if (isProviderAttached) {
             editorController.removeDecorationProvider(suggestionProvider)

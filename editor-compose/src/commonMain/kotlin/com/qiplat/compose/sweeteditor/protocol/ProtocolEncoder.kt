@@ -18,17 +18,39 @@ object ProtocolEncoder {
         return writer.toByteArray()
     }
 
-    fun encodeBatchTextStyles(stylesById: Map<Int, TextStyle>): ByteArray {
+    fun encodeBatchTextStyles(stylesById: Map<Int, SpanStyle>): ByteArray {
         val writer = BinaryWriter(initialCapacity = 4 + stylesById.size * 16)
         val orderedEntries = orderedEntries(stylesById)
         writer.writeInt(orderedEntries.size)
         orderedEntries.forEach { entry ->
             val styleId = entry.first
             val style = entry.second
+            val internalStyle = style.toInternal()
             writer.writeInt(styleId)
-            writer.writeInt(style.color)
-            writer.writeInt(style.backgroundColor)
-            writer.writeInt(style.fontStyle)
+            writer.writeInt(internalStyle.color)
+            writer.writeInt(internalStyle.backgroundColor)
+            writer.writeInt(internalStyle.fontStyleBits)
+        }
+        return writer.toByteArray()
+    }
+
+    fun encodeBatchTextStyles(
+        styleIds: IntArray,
+        colors: IntArray,
+        backgroundColors: IntArray,
+        fontStyles: IntArray,
+    ): ByteArray {
+        val size = styleIds.size
+        require(colors.size == size && backgroundColors.size == size && fontStyles.size == size) {
+            "Text style arrays must have the same size."
+        }
+        val writer = BinaryWriter(initialCapacity = 4 + size * 16)
+        writer.writeInt(size)
+        for (index in 0 until size) {
+            writer.writeInt(styleIds[index])
+            writer.writeInt(colors[index])
+            writer.writeInt(backgroundColors[index])
+            writer.writeInt(fontStyles[index])
         }
         return writer.toByteArray()
     }

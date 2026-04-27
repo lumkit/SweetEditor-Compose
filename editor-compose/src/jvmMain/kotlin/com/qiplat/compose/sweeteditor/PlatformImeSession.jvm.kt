@@ -5,12 +5,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalTextInputService
 import androidx.compose.ui.text.input.*
-import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.runtime.SweetEditorState
 
 @Composable
 internal actual fun InstallPlatformImeSession(
     controller: SweetEditorController,
-    state: EditorState,
+    state: SweetEditorState,
     isFocused: Boolean,
     isReadOnly: Boolean,
 ): Modifier {

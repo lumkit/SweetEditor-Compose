@@ -4,74 +4,74 @@ import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import kotlin.reflect.KClass
 
-sealed interface EditorEvent
+sealed interface SweetEditorEvent
 
 data class TextChangedEvent(
     val editResult: TextEditResult,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class CursorChangedEvent(
     val position: TextPosition,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class SelectionChangedEvent(
     val selection: TextRange?,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class ScrollChangedEvent(
     val scrollMetrics: ScrollMetrics,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class ScaleChangedEvent(
     val scale: Float,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class DocumentLoadedEvent(
     val document: com.qiplat.compose.sweeteditor.runtime.EditorDocument?,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class FoldToggleEvent(
     val line: Int,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class GutterIconClickEvent(
     val hitTarget: HitTarget,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class InlayHintClickEvent(
     val hitTarget: HitTarget,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class LongPressEvent(
     val point: GesturePoint,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class DoubleTapEvent(
     val point: GesturePoint,
-) : EditorEvent
+) : SweetEditorEvent
 
 data class ContextMenuEvent(
     val request: EditorContextMenuRequest,
-) : EditorEvent
+) : SweetEditorEvent
 
-fun interface EditorEventSubscription {
+fun interface SweetEditorEventSubscription {
     fun dispose()
 }
 
-class EditorEventBus {
-    private val listeners = mutableMapOf<KClass<out EditorEvent>, MutableMap<Long, (EditorEvent) -> Unit>>()
+class SweetEditorEventBus {
+    private val listeners = mutableMapOf<KClass<out SweetEditorEvent>, MutableMap<Long, (SweetEditorEvent) -> Unit>>()
     private var nextId: Long = 1L
 
     @Suppress("UNCHECKED_CAST")
-    fun <T : EditorEvent> subscribe(
+    fun <T : SweetEditorEvent> subscribe(
         eventType: KClass<T>,
         listener: (T) -> Unit,
-    ): EditorEventSubscription {
+    ): SweetEditorEventSubscription {
         val listenerId = nextId++
         val bucket = listeners.getOrPut(eventType) { linkedMapOf() }
         bucket[listenerId] = { event -> listener(event as T) }
-        return EditorEventSubscription {
-            val currentBucket = listeners[eventType] ?: return@EditorEventSubscription
+        return SweetEditorEventSubscription {
+            val currentBucket = listeners[eventType] ?: return@SweetEditorEventSubscription
             currentBucket.remove(listenerId)
             if (currentBucket.isEmpty()) {
                 listeners.remove(eventType)
@@ -79,7 +79,7 @@ class EditorEventBus {
         }
     }
 
-    fun publish(event: EditorEvent) {
+    fun publish(event: SweetEditorEvent) {
         listeners[event::class]?.values?.toList()?.forEach { listener ->
             listener(event)
         }
@@ -90,6 +90,6 @@ class EditorEventBus {
     }
 }
 
-inline fun <reified T : EditorEvent> EditorEventBus.subscribe(
+inline fun <reified T : SweetEditorEvent> SweetEditorEventBus.subscribe(
     noinline listener: (T) -> Unit,
-): EditorEventSubscription = subscribe(T::class, listener)
+): SweetEditorEventSubscription = subscribe(T::class, listener)

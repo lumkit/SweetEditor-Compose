@@ -1,8 +1,10 @@
 package com.qiplat.compose.sweeteditor
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -13,16 +15,16 @@ import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 import com.qiplat.compose.sweeteditor.model.visual.CursorRect
 import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.runtime.*
-import com.qiplat.compose.sweeteditor.theme.EditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import kotlinx.coroutines.*
 import kotlin.reflect.KClass
 
 class SweetEditorController(
     textMeasurer: EditorTextMeasurer,
-    val state: EditorState = EditorState(),
+    val state: SweetEditorState = SweetEditorState(),
 ) {
-    internal val editorController: EditorController = EditorController(
+    internal val editorController: NativeEditorController = NativeEditorController(
         state = state,
         textMeasurer = textMeasurer,
     )
@@ -30,22 +32,22 @@ class SweetEditorController(
     private val readyCallbacks = mutableListOf<() -> Unit>()
     private var isBound: Boolean = false
     private var isDisposed: Boolean = false
-    private var themeSnapshot: EditorTheme = EditorTheme.dark()
-    private var settingsSnapshot: EditorSettings = EditorSettings()
+    private var themeSnapshot: SweetEditorTheme = SweetEditorTheme.dark()
+    private var settingsSnapshot: SweetEditorSettings = SweetEditorSettings()
     internal val attachedDecorationProviders = mutableStateListOf<DecorationProvider>()
     private val completionProviderManager = CompletionProviderManager()
     private val newLineActionProviderManager = NewLineActionProviderManager()
     private val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val eventBus = EditorEventBus()
+    private val eventBus = SweetEditorEventBus()
     private var inlineSuggestionController: InlineSuggestionController? = null
     private val _documentState = mutableStateOf(state.document)
     val documentState: State<EditorDocument?> = _documentState
     private val _totalLineCountState = mutableStateOf(getTotalLineCount())
     val totalLineCountState: State<Int> = _totalLineCountState
     private val _themeState = mutableStateOf(getTheme())
-    val themeState: State<EditorTheme> = _themeState
+    val themeState: State<SweetEditorTheme> = _themeState
     private val _settingsState = mutableStateOf(getSettings())
-    val settingsState: State<EditorSettings> = _settingsState
+    val settingsState: State<SweetEditorSettings> = _settingsState
     private val _languageConfigurationState = mutableStateOf(getLanguageConfiguration())
     val languageConfigurationState: State<LanguageConfiguration?> = _languageConfigurationState
     private val _metadataState = mutableStateOf(getMetadata())
@@ -157,17 +159,17 @@ class SweetEditorController(
         dispose()
     }
 
-    fun events(): EditorEventBus = eventBus
+    fun events(): SweetEditorEventBus = eventBus
 
     fun inlineSuggestions(): InlineSuggestionController =
         inlineSuggestionController ?: InlineSuggestionController(this).also {
             inlineSuggestionController = it
         }
 
-    fun <T : EditorEvent> subscribe(
+    fun <T : SweetEditorEvent> subscribe(
         eventType: KClass<T>,
         listener: (T) -> Unit,
-    ): EditorEventSubscription = eventBus.subscribe(eventType, listener)
+    ): SweetEditorEventSubscription = eventBus.subscribe(eventType, listener)
 
     fun loadDocument(document: EditorDocument?) {
         dismissCompletion()
@@ -194,21 +196,21 @@ class SweetEditorController(
 
     fun getTotalLineCount(): Int = state.document?.getLineCount() ?: 0
 
-    fun applyTheme(theme: EditorTheme) {
+    fun applyTheme(theme: SweetEditorTheme) {
         themeSnapshot = theme
         editorController.applyTheme(theme)
         refreshComposeStates()
     }
 
-    fun getTheme(): EditorTheme = themeSnapshot
+    fun getTheme(): SweetEditorTheme = themeSnapshot
 
-    fun applySettings(settings: EditorSettings) {
+    fun applySettings(settings: SweetEditorSettings) {
         settingsSnapshot = settings
         editorController.applySettings(settings)
         refreshComposeStates()
     }
 
-    fun getSettings(): EditorSettings = settingsSnapshot
+    fun getSettings(): SweetEditorSettings = settingsSnapshot
 
     fun setLanguageConfiguration(configuration: LanguageConfiguration?) {
         editorController.setLanguageConfiguration(configuration)
@@ -816,7 +818,7 @@ class SweetEditorController(
 
     fun tickAnimations(): GestureResult = editorController.tickAnimations().also(::publishGestureEvents)
 
-    fun registerBatchTextStyles(stylesById: Map<Int, TextStyle>) = editorController.registerTextStyles(stylesById)
+    fun registerBatchSpanStyles(stylesById: Map<Int, SpanStyle>) = editorController.registerTextStyles(stylesById)
 
     fun setBatchLineSpans(
         layer: SpanLayer,
@@ -1112,3 +1114,14 @@ class SweetEditorController(
 
 private fun Char.isCompletionWordPart(): Boolean =
     isLetterOrDigit() || this == '_'
+
+@Composable
+fun rememberSweetEditorController(
+    textMeasurer: EditorTextMeasurer,
+    state: SweetEditorState = rememberSweetEditorState(),
+): SweetEditorController = remember(state, textMeasurer) {
+    SweetEditorController(
+        textMeasurer = textMeasurer,
+        state = state,
+    )
+}

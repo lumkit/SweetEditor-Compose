@@ -1,4 +1,4 @@
-package com.qiplat.compose.sweeteditor
+﻿package com.qiplat.compose.sweeteditor
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -32,11 +32,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.*
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.qiplat.compose.sweeteditor.bridge.NativeHandleConfig
@@ -44,29 +47,39 @@ import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestionActionBar
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
-import com.qiplat.compose.sweeteditor.runtime.EditorController
-import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.runtime.NativeEditorController
+import com.qiplat.compose.sweeteditor.runtime.SweetEditorState
 import com.qiplat.compose.sweeteditor.runtime.EditorTextMeasurer
 import com.qiplat.compose.sweeteditor.runtime.InstallDecorationProviders
-import com.qiplat.compose.sweeteditor.theme.EditorTheme
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as DecorationTextStyle
+import com.qiplat.compose.sweeteditor.theme.SweetEditorColors
+import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanColors
+import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyles
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
+import com.qiplat.compose.sweeteditor.theme.tokens.ColorDarkTokens
+import com.qiplat.compose.sweeteditor.theme.tokens.ColorLightTokens
+import com.qiplat.compose.sweeteditor.theme.tokens.SpanColorDarkTokens
+import com.qiplat.compose.sweeteditor.theme.tokens.SpanColorLightTokens
+import com.qiplat.compose.sweeteditor.model.decoration.SpanFontStyle
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.roundToInt
-import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextStyle
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
 fun SweetEditor(
     controller: SweetEditorController,
     modifier: Modifier = Modifier,
-    theme: EditorTheme = controller.getTheme(),
-    settings: EditorSettings = controller.getSettings(),
+    theme: SweetEditorTheme = controller.getTheme(),
+    settings: SweetEditorSettings = controller.getSettings(),
     decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
     onHitTarget: (HitTarget) -> Unit = {},
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
-    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
+    onSelectionHandleDragStateChange: (SelectionHandleDragState) -> Unit = {},
     completions: (@Composable (selectedIndex: Int, items: List<CompletionItem>, render: CompletionItemRenderer?) -> Unit)? = null,
 ) {
     var editorWindowOffset by remember { mutableStateOf(IntOffset.Zero) }
@@ -126,7 +139,7 @@ fun SweetEditor(
 }
 
 /**
- * Renders the Compose editor surface backed by [EditorController] and [EditorState].
+ * Renders the Compose editor surface backed by [NativeEditorController] and [SweetEditorState].
  *
  * This composable is responsible only for UI integration: input dispatch, IME installation,
  * render-model drawing, and side-effect orchestration. All editing logic stays inside the native
@@ -146,16 +159,16 @@ fun SweetEditor(
 @OptIn(ExperimentalTextApi::class)
 @Composable
 fun SweetEditor(
-    state: EditorState,
+    state: SweetEditorState,
     controller: SweetEditorController,
     modifier: Modifier = Modifier,
-    theme: EditorTheme = EditorTheme.dark(),
-    settings: EditorSettings = EditorSettings(),
+    theme: SweetEditorTheme = SweetEditorTheme.dark(),
+    settings: SweetEditorSettings = SweetEditorSettings(),
     decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
     onHitTarget: (HitTarget) -> Unit = {},
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit = {},
-    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit = {},
+    onSelectionHandleDragStateChange: (SelectionHandleDragState) -> Unit = {},
     onPositionInWindowChanged: (IntOffset) -> Unit = {},
 ) {
     val platformType = LocalPlatformType.current
@@ -175,7 +188,7 @@ fun SweetEditor(
         supportsReusableTextLayoutCache(platformType)
     }
     val drawCache = remember(scaledTheme, LocalDensity.current, enableTextLayoutCache) {
-        EditorDrawCache(
+        SweetEditorDrawCache(
             theme = scaledTheme,
             enableTextLayoutCache = enableTextLayoutCache,
         )
@@ -373,15 +386,15 @@ fun SweetEditor(
  */
 @Composable
 private fun SweetEditorEffects(
-    state: EditorState,
-    controller: EditorController,
-    theme: EditorTheme,
-    settings: EditorSettings,
+    state: SweetEditorState,
+    controller: NativeEditorController,
+    theme: SweetEditorTheme,
+    settings: SweetEditorSettings,
     decorationProviders: List<DecorationProvider>,
     onGestureResult: (GestureResult) -> Unit,
     onHitTarget: (HitTarget) -> Unit,
     onContextMenuRequest: (EditorContextMenuRequest) -> Unit,
-    onSelectionHandleDragStateChange: (EditorSelectionHandleDragState) -> Unit,
+    onSelectionHandleDragStateChange: (SelectionHandleDragState) -> Unit,
 ) {
     val currentOnGestureResult by rememberUpdatedState(onGestureResult)
     val currentOnHitTarget by rememberUpdatedState(onHitTarget)
@@ -417,10 +430,10 @@ private fun SweetEditorEffects(
     LaunchedEffect(
         controller,
         document,
-        theme.fontFamily,
-        theme.fontSize,
-        theme.lineNumberFontSize,
-        theme.inlayHintFontSize,
+        theme.typography.fontFamily,
+        theme.typography.fontSize,
+        theme.typography.lineNumberFontSize,
+        theme.typography.inlayHintFontSize,
         platformScale,
     ) {
         if (document != null) {
@@ -490,7 +503,7 @@ private fun SweetEditorEffects(
     ) {
         val currentRenderModel = renderModel ?: return@LaunchedEffect
         currentOnSelectionHandleDragStateChange(
-            EditorSelectionHandleDragState(
+            SelectionHandleDragState(
                 active = lastGestureResult.isHandleDrag,
                 gestureResult = lastGestureResult,
                 startHandle = currentRenderModel.selectionStartHandle,
@@ -500,22 +513,289 @@ private fun SweetEditorEffects(
     }
 }
 
+object SweetEditorDefaults {
+
+    fun lightColors(
+        background: Color = ColorLightTokens.Background,
+        text: Color = ColorLightTokens.Text,
+        cursor: Color = ColorLightTokens.Cursor,
+        selection: Color = ColorLightTokens.Selection,
+        lineNumber: Color = ColorLightTokens.LineNumber,
+        currentLineNumber: Color = ColorLightTokens.CurrentLineNumber,
+        currentLine: Color = ColorLightTokens.CurrentLine,
+        guide: Color = ColorLightTokens.Guide,
+        separatorLine: Color = ColorLightTokens.SeparatorLine,
+        splitLine: Color = ColorLightTokens.SplitLine,
+        scrollbarTrack: Color = ColorLightTokens.ScrollbarTrack,
+        scrollbarThumb: Color = ColorLightTokens.ScrollbarThumb,
+        scrollbarThumbActive: Color = ColorLightTokens.ScrollbarThumbActive,
+        compositionUnderline: Color = ColorLightTokens.CompositionUnderline,
+        inlayHintBackground: Color = ColorLightTokens.InlayHintBackground,
+        inlayHintText: Color = ColorLightTokens.InlayHintText,
+        foldPlaceholderBackground: Color = ColorLightTokens.FoldPlaceholderBackground,
+        foldPlaceholderText: Color = ColorLightTokens.FoldPlaceholderText,
+        phantomText: Color = ColorLightTokens.PhantomText,
+        inlayHintIcon: Color = ColorLightTokens.InlayHintIcon,
+        diagnosticError: Color = ColorLightTokens.DiagnosticError,
+        diagnosticWarning: Color = ColorLightTokens.DiagnosticWarning,
+        diagnosticInfo: Color = ColorLightTokens.DiagnosticInfo,
+        diagnosticHint: Color = ColorLightTokens.DiagnosticHint,
+        linkedEditingActive: Color = ColorLightTokens.LinkedEditingActive,
+        linkedEditingInactive: Color = ColorLightTokens.LinkedEditingInactive,
+        bracketHighlightBorder: Color = ColorLightTokens.BracketHighlightBorder,
+        bracketHighlightBackground: Color = ColorLightTokens.BracketHighlightBackground,
+        gutterBackground: Color = ColorLightTokens.GutterBackground,
+    ) = SweetEditorColors(
+        background = background,
+        text = text,
+        cursor = cursor,
+        selection = selection,
+        lineNumber = lineNumber,
+        currentLineNumber = currentLineNumber,
+        currentLine = currentLine,
+        guide = guide,
+        separatorLine = separatorLine,
+        splitLine = splitLine,
+        scrollbarTrack = scrollbarTrack,
+        scrollbarThumb = scrollbarThumb,
+        scrollbarThumbActive = scrollbarThumbActive,
+        compositionUnderline = compositionUnderline,
+        inlayHintBackground = inlayHintBackground,
+        inlayHintText = inlayHintText,
+        foldPlaceholderBackground = foldPlaceholderBackground,
+        foldPlaceholderText = foldPlaceholderText,
+        phantomText = phantomText,
+        inlayHintIcon = inlayHintIcon,
+        diagnosticError = diagnosticError,
+        diagnosticWarning = diagnosticWarning,
+        diagnosticInfo = diagnosticInfo,
+        diagnosticHint = diagnosticHint,
+        linkedEditingActive = linkedEditingActive,
+        linkedEditingInactive = linkedEditingInactive,
+        bracketHighlightBorder = bracketHighlightBorder,
+        bracketHighlightBackground = bracketHighlightBackground,
+        gutterBackground = gutterBackground,
+    )
+
+    fun darkColors(
+        background: Color = ColorDarkTokens.Background,
+        text: Color = ColorDarkTokens.Text,
+        cursor: Color = ColorDarkTokens.Cursor,
+        selection: Color = ColorDarkTokens.Selection,
+        lineNumber: Color = ColorDarkTokens.LineNumber,
+        currentLineNumber: Color = ColorDarkTokens.CurrentLineNumber,
+        currentLine: Color = ColorDarkTokens.CurrentLine,
+        guide: Color = ColorDarkTokens.Guide,
+        separatorLine: Color = ColorDarkTokens.SeparatorLine,
+        splitLine: Color = ColorDarkTokens.SplitLine,
+        scrollbarTrack: Color = ColorDarkTokens.ScrollbarTrack,
+        scrollbarThumb: Color = ColorDarkTokens.ScrollbarThumb,
+        scrollbarThumbActive: Color = ColorDarkTokens.ScrollbarThumbActive,
+        compositionUnderline: Color = ColorDarkTokens.CompositionUnderline,
+        inlayHintBackground: Color = ColorDarkTokens.InlayHintBackground,
+        inlayHintText: Color = ColorDarkTokens.InlayHintText,
+        foldPlaceholderBackground: Color = ColorDarkTokens.FoldPlaceholderBackground,
+        foldPlaceholderText: Color = ColorDarkTokens.FoldPlaceholderText,
+        phantomText: Color = ColorDarkTokens.PhantomText,
+        inlayHintIcon: Color = ColorDarkTokens.InlayHintIcon,
+        diagnosticError: Color = ColorDarkTokens.DiagnosticError,
+        diagnosticWarning: Color = ColorDarkTokens.DiagnosticWarning,
+        diagnosticInfo: Color = ColorDarkTokens.DiagnosticInfo,
+        diagnosticHint: Color = ColorDarkTokens.DiagnosticHint,
+        linkedEditingActive: Color = ColorDarkTokens.LinkedEditingActive,
+        linkedEditingInactive: Color = ColorDarkTokens.LinkedEditingInactive,
+        bracketHighlightBorder: Color = ColorDarkTokens.BracketHighlightBorder,
+        bracketHighlightBackground: Color = ColorDarkTokens.BracketHighlightBackground,
+        gutterBackground: Color = ColorDarkTokens.GutterBackground,
+    ) = SweetEditorColors(
+        background = background,
+        text = text,
+        cursor = cursor,
+        selection = selection,
+        lineNumber = lineNumber,
+        currentLineNumber = currentLineNumber,
+        currentLine = currentLine,
+        guide = guide,
+        separatorLine = separatorLine,
+        splitLine = splitLine,
+        scrollbarTrack = scrollbarTrack,
+        scrollbarThumb = scrollbarThumb,
+        scrollbarThumbActive = scrollbarThumbActive,
+        compositionUnderline = compositionUnderline,
+        inlayHintBackground = inlayHintBackground,
+        inlayHintText = inlayHintText,
+        foldPlaceholderBackground = foldPlaceholderBackground,
+        foldPlaceholderText = foldPlaceholderText,
+        phantomText = phantomText,
+        inlayHintIcon = inlayHintIcon,
+        diagnosticError = diagnosticError,
+        diagnosticWarning = diagnosticWarning,
+        diagnosticInfo = diagnosticInfo,
+        diagnosticHint = diagnosticHint,
+        linkedEditingActive = linkedEditingActive,
+        linkedEditingInactive = linkedEditingInactive,
+        bracketHighlightBorder = bracketHighlightBorder,
+        bracketHighlightBackground = bracketHighlightBackground,
+        gutterBackground = gutterBackground,
+    )
+
+    fun lightSpanColors(
+        keyword: Color = SpanColorLightTokens.Keyword,
+        string: Color = SpanColorLightTokens.String,
+        comment: Color = SpanColorLightTokens.Comment,
+        number: Color = SpanColorLightTokens.Number,
+        builtin: Color = SpanColorLightTokens.Builtin,
+        type: Color = SpanColorLightTokens.Type,
+        className: Color = SpanColorLightTokens.Class,
+        function: Color = SpanColorLightTokens.Function,
+        variable: Color = SpanColorLightTokens.Variable,
+        property: Color = SpanColorLightTokens.Property,
+        parameter: Color = SpanColorLightTokens.Parameter,
+        constant: Color = SpanColorLightTokens.Constant,
+        field: Color = SpanColorLightTokens.Field,
+        namespace: Color = SpanColorLightTokens.Namespace,
+        enumMember: Color = SpanColorLightTokens.EnumMember,
+        operator: Color = SpanColorLightTokens.Operator,
+        punctuation: Color = SpanColorLightTokens.Punctuation,
+        annotation: Color = SpanColorLightTokens.Annotation,
+        preprocessor: Color = SpanColorLightTokens.Preprocessor,
+    ) = SweetEditorSpanColors(
+        keyword = keyword,
+        string = string,
+        comment = comment,
+        number = number,
+        builtin = builtin,
+        type = type,
+        className = className,
+        function = function,
+        variable = variable,
+        property = property,
+        parameter = parameter,
+        constant = constant,
+        field = field,
+        namespace = namespace,
+        enumMember = enumMember,
+        operator = operator,
+        punctuation = punctuation,
+        annotation = annotation,
+        preprocessor = preprocessor,
+    )
+
+    fun darkSpanColors(
+        keyword: Color = SpanColorDarkTokens.Keyword,
+        string: Color = SpanColorDarkTokens.String,
+        comment: Color = SpanColorDarkTokens.Comment,
+        number: Color = SpanColorDarkTokens.Number,
+        builtin: Color = SpanColorDarkTokens.Builtin,
+        type: Color = SpanColorDarkTokens.Type,
+        className: Color = SpanColorDarkTokens.Class,
+        function: Color = SpanColorDarkTokens.Function,
+        variable: Color = SpanColorDarkTokens.Variable,
+        property: Color = SpanColorDarkTokens.Property,
+        parameter: Color = SpanColorDarkTokens.Parameter,
+        constant: Color = SpanColorDarkTokens.Constant,
+        field: Color = SpanColorDarkTokens.Field,
+        namespace: Color = SpanColorDarkTokens.Namespace,
+        enumMember: Color = SpanColorDarkTokens.EnumMember,
+        operator: Color = SpanColorDarkTokens.Operator,
+        punctuation: Color = SpanColorDarkTokens.Punctuation,
+        annotation: Color = SpanColorDarkTokens.Annotation,
+        preprocessor: Color = SpanColorDarkTokens.Preprocessor,
+    ) = SweetEditorSpanColors(
+        keyword = keyword,
+        string = string,
+        comment = comment,
+        number = number,
+        builtin = builtin,
+        type = type,
+        className = className,
+        function = function,
+        variable = variable,
+        property = property,
+        parameter = parameter,
+        constant = constant,
+        field = field,
+        namespace = namespace,
+        enumMember = enumMember,
+        operator = operator,
+        punctuation = punctuation,
+        annotation = annotation,
+        preprocessor = preprocessor,
+    )
+
+    fun typography(
+        fontFamily: FontFamily = FontFamily.Monospace,
+        fontSize: TextUnit = 14.sp,
+        lineNumberFontSize: TextUnit = 13.sp,
+        inlayHintFontSize: TextUnit = 12.sp,
+    ) = SweetEditorTypography(
+        fontFamily = fontFamily,
+        fontSize = fontSize,
+        lineNumberFontSize = lineNumberFontSize,
+        inlayHintFontSize = inlayHintFontSize,
+    )
+
+    fun spanStyles(spanColors: SweetEditorSpanColors): SweetEditorSpanStyles = SweetEditorSpanStyles(
+        keyword = DecorationTextStyle(
+            color = spanColors.keyword,
+            fontStyle = SpanFontStyle.Bold,
+        ),
+        string = DecorationTextStyle(spanColors.string),
+        comment = DecorationTextStyle(
+            color = spanColors.comment,
+            fontStyle = SpanFontStyle.Italic,
+        ),
+        number = DecorationTextStyle(spanColors.number),
+        builtin = DecorationTextStyle(spanColors.builtin),
+        type = DecorationTextStyle(spanColors.type),
+        className = DecorationTextStyle(
+            color = spanColors.className,
+            fontStyle = SpanFontStyle.Bold,
+        ),
+        interfaceName = DecorationTextStyle(
+            color = spanColors.className,
+            fontStyle = SpanFontStyle.Bold,
+        ),
+        enumName = DecorationTextStyle(
+            color = spanColors.className,
+            fontStyle = SpanFontStyle.Bold,
+        ),
+        struct = DecorationTextStyle(
+            color = spanColors.className,
+            fontStyle = SpanFontStyle.Bold,
+        ),
+        function = DecorationTextStyle(spanColors.function),
+        variable = DecorationTextStyle(spanColors.variable),
+        property = DecorationTextStyle(spanColors.property),
+        parameter = DecorationTextStyle(spanColors.parameter),
+        constant = DecorationTextStyle(spanColors.constant),
+        field = DecorationTextStyle(spanColors.field),
+        namespace = DecorationTextStyle(spanColors.namespace),
+        enumMember = DecorationTextStyle(spanColors.enumMember),
+        operator = DecorationTextStyle(spanColors.operator),
+        punctuation = DecorationTextStyle(spanColors.punctuation),
+        annotation = DecorationTextStyle(spanColors.annotation),
+        preprocessor = DecorationTextStyle(spanColors.preprocessor),
+    )
+
+}
+
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawEditorSurface(
     renderModel: EditorRenderModel?,
     textMeasurer: TextMeasurer,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
     iconPainter: EditorGutterIconPainter,
     renderSurfaceCache: RenderSurfaceCache,
     animatedCursor: AnimatedCursorRenderState,
-    theme: EditorTheme,
+    theme: SweetEditorTheme,
     colors: ResolvedEditorColors,
     platformType: PlatformType,
     mobilePlatformTypes: List<PlatformType>,
 ) {
     if (renderModel == null) {
         drawRect(
-            color = colors.backgroundColor,
+            color = colors.background,
             topLeft = Offset.Zero,
             size = size,
         )
@@ -529,20 +809,20 @@ private fun DrawScope.drawEditorSurface(
     val cornerRadius = density * theme.cornerRadius + .5f
 
     drawRect(
-        color = colors.backgroundColor,
+        color = colors.background,
         topLeft = Offset.Zero,
         size = size,
     )
     drawCurrentLine(
         renderModel = renderModel,
-        fillColor = colors.currentLineColor,
+        fillColor = colors.currentLine,
         borderColor = colors.currentLineBorderColor,
         left = 0f,
         width = renderModel.viewportWidth.takeIf { it > 0f } ?: size.width,
     )
 
     if (renderSurfaceCache.selectionItems.isNotEmpty()) {
-        drawSelectionItems(renderSurfaceCache.selectionItems, colors.selectionColor)
+        drawSelectionItems(renderSurfaceCache.selectionItems, colors.selection)
     }
 
     if (renderSurfaceCache.guideGroups.isNotEmpty()) {
@@ -561,15 +841,15 @@ private fun DrawScope.drawEditorSurface(
             renderModel.compositionDecoration.height,
         )
     ) {
-        drawCompositionDecoration(renderModel, colors.compositionUnderlineColor)
+        drawCompositionDecoration(renderModel, colors.compositionUnderline)
     }
 
     renderModel.linkedEditingRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
             drawLinkedEditing(
                 rect = rect,
-                activeColor = colors.linkedEditingActiveColor,
-                inactiveColor = colors.linkedEditingInactiveColor,
+                activeColor = colors.linkedEditingActive,
+                inactiveColor = colors.linkedEditingInactive,
             )
         }
     }
@@ -577,7 +857,7 @@ private fun DrawScope.drawEditorSurface(
     renderModel.bracketHighlightRects.forEach { rect ->
         if (viewportBounds.intersects(rect.origin.x, rect.origin.y, rect.width, rect.height)) {
             drawRoundRect(
-                color = colors.bracketHighlightBackgroundColor,
+                color = colors.bracketHighlightBackground,
                 topLeft = Offset(
                     x = rect.origin.x,
                     y = rect.origin.y,
@@ -586,7 +866,7 @@ private fun DrawScope.drawEditorSurface(
                 cornerRadius = CornerRadius(cornerRadius),
             )
             drawRoundRect(
-                color = colors.bracketHighlightBorderColor,
+                color = colors.bracketHighlightBorder,
                 topLeft = Offset(
                     x = rect.origin.x,
                     y = rect.origin.y,
@@ -609,15 +889,15 @@ private fun DrawScope.drawEditorSurface(
         animatedCursor = animatedCursor,
         renderModel = renderModel,
         drawCache = drawCache,
-        cursorColor = colors.cursorColor,
+        cursorColor = colors.cursor,
     )
 
     drawGutterBackground(
         renderModel = renderModel,
-        gutterBackgroundColor = colors.gutterBackgroundColor,
-        currentLineColor = colors.currentLineColor,
+        gutterBackground = colors.gutterBackground,
+        currentLine = colors.currentLine,
         currentLineBorderColor = colors.currentLineBorderColor,
-        splitLineColor = colors.splitLineColor,
+        splitLine = colors.splitLine,
     )
     val activeLineColor = colors.currentLineAccentColor
     val overlayMode = renderModel.maxGutterIcons == 0
@@ -636,7 +916,7 @@ private fun DrawScope.drawEditorSurface(
         val lineIconTint = if (logicalLine == renderModel.cursor.textPosition.line) {
             activeLineColor
         } else {
-            colors.inlayHintIconColor
+            colors.inlayHintIcon
         }
 
         if (overlayMode && hasIcons) {
@@ -676,7 +956,7 @@ private fun DrawScope.drawEditorSurface(
         ) {
             drawFoldMarker(
                 marker = marker,
-                color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else colors.lineNumberColor,
+                color = if (marker.logicalLine == renderModel.cursor.textPosition.line) activeLineColor else colors.lineNumber,
             )
         }
     }
@@ -690,7 +970,7 @@ private fun DrawScope.drawEditorSurface(
             position = renderModel.selectionStartHandle.position,
             handleHeight = renderModel.selectionStartHandle.height,
             visible = renderModel.selectionStartHandle.visible,
-            color = colors.cursorColor,
+            color = colors.cursor,
             drawCache = drawCache,
         )
         drawSelectionHandle(
@@ -698,7 +978,7 @@ private fun DrawScope.drawEditorSurface(
             position = renderModel.selectionEndHandle.position,
             handleHeight = renderModel.selectionEndHandle.height,
             visible = renderModel.selectionEndHandle.visible,
-            color = colors.cursorColor,
+            color = colors.cursor,
             drawCache = drawCache,
         )
     }
@@ -731,23 +1011,23 @@ private fun buildCursorDraggerPath(handleHeight: Float): Path = Path().apply {
 
 private fun DrawScope.drawGutterBackground(
     renderModel: EditorRenderModel,
-    gutterBackgroundColor: Color,
-    currentLineColor: Color,
+    gutterBackground: Color,
+    currentLine: Color,
     currentLineBorderColor: Color,
-    splitLineColor: Color,
+    splitLine: Color,
 ) {
     if (!renderModel.gutterVisible) {
         return
     }
     val gutterWidth = renderModel.splitX.coerceAtLeast(0f)
     drawRect(
-        color = gutterBackgroundColor,
+        color = gutterBackground,
         topLeft = Offset.Zero,
         size = Size(gutterWidth, size.height),
     )
     drawCurrentLine(
         renderModel = renderModel,
-        fillColor = currentLineColor,
+        fillColor = currentLine,
         borderColor = currentLineBorderColor,
         left = 0f,
         width = gutterWidth,
@@ -756,7 +1036,7 @@ private fun DrawScope.drawGutterBackground(
         return
     }
     drawLine(
-        color = splitLineColor,
+        color = splitLine,
         start = Offset(renderModel.splitX, 0f),
         end = Offset(renderModel.splitX, size.height),
         strokeWidth = 1f,
@@ -819,15 +1099,15 @@ private fun DrawScope.drawSelectionItems(
 private fun DrawScope.drawGuideGroups(
     guideGroups: List<GuideRenderGroup>,
     colors: ResolvedEditorColors,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
 ) {
     guideGroups.forEach { group ->
         drawPath(
             path = group.path,
             color = if (group.type == GuideType.Separator) {
-                colors.separatorLineColor
+                colors.separatorLine
             } else {
-                colors.guideColor
+                colors.guide
             },
             style = Stroke(
                 width = group.strokeWidth,
@@ -844,16 +1124,16 @@ private fun DrawScope.drawGuideGroups(
 private fun DrawScope.drawDiagnosticGroups(
     diagnosticGroups: List<DiagnosticRenderGroup>,
     colors: ResolvedEditorColors,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
 ) {
     diagnosticGroups.forEach { group ->
         drawPath(
             path = group.path,
             color = group.colorValue.takeIf { it != 0 }?.toComposeColor() ?: when (group.severity) {
-                0 -> colors.diagnosticErrorColor
-                1 -> colors.diagnosticWarningColor
-                2 -> colors.diagnosticInfoColor
-                else -> colors.diagnosticHintColor
+                0 -> colors.diagnosticError
+                1 -> colors.diagnosticWarning
+                2 -> colors.diagnosticInfo
+                else -> colors.diagnosticHint
             },
             style = Stroke(
                 width = 2f,
@@ -912,7 +1192,7 @@ private fun DrawScope.drawLineNumber(
     renderModel: EditorRenderModel,
     textMeasurer: TextMeasurer,
     line: VisualLine,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
     viewportBounds: ViewportBounds,
     estimatedLineHeight: Float,
 ) {
@@ -940,9 +1220,9 @@ private fun DrawScope.drawLineNumber(
 private fun DrawScope.drawRuns(
     textMeasurer: TextMeasurer,
     line: VisualLine,
-    theme: EditorTheme,
+    theme: SweetEditorTheme,
     colors: ResolvedEditorColors,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
     viewportBounds: ViewportBounds,
     estimatedLineHeight: Float,
 ) {
@@ -983,7 +1263,7 @@ private fun DrawScope.drawRunBackground(
             val width = (run.width - margin * 2f).coerceAtLeast(0f)
             val radius = height * 0.2f
             drawRoundRect(
-                color = colors.foldPlaceholderBackgroundColor,
+                color = colors.foldPlaceholderBackground,
                 topLeft = Offset(left, top),
                 size = Size(width, height),
                 cornerRadius = CornerRadius(radius, radius),
@@ -1003,7 +1283,7 @@ private fun DrawScope.drawRunBackground(
                 val width = (run.width - margin * 2f).coerceAtLeast(0f)
                 val radius = height * 0.2f
                 drawRoundRect(
-                    color = colors.inlayHintBackgroundColor,
+                    color = colors.inlayHintBackground,
                     topLeft = Offset(left, top),
                     size = Size(width, height),
                     cornerRadius = CornerRadius(radius, radius),
@@ -1089,7 +1369,7 @@ private fun DrawScope.drawCursor(
     cornerRadius: Float,
     animatedCursor: AnimatedCursorRenderState,
     renderModel: EditorRenderModel,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
     cursorColor: Color,
 ) {
     val cursor = renderModel.cursor
@@ -1124,7 +1404,7 @@ private fun DrawScope.drawSelectionHandle(
     handleHeight: Float,
     visible: Boolean,
     color: Color,
-    drawCache: EditorDrawCache,
+    drawCache: SweetEditorDrawCache,
 ) {
     if (!visible && alignment in listOf(Alignment.Start, Alignment.End)) {
         return
@@ -1194,7 +1474,7 @@ private fun DrawScope.drawScrollbar(scrollbar: ScrollbarModel, colors: ResolvedE
         return
     }
     drawRect(
-        color = colors.scrollbarTrackColor.copy(alpha = scrollbar.alpha.coerceIn(0f, 1f)),
+        color = colors.scrollbarTrack.copy(alpha = scrollbar.alpha.coerceIn(0f, 1f)),
         topLeft = Offset(
             x = scrollbar.track.origin.x,
             y = scrollbar.track.origin.y,
@@ -1203,9 +1483,9 @@ private fun DrawScope.drawScrollbar(scrollbar: ScrollbarModel, colors: ResolvedE
     )
     drawRect(
         color = if (scrollbar.thumbActive) {
-            colors.scrollbarThumbActiveColor
+            colors.scrollbarThumbActive
         } else {
-            colors.scrollbarThumbColor
+            colors.scrollbarThumb
         },
         topLeft = Offset(
             x = scrollbar.thumb.origin.x,
@@ -1690,8 +1970,8 @@ private fun approximatelyEqual(
 
 private const val SELECTION_BAND_EPSILON = 0.5f
 
-private fun currentLineBorderColor(theme: EditorTheme): Color {
-    val color = theme.currentLineColor.toComposeColor()
+private fun currentLineBorderColor(theme: SweetEditorTheme): Color {
+    val color = theme.colors.currentLine
     return if (color.alpha < 0.63f) {
         color.copy(alpha = 0.63f)
     } else {
@@ -1699,67 +1979,67 @@ private fun currentLineBorderColor(theme: EditorTheme): Color {
     }
 }
 
-private fun currentLineAccentColor(theme: EditorTheme): Color {
-    val accent = theme.currentLineNumberColor.toComposeColor()
+private fun currentLineAccentColor(theme: SweetEditorTheme): Color {
+    val accent = theme.colors.currentLineNumber
     return accent.copy(alpha = 1f)
 }
 
 internal data class ResolvedEditorColors(
-    val backgroundColor: Color,
-    val currentLineColor: Color,
+    val background: Color,
+    val currentLine: Color,
     val currentLineBorderColor: Color,
     val currentLineAccentColor: Color,
-    val selectionColor: Color,
-    val guideColor: Color,
-    val separatorLineColor: Color,
-    val compositionUnderlineColor: Color,
-    val linkedEditingActiveColor: Color,
-    val linkedEditingInactiveColor: Color,
-    val bracketHighlightBackgroundColor: Color,
-    val bracketHighlightBorderColor: Color,
-    val gutterBackgroundColor: Color,
-    val splitLineColor: Color,
-    val inlayHintBackgroundColor: Color,
-    val foldPlaceholderBackgroundColor: Color,
-    val inlayHintIconColor: Color,
-    val lineNumberColor: Color,
-    val cursorColor: Color,
-    val diagnosticErrorColor: Color,
-    val diagnosticWarningColor: Color,
-    val diagnosticInfoColor: Color,
-    val diagnosticHintColor: Color,
-    val scrollbarTrackColor: Color,
-    val scrollbarThumbColor: Color,
-    val scrollbarThumbActiveColor: Color,
+    val selection: Color,
+    val guide: Color,
+    val separatorLine: Color,
+    val compositionUnderline: Color,
+    val linkedEditingActive: Color,
+    val linkedEditingInactive: Color,
+    val bracketHighlightBackground: Color,
+    val bracketHighlightBorder: Color,
+    val gutterBackground: Color,
+    val splitLine: Color,
+    val inlayHintBackground: Color,
+    val foldPlaceholderBackground: Color,
+    val inlayHintIcon: Color,
+    val lineNumber: Color,
+    val cursor: Color,
+    val diagnosticError: Color,
+    val diagnosticWarning: Color,
+    val diagnosticInfo: Color,
+    val diagnosticHint: Color,
+    val scrollbarTrack: Color,
+    val scrollbarThumb: Color,
+    val scrollbarThumbActive: Color,
 )
 
-internal fun resolveEditorColors(theme: EditorTheme): ResolvedEditorColors = ResolvedEditorColors(
-    backgroundColor = theme.backgroundColor.toComposeColor(),
-    currentLineColor = theme.currentLineColor.toComposeColor(),
+internal fun resolveEditorColors(theme: SweetEditorTheme): ResolvedEditorColors = ResolvedEditorColors(
+    background = theme.colors.background,
+    currentLine = theme.colors.currentLine,
     currentLineBorderColor = currentLineBorderColor(theme),
     currentLineAccentColor = currentLineAccentColor(theme),
-    selectionColor = theme.selectionColor.toComposeColor(),
-    guideColor = theme.guideColor.toComposeColor(),
-    separatorLineColor = theme.separatorLineColor.toComposeColor(),
-    compositionUnderlineColor = theme.compositionUnderlineColor.toComposeColor(),
-    linkedEditingActiveColor = theme.linkedEditingActiveColor.toComposeColor(),
-    linkedEditingInactiveColor = theme.linkedEditingInactiveColor.toComposeColor(),
-    bracketHighlightBackgroundColor = theme.bracketHighlightBackgroundColor.toComposeColor(),
-    bracketHighlightBorderColor = theme.bracketHighlightBorderColor.toComposeColor(),
-    gutterBackgroundColor = theme.gutterBackgroundColor.toComposeColor(),
-    splitLineColor = theme.splitLineColor.toComposeColor(),
-    inlayHintBackgroundColor = theme.inlayHintBackgroundColor.toComposeColor(),
-    foldPlaceholderBackgroundColor = theme.foldPlaceholderBackgroundColor.toComposeColor(),
-    inlayHintIconColor = theme.inlayHintIconColor.toComposeColor(),
-    lineNumberColor = theme.lineNumberColor.toComposeColor(),
-    cursorColor = theme.cursorColor.toComposeColor(),
-    diagnosticErrorColor = theme.diagnosticErrorColor.toComposeColor(),
-    diagnosticWarningColor = theme.diagnosticWarningColor.toComposeColor(),
-    diagnosticInfoColor = theme.diagnosticInfoColor.toComposeColor(),
-    diagnosticHintColor = theme.diagnosticHintColor.toComposeColor(),
-    scrollbarTrackColor = theme.scrollbarTrackColor.toComposeColor(),
-    scrollbarThumbColor = theme.scrollbarThumbColor.toComposeColor(),
-    scrollbarThumbActiveColor = theme.scrollbarThumbActiveColor.toComposeColor(),
+    selection = theme.colors.selection,
+    guide = theme.colors.guide,
+    separatorLine = theme.colors.separatorLine,
+    compositionUnderline = theme.colors.compositionUnderline,
+    linkedEditingActive = theme.colors.linkedEditingActive,
+    linkedEditingInactive = theme.colors.linkedEditingInactive,
+    bracketHighlightBackground = theme.colors.bracketHighlightBackground,
+    bracketHighlightBorder = theme.colors.bracketHighlightBorder,
+    gutterBackground = theme.colors.gutterBackground,
+    splitLine = theme.colors.splitLine,
+    inlayHintBackground = theme.colors.inlayHintBackground,
+    foldPlaceholderBackground = theme.colors.foldPlaceholderBackground,
+    inlayHintIcon = theme.colors.inlayHintIcon,
+    lineNumber = theme.colors.lineNumber,
+    cursor = theme.colors.cursor,
+    diagnosticError = theme.colors.diagnosticError,
+    diagnosticWarning = theme.colors.diagnosticWarning,
+    diagnosticInfo = theme.colors.diagnosticInfo,
+    diagnosticHint = theme.colors.diagnosticHint,
+    scrollbarTrack = theme.colors.scrollbarTrack,
+    scrollbarThumb = theme.colors.scrollbarThumb,
+    scrollbarThumbActive = theme.colors.scrollbarThumbActive,
 )
 
 private fun runTextX(run: VisualRun): Float = when (run.type) {
@@ -1771,7 +2051,7 @@ private fun runTextX(run: VisualRun): Float = when (run.type) {
 }
 
 private class EditorGutterIconPainter(
-    controller: EditorController,
+    controller: NativeEditorController,
     private val provider: EditorIconProvider?,
 ) {
     private val textMeasurer: EditorTextMeasurer = controller.textMeasurer()
@@ -1891,8 +2171,8 @@ private fun VisualLine.firstBaseline(): Float =
  *
  * @property theme scaled theme snapshot used to create Compose text styles.
  */
-internal class EditorDrawCache(
-    private val theme: EditorTheme,
+internal class SweetEditorDrawCache(
+    private val theme: SweetEditorTheme,
     private val enableTextLayoutCache: Boolean,
 ) {
     private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
@@ -1915,7 +2195,7 @@ internal class EditorDrawCache(
     fun runTextStyle(
         style: EditorTextStyle,
         type: VisualRunType,
-        theme: EditorTheme,
+        theme: SweetEditorTheme,
     ): TextStyle =
         runTextStyles.getOrPut(RunTextStyleKey(style, type)) {
             style.toComposeTextStyle(theme, type)
@@ -1937,12 +2217,12 @@ internal class EditorDrawCache(
         return lineNumberTextStyles.getOrPut(key) {
             TextStyle(
                 color = if (active) {
-                    theme.currentLineNumberColor.toComposeColor()
+                    theme.colors.currentLineNumber
                 } else {
-                    theme.lineNumberColor.toComposeColor()
+                    theme.colors.lineNumber
                 },
-                fontFamily = theme.fontFamily,
-                fontSize = theme.lineNumberFontSize,
+                fontFamily = theme.typography.fontFamily,
+                fontSize = theme.typography.lineNumberFontSize,
                 baselineShift = androidx.compose.ui.text.style.BaselineShift(baselineShift),
             )
         }
@@ -1961,7 +2241,7 @@ internal class EditorDrawCache(
         text: String,
         style: EditorTextStyle,
         type: VisualRunType,
-        theme: EditorTheme,
+        theme: SweetEditorTheme,
     ): TextLayoutResult {
         val resolvedStyle = runTextStyle(style, type, theme)
         if (!enableTextLayoutCache || text.length > 2048) {
@@ -2073,7 +2353,7 @@ internal fun supportsReusableTextLayoutCache(platformType: PlatformType): Boolea
     platformType != PlatformType.Android
 
 /**
- * Cache key used by [EditorDrawCache] for measured text layouts.
+ * Cache key used by [SweetEditorDrawCache] for measured text layouts.
  */
 private data class RunTextLayoutCacheKey(
     val text: String,
@@ -2207,40 +2487,40 @@ internal data class RunTextStyleKey(
 )
 
 private fun EditorTextStyle.toComposeTextStyle(
-    theme: EditorTheme,
+    theme: SweetEditorTheme,
     type: VisualRunType,
 ): TextStyle {
     val decorations = buildList {
-        if ((fontStyle and EditorTextStyle.Strikethrough) != 0) {
+    if (fontStyle.contains(SpanFontStyle.Strikethrough)) {
             add(TextDecoration.LineThrough)
         }
     }
     return TextStyle(
-        color = when {
-            type == VisualRunType.FoldPlaceholder -> theme.foldPlaceholderTextColor.toComposeColor()
-            type == VisualRunType.PhantomText -> theme.phantomTextColor.toComposeColor()
-            color != 0 -> color.toComposeColor()
-            else -> theme.textColor.toComposeColor()
+        color = when (type) {
+            VisualRunType.FoldPlaceholder -> theme.colors.foldPlaceholderText
+            VisualRunType.PhantomText -> theme.colors.phantomText
+            else -> theme.colors.text
         },
         background = when {
             type == VisualRunType.FoldPlaceholder || type == VisualRunType.InlayHint -> Color.Transparent
-            backgroundColor != 0 -> backgroundColor.toComposeColor()
             else -> Color.Transparent
         },
-        fontWeight = if ((fontStyle and EditorTextStyle.Bold) != 0) FontWeight.Bold else null,
-        fontStyle = if ((fontStyle and EditorTextStyle.Italic) != 0) FontStyle.Italic else null,
+        fontWeight = if (fontStyle.contains(SpanFontStyle.Bold)) FontWeight.Bold else null,
+        fontStyle = if (fontStyle.contains(SpanFontStyle.Italic)) FontStyle.Italic else null,
         textDecoration = decorations.takeIf { it.isNotEmpty() }?.reduce(TextDecoration::plus),
-        fontFamily = theme.fontFamily,
-        fontSize = if (type == VisualRunType.InlayHint) theme.inlayHintFontSize else theme.fontSize,
+        fontFamily = theme.typography.fontFamily,
+        fontSize = if (type == VisualRunType.InlayHint) theme.typography.inlayHintFontSize else theme.typography.fontSize,
     )
 }
 
-private fun EditorTheme.scaled(scale: Float): EditorTheme {
+private fun SweetEditorTheme.scaled(scale: Float): SweetEditorTheme {
     val normalizedScale = scale.coerceAtLeast(0.1f)
     return copy(
-        fontSize = fontSize * normalizedScale,
-        lineNumberFontSize = lineNumberFontSize * normalizedScale,
-        inlayHintFontSize = inlayHintFontSize * normalizedScale,
+        typography = typography.copy(
+            fontSize = typography.fontSize * normalizedScale,
+            lineNumberFontSize = typography.lineNumberFontSize * normalizedScale,
+            inlayHintFontSize = typography.inlayHintFontSize * normalizedScale,
+        ),
         cornerRadius = cornerRadius * normalizedScale,
     )
 }
@@ -2678,3 +2958,4 @@ private fun Key.isModifierKey(): Boolean = when (this) {
 }
 
 fun Int.toComposeColor(): Color = Color(this)
+

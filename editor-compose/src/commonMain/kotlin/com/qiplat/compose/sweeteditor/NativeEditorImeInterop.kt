@@ -6,10 +6,10 @@ import com.qiplat.compose.sweeteditor.model.foundation.TextRange
 import com.qiplat.compose.sweeteditor.model.visual.EditorRenderModel
 import com.qiplat.compose.sweeteditor.model.visual.VisualLine
 import com.qiplat.compose.sweeteditor.model.visual.VisualRunType
-import com.qiplat.compose.sweeteditor.runtime.EditorController
+import com.qiplat.compose.sweeteditor.runtime.NativeEditorController
 import androidx.compose.ui.text.TextRange as ComposeTextRange
 
-internal fun EditorController.handleImeEditCommands(
+internal fun NativeEditorController.handleImeEditCommands(
     commands: List<EditCommand>,
     previousValue: TextFieldValue,
     newValue: TextFieldValue,
@@ -107,7 +107,7 @@ private fun ComposeTextRange.normalized(textLength: Int): ComposeTextRange {
     )
 }
 
-internal fun EditorController.handleImeAction(
+internal fun NativeEditorController.handleImeAction(
     action: ImeAction,
     currentValue: TextFieldValue,
 ): TextFieldValue {
@@ -132,7 +132,7 @@ internal fun EditorController.handleImeAction(
     return synchronizeImeProxyValue(currentValue)
 }
 
-internal fun EditorController.applyImeProxyValueChange(
+internal fun NativeEditorController.applyImeProxyValueChange(
     previousValue: TextFieldValue,
     newValue: TextFieldValue,
 ): TextFieldValue {
@@ -177,7 +177,7 @@ internal fun EditorController.applyImeProxyValueChange(
     return synchronizeImeProxyValue(TextFieldValue())
 }
 
-internal fun EditorController.synchronizeImeProxyValue(
+internal fun NativeEditorController.synchronizeImeProxyValue(
     currentValue: TextFieldValue,
 ): TextFieldValue {
     val renderModel = state.renderModel
@@ -205,7 +205,7 @@ internal fun EditorController.synchronizeImeProxyValue(
     }
 }
 
-private fun EditorController.buildImeProxyValue(
+private fun NativeEditorController.buildImeProxyValue(
     renderModel: EditorRenderModel,
     selectionRange: com.qiplat.compose.sweeteditor.model.foundation.TextRange?,
     compositionText: String?,

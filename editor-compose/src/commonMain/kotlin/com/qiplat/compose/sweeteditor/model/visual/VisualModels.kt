@@ -1,6 +1,6 @@
 package com.qiplat.compose.sweeteditor.model.visual
 
-import com.qiplat.compose.sweeteditor.model.decoration.TextStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.PointerCursorType
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
@@ -25,7 +25,7 @@ data class VisualRun(
     val x: Float = 0f,
     val y: Float = 0f,
     val text: String = "",
-    val style: TextStyle = TextStyle(),
+    val style: SpanStyle = SpanStyle(),
     val iconId: Int = 0,
     val colorValue: Int = 0,
     val width: Float = 0f,

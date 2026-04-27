@@ -1,4 +1,4 @@
-package com.qiplat.compose.sweeteditor.copilot
+﻿package com.qiplat.compose.sweeteditor.copilot
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,15 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.qiplat.compose.sweeteditor.model.visual.Cursor
-import com.qiplat.compose.sweeteditor.theme.EditorTheme
-import com.qiplat.compose.sweeteditor.toComposeColor
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import kotlin.math.roundToInt
 
 @Composable
 fun InlineSuggestionActionBar(
     suggestion: InlineSuggestion?,
     cursor: Cursor?,
-    theme: EditorTheme,
+    theme: SweetEditorTheme,
     editorWindowOffset: IntOffset,
     onAccept: () -> Unit,
     onDismiss: () -> Unit,
@@ -48,10 +47,10 @@ fun InlineSuggestionActionBar(
             clippingEnabled = true,
         ),
     ) {
-        val background = theme.gutterBackgroundColor.toComposeColor()
-        val borderColor = theme.splitLineColor.toComposeColor()
-        val acceptColor = theme.textColor.toComposeColor()
-        val dismissColor = theme.lineNumberColor.toComposeColor()
+        val background = theme.colors.gutterBackground
+        val borderColor = theme.colors.splitLine
+        val acceptColor = theme.colors.text
+        val dismissColor = theme.colors.lineNumber
         Box(
             modifier = Modifier
                 .background(background, RoundedCornerShape(8.dp))
@@ -90,3 +89,4 @@ private fun ActionChip(
             .padding(horizontal = 4.dp, vertical = 2.dp),
     )
 }
+

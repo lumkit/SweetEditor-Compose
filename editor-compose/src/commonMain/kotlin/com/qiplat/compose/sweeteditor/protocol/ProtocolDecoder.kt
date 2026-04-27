@@ -1,6 +1,7 @@
 package com.qiplat.compose.sweeteditor.protocol
 
-import com.qiplat.compose.sweeteditor.model.decoration.TextStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanFontStyle
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 
@@ -183,7 +184,7 @@ object ProtocolDecoder {
     private fun readTextStyle(
         reader: BinaryReader,
         context: RenderDecodeContext,
-    ): TextStyle {
+    ): SpanStyle {
         val color = reader.readInt()
         val backgroundColor = reader.readInt()
         val fontStyle = reader.readInt()
@@ -622,24 +623,24 @@ object ProtocolDecoder {
     }
 
     private class RenderDecodeContext {
-        private val textStyles = HashMap<TextStyleKey, TextStyle>()
+        private val textStyles = HashMap<TextStyleKey, SpanStyle>()
 
         fun internTextStyle(
             color: Int,
             backgroundColor: Int,
             fontStyle: Int,
-        ): TextStyle {
+        ): SpanStyle {
             val key = TextStyleKey(
                 color = color,
                 backgroundColor = backgroundColor,
                 fontStyle = fontStyle,
             )
             return textStyles.getOrPut(key) {
-                TextStyle(
+                SpanStyleInternal(
                     color = color,
                     backgroundColor = backgroundColor,
-                    fontStyle = fontStyle,
-                )
+                    fontStyleBits = fontStyle,
+                ).let(SpanStyle::fromInternal)
             }
         }
     }

@@ -7,9 +7,9 @@ import kotlin.test.assertTrue
 class ThemeAndLanguageCommonTest {
     @Test
     fun resolveThemeStyleAliases() {
-        assertEquals(EditorThemeStyleIds.Function, EditorThemeStyleIds.resolve("method"))
-        assertEquals(EditorThemeStyleIds.Property, EditorThemeStyleIds.resolve("property"))
-        assertEquals(EditorThemeStyleIds.Namespace, EditorThemeStyleIds.resolve("module"))
+        assertEquals(SweetEditorThemeStyleIds.Function, SweetEditorThemeStyleIds.resolve("method"))
+        assertEquals(SweetEditorThemeStyleIds.Property, SweetEditorThemeStyleIds.resolve("property"))
+        assertEquals(SweetEditorThemeStyleIds.Namespace, SweetEditorThemeStyleIds.resolve("module"))
     }
 
     @Test
@@ -59,9 +59,9 @@ class ThemeAndLanguageCommonTest {
         assertEquals(2, configuration.bracketPairs.size)
         assertEquals(1, configuration.autoClosingPairs.size)
         assertEquals(1, configuration.surroundingPairs.size)
-        assertEquals(EditorThemeStyleIds.Keyword, configuration.highlightStyleIds["keyword"])
-        assertEquals(EditorThemeStyleIds.Function, configuration.highlightStyleIds["method"])
-        assertEquals(EditorThemeStyleIds.Property, configuration.highlightStyleIds["property"])
+        assertEquals(SweetEditorThemeStyleIds.Keyword, configuration.highlightStyleIds["keyword"])
+        assertEquals(SweetEditorThemeStyleIds.Function, configuration.highlightStyleIds["method"])
+        assertEquals(SweetEditorThemeStyleIds.Property, configuration.highlightStyleIds["property"])
         assertEquals("[a-zA-Z_]\\w*", configuration.variables["identifier"])
         assertEquals(1, configuration.fragments["callRule"]?.size)
         assertEquals(4, configuration.states["default"]?.size)

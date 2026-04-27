@@ -9,7 +9,7 @@ data class EditorContextMenuRequest(
     val hitTarget: HitTarget = gestureResult.hitTarget,
 )
 
-data class EditorSelectionHandleDragState(
+data class SelectionHandleDragState(
     val active: Boolean,
     val gestureResult: GestureResult,
     val startHandle: SelectionHandle = SelectionHandle(),

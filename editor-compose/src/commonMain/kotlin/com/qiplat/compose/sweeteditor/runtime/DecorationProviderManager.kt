@@ -10,8 +10,8 @@ import kotlinx.coroutines.*
 
 @Composable
 internal fun InstallDecorationProviders(
-    controller: EditorController,
-    state: EditorState,
+    controller: NativeEditorController,
+    state: SweetEditorState,
     providers: List<DecorationProvider>,
 ) {
     val manager = remember(controller) { DecorationProviderManager() }
@@ -165,8 +165,8 @@ internal class DecorationProviderManager {
         update: DecorationUpdate?,
     ): DecorationBatch? {
         val result = update?.toDecorationResult() ?: DecorationResult(
-            textStyles = emptyMap(),
-            textStylesMode = DecorationApplyMode.ReplaceAll,
+            spanStyles = emptyMap(),
+            spanStylesMode = DecorationApplyMode.ReplaceAll,
             syntaxSpans = emptyMap(),
             syntaxSpansMode = DecorationApplyMode.ReplaceAll,
             semanticSpans = emptyMap(),
@@ -285,7 +285,7 @@ internal class DecorationProviderManager {
         if (!isCachedBatchDirty) {
             return cachedBatch
         }
-        var textStyles: Map<Int, TextStyle> = emptyMap()
+        var spanStyles: Map<Int, SpanStyle> = emptyMap()
         var syntaxSpans: Map<Int, List<StyleSpan>> = emptyMap()
         var semanticSpans: Map<Int, List<StyleSpan>> = emptyMap()
         var inlayHints: Map<Int, List<InlayHint>> = emptyMap()
@@ -300,7 +300,7 @@ internal class DecorationProviderManager {
 
         providerEntries.values.forEach { entry ->
             val batch = entry.batch
-            textStyles = textStyles + batch.textStyles
+            spanStyles = spanStyles + batch.spanStyles
             syntaxSpans = syntaxSpans.mergeValues(batch.spansByLayer[SpanLayer.Syntax].orEmpty())
             semanticSpans = semanticSpans.mergeValues(batch.spansByLayer[SpanLayer.Semantic].orEmpty())
             inlayHints = inlayHints.mergeValues(batch.inlayHints)
@@ -315,7 +315,7 @@ internal class DecorationProviderManager {
         }
 
         return DecorationBatch(
-            textStyles = textStyles,
+            spanStyles = spanStyles,
             spansByLayer = mapOf(
                 SpanLayer.Syntax to syntaxSpans,
                 SpanLayer.Semantic to semanticSpans,
@@ -341,7 +341,7 @@ internal class DecorationProviderManager {
         defaultLineRange: IntRange,
     ): DecorationBatch {
         return DecorationBatch(
-            textStyles = applyTextStyles(current.textStyles, result.textStyles, result.textStylesMode),
+            spanStyles = applySpanStyles(current.spanStyles, result.spanStyles, result.spanStylesMode),
             spansByLayer = mapOf(
                 SpanLayer.Syntax to applyLineMap(
                     current.spansByLayer[SpanLayer.Syntax].orEmpty(),
@@ -376,11 +376,11 @@ internal class DecorationProviderManager {
         )
     }
 
-    private fun applyTextStyles(
-        current: Map<Int, TextStyle>,
-        next: Map<Int, TextStyle>?,
+    private fun applySpanStyles(
+        current: Map<Int, SpanStyle>,
+        next: Map<Int, SpanStyle>?,
         mode: DecorationApplyMode,
-    ): Map<Int, TextStyle> {
+    ): Map<Int, SpanStyle> {
         if (next == null) {
             return current
         }
@@ -545,7 +545,7 @@ private fun projectBatchForVisibleRange(
     val projectedSemanticSpans = batch.spansByLayer[SpanLayer.Semantic].orEmpty().filterToLineRange(projectedRange)
     val usedStyleIds = projectedSyntaxSpans.collectUsedStyleIds() + projectedSemanticSpans.collectUsedStyleIds()
     return batch.copy(
-        textStyles = batch.textStyles.filterKeys { it in usedStyleIds },
+        spanStyles = batch.spanStyles.filterKeys { it in usedStyleIds },
         spansByLayer = mapOf(
             SpanLayer.Syntax to projectedSyntaxSpans,
             SpanLayer.Semantic to projectedSemanticSpans,

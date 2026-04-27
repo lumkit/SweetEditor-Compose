@@ -1,4 +1,4 @@
-package com.qiplat.compose.sweeteditor
+﻿package com.qiplat.compose.sweeteditor
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -28,9 +28,10 @@ import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
 import com.qiplat.compose.sweeteditor.model.visual.PointF
-import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
+import com.qiplat.compose.sweeteditor.runtime.rememberSweetEditorState
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
+import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.Font
 import sweeteditor_compose.example.generated.resources.JetBrainsMono_Regular
@@ -44,7 +45,7 @@ fun App() {
         var darkThemeState by rememberSaveable { mutableStateOf(true) }
         val editorFontFamily = FontFamily(Font(Res.font.JetBrainsMono_Regular))
         val editorFontConfig = remember(editorFontFamily) {
-            EditorFontConfig(
+            SweetEditorFontConfig(
                 fontFamily = editorFontFamily,
                 fontSize = 12.sp,
                 lineNumberFontSize = 13.sp,
@@ -52,12 +53,12 @@ fun App() {
                 iconSize = 16.sp,
             )
         }
-        val editorAppearance = rememberEditorAppearance(
+        val editorAppearance = rememberSweetEditorAppearance(
             themeContent = null,
             fontConfig = editorFontConfig,
             darkMode = darkThemeState,
         )
-        val editorState = rememberEditorState()
+        val editorState = rememberSweetEditorState()
         val editorController = rememberSweetEditorController(
             textMeasurer = editorAppearance.textMeasurer,
             state = editorState,
@@ -103,7 +104,7 @@ fun App() {
             gutterSticky,
             currentLineRenderMode,
         ) {
-            EditorSettings(
+            SweetEditorSettings(
                 wrapMode = wrapMode,
                 tabSize = 4,
                 gutterVisible = gutterVisible,
@@ -115,7 +116,7 @@ fun App() {
         }
         val activeSample =
             loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
-
+        Typography()
         LaunchedEffect(sampleSpecs) {
             val configurationCache = mutableMapOf<String, LanguageConfiguration>()
             loadedSamples = sampleSpecs.map { spec ->
@@ -160,16 +161,16 @@ fun App() {
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color(editorAppearance.theme.gutterBackgroundColor),
+            containerColor = editorAppearance.theme.colors.gutterBackground,
             topBar = {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(editorAppearance.theme.gutterBackgroundColor),
-                        titleContentColor = Color(editorAppearance.theme.textColor),
-                        actionIconContentColor = Color(editorAppearance.theme.textColor),
+                        containerColor = editorAppearance.theme.colors.gutterBackground,
+                        titleContentColor = editorAppearance.theme.colors.text,
+                        actionIconContentColor = editorAppearance.theme.colors.text,
                     ),
                     title = {
-                        Text(activeSample?.spec?.title?.let { "Sweet Editor · $it" } ?: "Sweet Editor")
+                        Text(activeSample?.spec?.title?.let { "Sweet Editor 路 $it" } ?: "Sweet Editor")
                     },
                     actions = {
                         Actions(
@@ -224,7 +225,7 @@ fun App() {
             },
             bottomBar = {
                 CompositionLocalProvider(
-                    LocalContentColor provides Color(editorAppearance.theme.textColor),
+                    LocalContentColor provides editorAppearance.theme.colors.text,
                 ) {
                     ExampleStatusBar(
                         editorController = editorController,
@@ -232,7 +233,7 @@ fun App() {
                 }
             },
         ) { paddingValues ->
-            ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = Color(editorAppearance.theme.textColor))) {
+            ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = editorAppearance.theme.colors.text)) {
                 Column(
                     modifier = Modifier.padding(paddingValues)
                         .fillMaxSize(),
@@ -241,7 +242,7 @@ fun App() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(editorAppearance.theme.gutterBackgroundColor))
+                                .background(editorAppearance.theme.colors.gutterBackground)
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -274,17 +275,17 @@ fun App() {
                         onSelectionHandleDragStateChange = {},
                         completions = { selectedIndex, items, renderer ->
                             val theme = editorAppearance.theme
-                            val backgroundColor = theme.gutterBackgroundColor.toComposeColor()
-                            val borderColor = theme.scrollbarThumbColor.toComposeColor()
-                            val selectedColor = theme.selectionColor.toComposeColor()
-                            val textColor = theme.textColor.toComposeColor()
+                            val background = theme.colors.gutterBackground
+                            val borderColor = theme.colors.scrollbarThumb
+                            val selectedColor = theme.colors.selection
+                            val text = theme.colors.text
 
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                             ) {
                                 Column(
                                     modifier = Modifier
-                                        .background(backgroundColor)
+                                        .background(background)
                                         .clip(RoundedCornerShape(8.dp))
                                         .border(1.dp, borderColor, RoundedCornerShape(8.dp))
                                         .padding(vertical = 4.dp),
@@ -302,7 +303,7 @@ fun App() {
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = textColor,
+                                            color = text,
                                         )
                                     }
                                 }
@@ -629,7 +630,7 @@ private class ExampleDemoCompletionProvider : CompletionProvider {
                     ),
                     CompletionItem(
                         label = "class",
-                        detail = "snippet — class definition",
+                        detail = "snippet 锟?class definition",
                         kind = CompletionItem.KIND_SNIPPET,
                         insertText = "class ${ '$' }{1:ClassName} {\npublic:\n\t${ '$' }{1:ClassName}() {\n\t\t${ '$' }2\n\t}\n\t~${ '$' }{1:ClassName}() {\n\t\t${ '$' }3\n\t}\n\t${ '$' }0\n};",
                         insertTextFormat = CompletionItem.SNIPPET,
@@ -662,9 +663,12 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
         DecorationType.GutterIcon,
         DecorationType.SeparatorGuide,
     )
-    private val styleIdColorToken = EditorThemeStyleIds.UserBase + 1
-    private val textStyles = mapOf(
-        styleIdColorToken to TextStyle(color = 0xFF80CBC4.toInt(), fontStyle = TextStyle.Bold),
+    private val styleIdColorToken = SweetEditorSpanStyleKeys.USER_BASE + 1
+    private val spanStyles = mapOf(
+        styleIdColorToken to SpanStyle(
+            color = Color(0xFF80CBC4.toInt()),
+            fontStyle = SpanFontStyle.Bold,
+        ),
     )
     private val colorRegex = Regex("#[0-9a-fA-F]{6}\\b")
     private val classOrStructRegex = Regex("""\b(class|struct)\b""")
@@ -782,8 +786,8 @@ private class ExampleDemoDecorationProvider : DecorationProvider {
         }
         if (!receiver.accept(
                 DecorationResult(
-                    textStyles = textStyles,
-                    textStylesMode = DecorationApplyMode.Merge,
+                    spanStyles = spanStyles,
+                    spanStylesMode = DecorationApplyMode.Merge,
                     syntaxSpans = syntaxSpans,
                     syntaxSpansMode = DecorationApplyMode.ReplaceRange,
                     inlayHints = inlayHints,

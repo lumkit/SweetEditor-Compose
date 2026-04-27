@@ -4,7 +4,7 @@ import com.qiplat.compose.sweeteditor.bridge.NativeDocumentBridge
 import com.qiplat.compose.sweeteditor.model.foundation.TextEditResult
 import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.runtime.EditorDocument
-import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeStyleIds
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -97,10 +97,10 @@ class LanguageConfigDecorationProviderCommonTest {
         val syntaxSpans = update.decorations.syntaxSpans
         assertNotNull(syntaxSpans)
         assertTrue(syntaxSpans.isNotEmpty())
-        assertTrue(syntaxSpans.getValue(0).any { it.styleId == EditorThemeStyleIds.Class })
-        assertTrue(syntaxSpans.getValue(1).any { it.styleId == EditorThemeStyleIds.Function })
-        assertTrue(syntaxSpans.getValue(2).any { it.styleId == EditorThemeStyleIds.Comment })
-        assertTrue(syntaxSpans.getValue(3).any { it.styleId == EditorThemeStyleIds.Comment })
+        assertTrue(syntaxSpans.getValue(0).any { it.styleId == SweetEditorThemeStyleIds.Class })
+        assertTrue(syntaxSpans.getValue(1).any { it.styleId == SweetEditorThemeStyleIds.Function })
+        assertTrue(syntaxSpans.getValue(2).any { it.styleId == SweetEditorThemeStyleIds.Comment })
+        assertTrue(syntaxSpans.getValue(3).any { it.styleId == SweetEditorThemeStyleIds.Comment })
     }
 
     @Test
@@ -148,7 +148,7 @@ class LanguageConfigDecorationProviderCommonTest {
         assertNotNull(update)
         val syntaxSpans = update.decorations.syntaxSpans
         assertNotNull(syntaxSpans)
-        assertTrue(syntaxSpans.getValue(0).any { it.styleId == EditorThemeStyleIds.Class })
+        assertTrue(syntaxSpans.getValue(0).any { it.styleId == SweetEditorThemeStyleIds.Class })
     }
 }
 

@@ -1,7 +1,7 @@
 package com.qiplat.compose.sweeteditor.runtime
 
 import com.qiplat.compose.sweeteditor.DecorationBatch
-import com.qiplat.compose.sweeteditor.EditorSettings
+import com.qiplat.compose.sweeteditor.SweetEditorSettings
 import com.qiplat.compose.sweeteditor.bridge.NativeEditorBridge
 import com.qiplat.compose.sweeteditor.bridge.NativeHandleConfig
 import com.qiplat.compose.sweeteditor.bridge.NativeScrollbarConfig
@@ -14,20 +14,21 @@ import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.protocol.ProtocolDecoder
 import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
-import com.qiplat.compose.sweeteditor.theme.EditorTheme
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
+import com.qiplat.compose.sweeteditor.theme.SweetEditorSyntaxStylesInternal
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 
 /**
  * Coordinates the public editor API, native bridge calls, and Compose-facing state updates.
  *
  * The controller is the only place that should talk to the native editor bridge directly. It keeps
- * [EditorState] synchronized with native results and batches dirty flags so rendering can happen lazily.
+ * [SweetEditorState] synchronized with native results and batches dirty flags so rendering can happen lazily.
  *
  * @property state mutable editor state observed by Compose.
  * @param textMeasurer platform text measurer used by the native bridge for layout-related queries.
  */
-class EditorController(
-    val state: EditorState = EditorState(),
+class NativeEditorController(
+    val state: SweetEditorState = SweetEditorState(),
     textMeasurer: EditorTextMeasurer,
 ) {
     private val editorTextMeasurer: EditorTextMeasurer = textMeasurer
@@ -35,7 +36,7 @@ class EditorController(
         state.bridgeFactory.createEditor(
             textMeasurer = editorTextMeasurer.asNativeTextMeasurer(),
         )
-    private var settingsSnapshot: EditorSettings = EditorSettings()
+    private var settingsSnapshot: SweetEditorSettings = SweetEditorSettings()
     private var scaleSnapshot: Float = 1f
     private var showSplitLineSnapshot: Boolean = true
     private var pendingDecorationBatch: DecorationBatch? = null
@@ -54,6 +55,8 @@ class EditorController(
     private var encodedFlowGuidesCache: EncodedDecorationPayload? = null
     private var encodedSeparatorGuidesCache: EncodedDecorationPayload? = null
     private var encodedFoldRegionsCache: EncodedDecorationPayload? = null
+    private var registeredTextStylesSnapshot: Map<Int, SpanStyle>? = null
+    private var registeredThemeTextStylesSnapshot: SweetEditorSyntaxStylesInternal? = null
     private var viewportWidthSnapshot: Int = -1
     private var viewportHeightSnapshot: Int = -1
     private var scrollbarConfigSnapshot: NativeScrollbarConfig? = null
@@ -75,6 +78,7 @@ class EditorController(
         state.isAttached = document != null
         resetCompositionSnapshot()
         invalidateAppliedDecorationBatch()
+        invalidateRegisteredTextStylesCache()
         invalidateDecodedPayloadCache()
         requestRefresh(
             renderModel = true,
@@ -269,9 +273,24 @@ class EditorController(
      *
      * @param theme theme whose text style definitions should be registered.
      */
-    fun applyTheme(theme: EditorTheme) {
+    fun applyTheme(theme: SweetEditorTheme) {
         ensureActive()
-        registerTextStyles(theme.textStyles)
+        val internalStyles = theme.spanStyles.toInternal()
+        if (registeredThemeTextStylesSnapshot?.contentEquals(internalStyles) == true) {
+            return
+        }
+        invalidateAppliedDecorationBatch()
+        nativeEditorBridge.registerBatchTextStyles(
+            ProtocolEncoder.encodeBatchTextStyles(
+                styleIds = internalStyles.styleIds,
+                colors = internalStyles.colors,
+                backgroundColors = internalStyles.backgroundColors,
+                fontStyles = internalStyles.fontStyles,
+            ),
+        )
+        registeredThemeTextStylesSnapshot = internalStyles
+        registeredTextStylesSnapshot = null
+        requestRefresh(renderModel = true)
     }
 
     /**
@@ -279,7 +298,7 @@ class EditorController(
      *
      * @param settings settings snapshot to apply.
      */
-    fun applySettings(settings: EditorSettings) {
+    fun applySettings(settings: SweetEditorSettings) {
         ensureActive()
         settingsSnapshot = settings
         nativeEditorBridge.setWrapMode(settings.wrapMode)
@@ -909,12 +928,17 @@ class EditorController(
      *
      * @param stylesById style definitions keyed by style id.
      */
-    fun registerTextStyles(stylesById: Map<Int, TextStyle>) {
+    fun registerTextStyles(stylesById: Map<Int, SpanStyle>) {
         ensureActive()
+        if (registeredTextStylesSnapshot == stylesById) {
+            return
+        }
         invalidateAppliedDecorationBatch()
         nativeEditorBridge.registerBatchTextStyles(
             ProtocolEncoder.encodeBatchTextStyles(stylesById),
         )
+        registeredTextStylesSnapshot = stylesById
+        registeredThemeTextStylesSnapshot = null
         requestRefresh(renderModel = true)
     }
 
@@ -1080,6 +1104,7 @@ class EditorController(
     fun clearAllDecorations() {
         ensureActive()
         invalidateAppliedDecorationBatch()
+        invalidateRegisteredTextStylesCache()
         nativeEditorBridge.clearAllDecorations()
         requestRefresh(renderModel = true)
     }
@@ -1175,6 +1200,7 @@ class EditorController(
         viewportHeightSnapshot = -1
         scrollbarConfigSnapshot = null
         handleConfigSnapshot = null
+        invalidateRegisteredTextStylesCache()
         invalidateDecodedPayloadCache()
     }
 
@@ -1195,7 +1221,7 @@ class EditorController(
      */
     private fun ensureActive() {
         check(!state.isDisposed) {
-            "EditorController is already disposed."
+            "NativeEditorController is already disposed."
         }
     }
 
@@ -1214,17 +1240,23 @@ class EditorController(
         compositionTextSnapshot = null
     }
 
+    private fun invalidateRegisteredTextStylesCache() {
+        registeredTextStylesSnapshot = null
+        registeredThemeTextStylesSnapshot = null
+    }
+
     private fun flushPendingDecorationBatch() {
         val batch = pendingDecorationBatch ?: return
         val previous = appliedDecorationBatch
-        if (previous?.textStyles != batch.textStyles) {
+        if (previous?.spanStyles != batch.spanStyles) {
             nativeEditorBridge.registerBatchTextStyles(
-                encodeDecorationPayload(batch.textStyles, encodedTextStylesCache) {
-                    ProtocolEncoder.encodeBatchTextStyles(batch.textStyles)
+                encodeDecorationPayload(batch.spanStyles, encodedTextStylesCache) {
+                    ProtocolEncoder.encodeBatchTextStyles(batch.spanStyles)
                 }.also {
                     encodedTextStylesCache = it
                 }.data,
             )
+            invalidateRegisteredTextStylesCache()
         }
         val syntaxSpans = batch.spansByLayer[SpanLayer.Syntax].orEmpty()
         if (previous?.spansByLayer?.get(SpanLayer.Syntax).orEmpty() != syntaxSpans) {

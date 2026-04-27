@@ -3,7 +3,7 @@ package com.qiplat.compose.sweeteditor
 import com.qiplat.compose.sweeteditor.model.decoration.StyleSpan
 import com.qiplat.compose.sweeteditor.model.foundation.TextEditResult
 import com.qiplat.compose.sweeteditor.runtime.EditorDocument
-import com.qiplat.compose.sweeteditor.theme.EditorThemeStyleIds
+import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageRule
 
@@ -616,7 +616,7 @@ private fun normalizeRegexUnicodeProperties(pattern: String): String {
 private fun resolveStyleId(
     configuration: LanguageConfiguration,
     styleName: String,
-): Int? = configuration.highlightStyleIds[styleName] ?: EditorThemeStyleIds.resolve(styleName)
+): Int? = configuration.highlightStyleIds[styleName] ?: SweetEditorSpanStyleKeys.resolve(styleName)?.id
 
 private const val DEFAULT_LANGUAGE_STATE = "default"
 private const val STATE_LOOKBACK_LINES = 128

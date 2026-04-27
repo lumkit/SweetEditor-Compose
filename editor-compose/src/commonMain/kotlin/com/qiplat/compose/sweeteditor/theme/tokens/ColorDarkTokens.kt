@@ -1,0 +1,35 @@
+package com.qiplat.compose.sweeteditor.theme.tokens
+
+import androidx.compose.ui.graphics.Color
+
+internal object ColorDarkTokens {
+    val Background: Color = Color(0xFF1B1E24)
+    val Text: Color = Color(0xFFD7DEE9)
+    val Cursor: Color = Color(0xFF8FB8FF)
+    val Selection: Color = Color(0x553B4F72)
+    val LineNumber: Color = Color(0xFF5E6778)
+    val CurrentLineNumber: Color = Color(0xFF9CB3D6)
+    val CurrentLine: Color = Color(0x163A4A66)
+    val Guide: Color = Color(0x2E56617A)
+    val SeparatorLine: Color = Color(0xFF4A8F7A)
+    val SplitLine: Color = Color(0x3356617A)
+    val ScrollbarTrack: Color = Color(0x1F2A3B55)
+    val ScrollbarThumb: Color = Color(0x80446C9C)
+    val ScrollbarThumbActive: Color = Color(0xEE6A9AD0)
+    val CompositionUnderline: Color = Color(0xFF7AA2F7)
+    val InlayHintBackground: Color = Color(0x223A4A66)
+    val InlayHintText: Color = Color(0xC0AFC2E0)
+    val FoldPlaceholderBackground: Color = Color(0x36506C90)
+    val FoldPlaceholderText: Color = Color(0xFFE2ECFF)
+    val PhantomText: Color = Color(0x8AA3B5D1)
+    val InlayHintIcon: Color = Color(0xCC9CB0CD)
+    val DiagnosticError: Color = Color(0xFFF7768E)
+    val DiagnosticWarning: Color = Color(0xFFE0AF68)
+    val DiagnosticInfo: Color = Color(0xFF7DCFFF)
+    val DiagnosticHint: Color = Color(0xFF8FA3BF)
+    val LinkedEditingActive: Color = Color(0xCC7AA2F7)
+    val LinkedEditingInactive: Color = Color(0x667AA2F7)
+    val BracketHighlightBorder: Color = Color(0xCC9ECE6A)
+    val BracketHighlightBackground: Color = Color(0x2A9ECE6A)
+    val GutterBackground: Color = Color(0xFF20242C)
+}

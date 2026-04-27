@@ -5,7 +5,7 @@ import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.FoldArrowMode
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
 
-data class EditorSettings(
+data class SweetEditorSettings(
     val wrapMode: WrapMode = WrapMode.None,
     val tabSize: Int = 4,
     val lineSpacingExtra: Float = 0f,

@@ -1,25 +1,61 @@
 package com.qiplat.compose.sweeteditor.model.decoration
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.TextRange
+import kotlin.jvm.JvmInline
 
 enum class SpanLayer {
     Syntax,
     Semantic,
 }
 
-data class TextStyle(
-    val color: Int = 0,
-    val backgroundColor: Int = 0,
-    val fontStyle: Int = Normal,
-) {
+@JvmInline
+value class SpanFontStyle private constructor(val bits: Int) {
     companion object {
-        const val Normal: Int = 0
-        const val Bold: Int = 1 shl 0
-        const val Italic: Int = 1 shl 1
-        const val Strikethrough: Int = 1 shl 2
+        val Normal: SpanFontStyle = SpanFontStyle(0)
+        val Bold: SpanFontStyle = SpanFontStyle(1 shl 0)
+        val Italic: SpanFontStyle = SpanFontStyle(1 shl 1)
+        val Strikethrough: SpanFontStyle = SpanFontStyle(1 shl 2)
+
+        private const val KnownBitsMask: Int = (1 shl 3) - 1
+
+        internal fun fromBits(bits: Int): SpanFontStyle = SpanFontStyle(bits and KnownBitsMask)
+    }
+
+    infix fun or(other: SpanFontStyle): SpanFontStyle = fromBits(bits or other.bits)
+
+    fun contains(style: SpanFontStyle): Boolean = (bits and style.bits) == style.bits
+}
+
+data class SpanStyle(
+    val color: Color = Color.Unspecified,
+    val backgroundColor: Color = Color.Unspecified,
+    val fontStyle: SpanFontStyle = SpanFontStyle.Normal,
+) {
+    private val internalStyle: SpanStyleInternal = SpanStyleInternal(
+        color = color.toArgb(),
+        backgroundColor = backgroundColor.toArgb(),
+        fontStyleBits = fontStyle.bits,
+    )
+
+    internal fun toInternal(): SpanStyleInternal = internalStyle
+
+    internal companion object {
+        fun fromInternal(style: SpanStyleInternal): SpanStyle = SpanStyle(
+            color = Color(style.color),
+            backgroundColor = Color(style.backgroundColor),
+            fontStyle = SpanFontStyle.fromBits(style.fontStyleBits),
+        )
     }
 }
+
+internal data class SpanStyleInternal(
+    val color: Int,
+    val backgroundColor: Int,
+    val fontStyleBits: Int,
+)
 
 data class StyleSpan(
     val column: Int,

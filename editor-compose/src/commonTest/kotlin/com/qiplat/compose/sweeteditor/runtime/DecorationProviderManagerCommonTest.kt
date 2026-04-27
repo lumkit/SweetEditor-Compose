@@ -4,6 +4,7 @@ import com.qiplat.compose.sweeteditor.DecorationApplyMode
 import com.qiplat.compose.sweeteditor.DecorationResult
 import com.qiplat.compose.sweeteditor.DecorationSet
 import com.qiplat.compose.sweeteditor.DecorationUpdate
+import androidx.compose.ui.graphics.Color
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -435,12 +436,12 @@ class DecorationProviderManagerCommonTest {
             providerId = "styles",
             generation = generation,
             result = DecorationResult(
-                textStyles = mapOf(
-                    1 to TextStyle(color = 0xFF0000),
-                    2 to TextStyle(color = 0x00FF00),
-                    3 to TextStyle(color = 0x0000FF),
+                spanStyles = mapOf(
+                    1 to SpanStyle(color = Color(0xFF0000)),
+                    2 to SpanStyle(color = Color(0x00FF00)),
+                    3 to SpanStyle(color = Color(0x0000FF)),
                 ),
-                textStylesMode = DecorationApplyMode.ReplaceAll,
+                spanStylesMode = DecorationApplyMode.ReplaceAll,
                 syntaxSpans = mapOf(
                     15 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
                     200 to listOf(StyleSpan(column = 0, length = 2, styleId = 2)),
@@ -457,7 +458,7 @@ class DecorationProviderManagerCommonTest {
 
         val batch = manager.buildBatch(10..30)
 
-        assertEquals(setOf(1, 3), batch.textStyles.keys)
+        assertEquals(setOf(1, 3), batch.spanStyles.keys)
     }
 
     @Test
@@ -469,10 +470,10 @@ class DecorationProviderManagerCommonTest {
             providerId = "styles",
             generation = generation,
             result = DecorationResult(
-                textStyles = mapOf(
-                    5 to TextStyle(color = 0xFF0000),
+                spanStyles = mapOf(
+                    5 to SpanStyle(color = Color(0xFF0000)),
                 ),
-                textStylesMode = DecorationApplyMode.ReplaceAll,
+                spanStylesMode = DecorationApplyMode.ReplaceAll,
                 syntaxSpans = mapOf(
                     400 to listOf(StyleSpan(column = 0, length = 2, styleId = 5)),
                 ),
@@ -484,7 +485,7 @@ class DecorationProviderManagerCommonTest {
 
         val batch = manager.buildBatch(10..30)
 
-        assertEquals(emptySet(), batch.textStyles.keys)
+        assertEquals(emptySet(), batch.spanStyles.keys)
     }
 
     @Test

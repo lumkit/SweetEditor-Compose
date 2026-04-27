@@ -1,5 +1,6 @@
 package com.qiplat.compose.sweeteditor.runtime
 
+import androidx.compose.ui.graphics.Color
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.bridge.*
 import com.qiplat.compose.sweeteditor.model.decoration.*
@@ -21,8 +22,8 @@ class EditorControllerCommonTest {
     @Test
     fun setDocumentUpdatesStateAndBridge() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -45,8 +46,8 @@ class EditorControllerCommonTest {
         val editorBridge = FakeNativeEditorBridge().apply {
             insertTextPayload = buildTextEditResultPayload()
         }
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -63,8 +64,8 @@ class EditorControllerCommonTest {
     @Test
     fun dispatchGestureEventPassesModifiersAndWheelData() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -90,15 +91,15 @@ class EditorControllerCommonTest {
     @Test
     fun applySettingsUpdatesNativeBridge() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
         )
 
         controller.applySettings(
-            EditorSettings(
+            SweetEditorSettings(
                 wrapMode = WrapMode.WordBreak,
                 tabSize = 2,
                 lineSpacingExtra = 3f,
@@ -136,14 +137,14 @@ class EditorControllerCommonTest {
     @Test
     fun applyDecorationBatchCoalescesUntilRefresh() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
         )
         val batch = DecorationBatch(
-            textStyles = mapOf(1 to TextStyle(color = 0xFF00FF)),
+            spanStyles = mapOf(1 to SpanStyle(color = Color(0xFF00FF))),
             spansByLayer = mapOf(
                 SpanLayer.Syntax to mapOf(
                     0 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
@@ -177,8 +178,8 @@ class EditorControllerCommonTest {
             renderModelPayload = buildRenderModelPayloadForControllerTest()
             scrollMetricsPayload = buildScrollMetricsPayloadForControllerTest()
         }
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -201,8 +202,8 @@ class EditorControllerCommonTest {
     @Test
     fun refreshRequestsOnlyBumpVersionsOnDirtyEdge() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -223,8 +224,8 @@ class EditorControllerCommonTest {
     @Test
     fun setViewportSkipsDuplicateSize() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -242,8 +243,8 @@ class EditorControllerCommonTest {
     @Test
     fun ensureCursorVisibleDelegatesToNativeBridgeApi() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -259,8 +260,8 @@ class EditorControllerCommonTest {
     fun syncPlatformScaleUpdatesMeasurerAndNativeScale() {
         val editorBridge = FakeNativeEditorBridge()
         val textMeasurer = FakeEditorTextMeasurer()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = textMeasurer,
@@ -276,8 +277,8 @@ class EditorControllerCommonTest {
     @Test
     fun compositionUpdatesDoNotTriggerDecorationRefresh() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -302,8 +303,8 @@ class EditorControllerCommonTest {
         val editorBridge = FakeNativeEditorBridge().apply {
             compositionEndPayload = buildTextEditResultPayload()
         }
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -320,8 +321,8 @@ class EditorControllerCommonTest {
     @Test
     fun compositionUpdateSkipsDuplicateNativeUpdate() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -341,8 +342,8 @@ class EditorControllerCommonTest {
         val editorBridge = FakeNativeEditorBridge().apply {
             compositionEndPayload = buildTextEditResultPayload()
         }
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -360,8 +361,8 @@ class EditorControllerCommonTest {
     @Test
     fun setCompositionEnabledSkipsDuplicateNativeCall() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -378,8 +379,8 @@ class EditorControllerCommonTest {
     @Test
     fun applyDecorationBatchOnlyFlushesChangedCategories() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -410,14 +411,14 @@ class EditorControllerCommonTest {
     @Test
     fun applyDecorationBatchReusesEncodedPayloadAfterInvalidation() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
         )
         val batch = DecorationBatch(
-            textStyles = mapOf(1 to TextStyle(color = 0xFF00FF)),
+            spanStyles = mapOf(1 to SpanStyle(color = Color(0xFF00FF))),
             spansByLayer = mapOf(
                 SpanLayer.Syntax to mapOf(
                     0 to listOf(StyleSpan(column = 0, length = 2, styleId = 1)),
@@ -446,8 +447,8 @@ class EditorControllerCommonTest {
     @Test
     fun individualSettingSettersUpdateQueryableState() {
         val editorBridge = FakeNativeEditorBridge()
-        val controller = EditorController(
-            state = EditorState(
+        val controller = NativeEditorController(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
             textMeasurer = FakeEditorTextMeasurer(),
@@ -486,7 +487,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )
@@ -544,7 +545,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )
@@ -580,7 +581,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )
@@ -625,7 +626,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )
@@ -673,7 +674,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )
@@ -715,7 +716,7 @@ class EditorControllerCommonTest {
         }
         val controller = SweetEditorController(
             textMeasurer = FakeEditorTextMeasurer(),
-            state = EditorState(
+            state = SweetEditorState(
                 bridgeFactory = FakeNativeBridgeFactory(editorBridge),
             ),
         )

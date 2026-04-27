@@ -21,7 +21,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.EditorRenderModel
 import com.qiplat.compose.sweeteditor.runtime.EditorDocument
-import com.qiplat.compose.sweeteditor.runtime.EditorState
+import com.qiplat.compose.sweeteditor.runtime.SweetEditorState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.TextRange as ComposeTextRange
@@ -29,7 +29,7 @@ import androidx.compose.ui.text.TextRange as ComposeTextRange
 @Composable
 internal actual fun InstallPlatformImeSession(
     controller: SweetEditorController,
-    state: EditorState,
+    state: SweetEditorState,
     isFocused: Boolean,
     isReadOnly: Boolean,
 ): Modifier = AndroidPlatformImeElement(
@@ -44,7 +44,7 @@ internal actual fun InstallPlatformImeSession(
 
 private data class AndroidPlatformImeElement(
     val controller: SweetEditorController,
-    val state: EditorState,
+    val state: SweetEditorState,
     val isFocused: Boolean,
     val isReadOnly: Boolean,
     val gestureResult: GestureResult,
@@ -69,7 +69,7 @@ private class AndroidPlatformImeNode :
     FocusEventModifierNode,
     PlatformTextInputModifierNode {
     internal var controller: SweetEditorController? = null
-    internal var state: EditorState? = null
+    internal var state: SweetEditorState? = null
     private var externalFocused: Boolean = false
     private var composeFocused: Boolean = false
     private var readOnly: Boolean = false
@@ -86,7 +86,7 @@ private class AndroidPlatformImeNode :
 
     fun update(
         controller: SweetEditorController,
-        state: EditorState,
+        state: SweetEditorState,
         isFocused: Boolean,
         isReadOnly: Boolean,
         gestureResult: GestureResult,

@@ -1,8 +1,10 @@
 package com.qiplat.compose.sweeteditor.runtime
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.qiplat.compose.sweeteditor.CompletionItemRenderer
 import com.qiplat.compose.sweeteditor.CompletionResult
@@ -18,14 +20,14 @@ import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 
 /**
- * Holds the mutable editor snapshot observed by Compose and updated by [EditorController].
+ * Holds the mutable editor snapshot observed by Compose and updated by [NativeEditorController].
  *
  * The state object intentionally centralizes render data, interaction results, and dirty flags so that
  * the UI can coordinate rendering and side effects without exposing native bridge details.
  *
  * @property bridgeFactory factory used to create document and editor bridges.
  */
-class EditorState internal constructor(
+class SweetEditorState internal constructor(
     internal val bridgeFactory: NativeBridgeFactory,
 ) {
     /**
@@ -143,4 +145,9 @@ class EditorState internal constructor(
 
     internal var decorationRefreshSignal: Int by mutableIntStateOf(0)
         internal set
+}
+
+@Composable
+fun rememberSweetEditorState(): SweetEditorState = remember {
+    SweetEditorState()
 }

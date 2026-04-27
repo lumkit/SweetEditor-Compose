@@ -1,17 +1,18 @@
-package com.qiplat.compose.sweeteditor
+﻿package com.qiplat.compose.sweeteditor
 
+import androidx.compose.ui.graphics.Color
 import com.qiplat.compose.sweeteditor.model.visual.FoldMarkerRenderItem
 import com.qiplat.compose.sweeteditor.model.visual.FoldState
 import com.qiplat.compose.sweeteditor.model.visual.GutterIconRenderItem
 import com.qiplat.compose.sweeteditor.model.visual.VisualRunType
-import com.qiplat.compose.sweeteditor.theme.EditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import com.qiplat.compose.sweeteditor.model.decoration.TextStyle as EditorTextStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextStyle
 
-class EditorDrawCacheCommonTest {
+class SweetEditorDrawCacheCommonTest {
     @Test
     fun lineNumberStyleKeyChangesWhenBaselineShiftChanges() {
         val firstShift = computeLineNumberBaselineShift(
@@ -114,15 +115,20 @@ class EditorDrawCacheCommonTest {
 
     @Test
     fun resolveEditorColorsUsesCurrentLineHelpers() {
-        val theme = EditorTheme.dark().copy(
-            currentLineColor = 0x11010203,
-            currentLineNumberColor = 0xFFAABBCC.toInt(),
-        )
+        val theme = SweetEditorTheme.dark().let { base ->
+            base.copy(
+                colors = base.colors.copy(
+                    currentLine = Color(0x11010203),
+                    currentLineNumber = Color(0xFFAABBCC),
+                ),
+            )
+        }
 
         val colors = resolveEditorColors(theme)
 
         assertTrue(colors.currentLineBorderColor.alpha >= 0.63f)
         assertEquals(1f, colors.currentLineAccentColor.alpha)
-        assertEquals(theme.currentLineNumberColor.toComposeColor(), colors.currentLineAccentColor)
+        assertEquals(theme.colors.currentLineNumber, colors.currentLineAccentColor)
     }
 }
+

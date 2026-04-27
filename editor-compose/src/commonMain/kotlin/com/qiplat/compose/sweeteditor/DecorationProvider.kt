@@ -46,7 +46,7 @@ enum class DecorationApplyMode {
  *
  * Each property is optional so that a provider can update only the decoration types it owns.
  *
- * @property textStyles style definitions that should be registered before spans are applied.
+ * @property spanStyles style definitions that should be registered before spans are applied.
  * @property syntaxSpans syntax highlight spans grouped by logical line.
  * @property semanticSpans semantic highlight spans grouped by logical line.
  * @property inlayHints inline hints grouped by logical line.
@@ -56,7 +56,7 @@ enum class DecorationApplyMode {
  * @property foldRegions fold regions owned by the provider.
  */
 data class DecorationSet(
-    val textStyles: Map<Int, TextStyle>? = null,
+    val spanStyles: Map<Int, SpanStyle>? = null,
     val syntaxSpans: Map<Int, List<StyleSpan>>? = null,
     val semanticSpans: Map<Int, List<StyleSpan>>? = null,
     val inlayHints: Map<Int, List<InlayHint>>? = null,
@@ -120,8 +120,8 @@ data class DecorationProviderContext(
 typealias DecorationContext = DecorationProviderContext
 
 data class DecorationResult(
-    val textStyles: Map<Int, TextStyle>? = null,
-    val textStylesMode: DecorationApplyMode = DecorationApplyMode.Merge,
+    val spanStyles: Map<Int, SpanStyle>? = null,
+    val spanStylesMode: DecorationApplyMode = DecorationApplyMode.Merge,
     val syntaxSpans: Map<Int, List<StyleSpan>>? = null,
     val syntaxSpansMode: DecorationApplyMode = DecorationApplyMode.Merge,
     val semanticSpans: Map<Int, List<StyleSpan>>? = null,
@@ -196,8 +196,8 @@ interface DecorationProvider {
         receiver: DecorationReceiver,
     ) {
         val result = provide(context)?.toDecorationResult() ?: DecorationResult(
-            textStyles = emptyMap(),
-            textStylesMode = DecorationApplyMode.ReplaceAll,
+            spanStyles = emptyMap(),
+            spanStylesMode = DecorationApplyMode.ReplaceAll,
             syntaxSpans = emptyMap(),
             syntaxSpansMode = DecorationApplyMode.ReplaceAll,
             semanticSpans = emptyMap(),
@@ -230,7 +230,7 @@ interface DecorationProvider {
  * Aggregated decoration payload ready to be flushed into the native bridge.
  */
 internal data class DecorationBatch(
-    val textStyles: Map<Int, TextStyle> = emptyMap(),
+    val spanStyles: Map<Int, SpanStyle> = emptyMap(),
     val spansByLayer: Map<SpanLayer, Map<Int, List<StyleSpan>>> = emptyMap(),
     val inlayHints: Map<Int, List<InlayHint>> = emptyMap(),
     val phantomTexts: Map<Int, List<PhantomText>> = emptyMap(),
@@ -244,8 +244,8 @@ internal data class DecorationBatch(
 )
 
 internal fun DecorationUpdate.toDecorationResult(): DecorationResult = DecorationResult(
-    textStyles = decorations.textStyles,
-    textStylesMode = applyMode,
+    spanStyles = decorations.spanStyles,
+    spanStylesMode = applyMode,
     syntaxSpans = decorations.syntaxSpans,
     syntaxSpansMode = applyMode,
     semanticSpans = decorations.semanticSpans,

@@ -28,7 +28,7 @@ data class LanguagePair(
  * Maps one regex capture group to one named style.
  *
  * @property group capture group index defined by a language rule.
- * @property style named style resolved through [EditorThemeStyleIds].
+ * @property style named style resolved through [SweetEditorSpanStyleKeys].
  */
 data class LanguageStyleTarget(
     val group: Int,
@@ -250,7 +250,7 @@ object LanguageConfigurationParser {
         }
         return buildMap {
             styleNames.forEach { styleName ->
-                EditorThemeStyleIds.resolve(styleName)?.let { put(styleName, it) }
+                SweetEditorSpanStyleKeys.resolve(styleName)?.id?.let { put(styleName, it) }
             }
         }
     }
