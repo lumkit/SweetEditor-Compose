@@ -1,5 +1,7 @@
 package com.qiplat.compose.sweeteditor.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.qiplat.compose.sweeteditor.SweetEditorDefaults
 
 enum class SweetEditorSpanStyleKeys(internal val id: Int) {
@@ -82,16 +84,51 @@ data class SweetEditorTheme(
 
         fun dark(
             colors: SweetEditorColors = SweetEditorDefaults.darkColors(),
-            typography: SweetEditorTypography = SweetEditorDefaults.typography(),
+            typography: SweetEditorTypography = SweetEditorTypography(),
             spanStyles: SweetEditorSpanStyles = DefaultDarkSpanStyles,
             cornerRadius: Float = 1.5f,
         ) = SweetEditorTheme(colors, typography, spanStyles, cornerRadius)
 
         fun light(
             colors: SweetEditorColors = SweetEditorDefaults.lightColors(),
-            typography: SweetEditorTypography = SweetEditorDefaults.typography(),
+            typography: SweetEditorTypography = SweetEditorTypography(),
             spanStyles: SweetEditorSpanStyles = DefaultLightSpanStyles,
             cornerRadius: Float = 1.5f,
         ) = SweetEditorTheme(colors, typography, spanStyles, cornerRadius)
+    }
+}
+
+@Composable
+fun rememberSweetEditorTheme(
+    colors: SweetEditorColors,
+    typography: SweetEditorTypography,
+    spanStyles: SweetEditorSpanStyles,
+    cornerRadius: Float = 1.5f,
+): SweetEditorTheme {
+    return remember(colors, typography, spanStyles, cornerRadius) {
+        SweetEditorTheme(
+            colors = colors,
+            typography = typography,
+            spanStyles = spanStyles,
+            cornerRadius = cornerRadius,
+        )
+    }
+}
+
+@Composable
+fun rememberSweetEditorTheme(
+    themeContent: String? = null,
+    darkMode: Boolean = true,
+): SweetEditorTheme {
+    return remember(themeContent, darkMode) {
+        val baseTheme = if (darkMode) {
+            SweetEditorTheme.dark()
+        } else {
+            SweetEditorTheme.light()
+        }
+        SweetEditorThemeParser.parse(
+            content = themeContent,
+            fallback = baseTheme,
+        )
     }
 }

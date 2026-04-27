@@ -62,6 +62,7 @@ import com.qiplat.compose.sweeteditor.theme.tokens.ColorLightTokens
 import com.qiplat.compose.sweeteditor.theme.tokens.SpanColorDarkTokens
 import com.qiplat.compose.sweeteditor.theme.tokens.SpanColorLightTokens
 import com.qiplat.compose.sweeteditor.model.decoration.SpanFontStyle
+import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.PI
 import kotlin.math.min
@@ -106,6 +107,9 @@ fun SweetEditor(
             }
             controller.unbind()
         }
+    }
+    LaunchedEffect(controller, theme.typography) {
+        controller.updateTypography(theme.typography)
     }
     SweetEditor(
         state = controller.state,
@@ -162,7 +166,7 @@ fun SweetEditor(
     state: SweetEditorState,
     controller: SweetEditorController,
     modifier: Modifier = Modifier,
-    theme: SweetEditorTheme = SweetEditorTheme.dark(),
+    theme: SweetEditorTheme = rememberSweetEditorTheme(),
     settings: SweetEditorSettings = SweetEditorSettings(),
     decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
@@ -721,18 +725,6 @@ object SweetEditorDefaults {
         punctuation = punctuation,
         annotation = annotation,
         preprocessor = preprocessor,
-    )
-
-    fun typography(
-        fontFamily: FontFamily = FontFamily.Monospace,
-        fontSize: TextUnit = 14.sp,
-        lineNumberFontSize: TextUnit = 13.sp,
-        inlayHintFontSize: TextUnit = 12.sp,
-    ) = SweetEditorTypography(
-        fontFamily = fontFamily,
-        fontSize = fontSize,
-        lineNumberFontSize = lineNumberFontSize,
-        inlayHintFontSize = inlayHintFontSize,
     )
 
     fun spanStyles(spanColors: SweetEditorSpanColors): SweetEditorSpanStyles = SweetEditorSpanStyles(
@@ -2528,6 +2520,7 @@ private fun SweetEditorTheme.scaled(scale: Float): SweetEditorTheme {
             fontSize = typography.fontSize * normalizedScale,
             lineNumberFontSize = typography.lineNumberFontSize * normalizedScale,
             inlayHintFontSize = typography.inlayHintFontSize * normalizedScale,
+            iconSize = typography.iconSize * normalizedScale,
         ),
         cornerRadius = cornerRadius * normalizedScale,
     )

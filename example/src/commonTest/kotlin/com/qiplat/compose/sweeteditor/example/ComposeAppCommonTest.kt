@@ -1,4 +1,4 @@
-package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor.example
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

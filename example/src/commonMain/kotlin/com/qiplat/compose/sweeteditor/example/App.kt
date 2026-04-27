@@ -1,4 +1,4 @@
-﻿package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor.example
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -18,20 +18,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
+import com.qiplat.compose.sweeteditor.example.theme.rememberSweetEditorTheme
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
 import com.qiplat.compose.sweeteditor.model.foundation.WrapMode
 import com.qiplat.compose.sweeteditor.model.visual.PointF
-import com.qiplat.compose.sweeteditor.runtime.rememberSweetEditorState
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
+import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.Font
 import sweeteditor_compose.example.generated.resources.JetBrainsMono_Regular
@@ -43,26 +45,8 @@ import sweeteditor_compose.example.generated.resources.Res
 fun App() {
     MaterialTheme {
         var darkThemeState by rememberSaveable { mutableStateOf(true) }
-        val editorFontFamily = FontFamily(Font(Res.font.JetBrainsMono_Regular))
-        val editorFontConfig = remember(editorFontFamily) {
-            SweetEditorFontConfig(
-                fontFamily = editorFontFamily,
-                fontSize = 12.sp,
-                lineNumberFontSize = 13.sp,
-                inlayHintFontSize = 12.sp,
-                iconSize = 16.sp,
-            )
-        }
-        val editorAppearance = rememberSweetEditorAppearance(
-            themeContent = null,
-            fontConfig = editorFontConfig,
-            darkMode = darkThemeState,
-        )
-        val editorState = rememberSweetEditorState()
-        val editorController = rememberSweetEditorController(
-            textMeasurer = editorAppearance.textMeasurer,
-            state = editorState,
-        )
+        val editorTheme = rememberSweetEditorTheme(darkThemeState)
+        val editorController = rememberSweetEditorController()
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
         var wrapModeOrdinal by rememberSaveable { mutableIntStateOf(WrapMode.None.ordinal) }
@@ -116,7 +100,6 @@ fun App() {
         }
         val activeSample =
             loadedSamples.getOrNull(selectedSampleIndex.coerceIn(0, (loadedSamples.size - 1).coerceAtLeast(0)))
-        Typography()
         LaunchedEffect(sampleSpecs) {
             val configurationCache = mutableMapOf<String, LanguageConfiguration>()
             loadedSamples = sampleSpecs.map { spec ->
@@ -161,16 +144,16 @@ fun App() {
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = editorAppearance.theme.colors.gutterBackground,
+            containerColor = editorTheme.colors.gutterBackground,
             topBar = {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = editorAppearance.theme.colors.gutterBackground,
-                        titleContentColor = editorAppearance.theme.colors.text,
-                        actionIconContentColor = editorAppearance.theme.colors.text,
+                        containerColor = editorTheme.colors.gutterBackground,
+                        titleContentColor = editorTheme.colors.text,
+                        actionIconContentColor = editorTheme.colors.text,
                     ),
                     title = {
-                        Text(activeSample?.spec?.title?.let { "Sweet Editor 路 $it" } ?: "Sweet Editor")
+                        Text(activeSample?.spec?.title?.let { "Sweet Editor $it" } ?: "Sweet Editor")
                     },
                     actions = {
                         Actions(
@@ -225,7 +208,7 @@ fun App() {
             },
             bottomBar = {
                 CompositionLocalProvider(
-                    LocalContentColor provides editorAppearance.theme.colors.text,
+                    LocalContentColor provides editorTheme.colors.text,
                 ) {
                     ExampleStatusBar(
                         editorController = editorController,
@@ -233,7 +216,7 @@ fun App() {
                 }
             },
         ) { paddingValues ->
-            ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = editorAppearance.theme.colors.text)) {
+            ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(color = editorTheme.colors.text)) {
                 Column(
                     modifier = Modifier.padding(paddingValues)
                         .fillMaxSize(),
@@ -242,7 +225,7 @@ fun App() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(editorAppearance.theme.colors.gutterBackground)
+                                .background(editorTheme.colors.gutterBackground)
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -266,7 +249,7 @@ fun App() {
                     SweetEditor(
                         controller = editorController,
                         modifier = Modifier.fillMaxSize(),
-                        theme = editorAppearance.theme,
+                        theme = editorTheme,
                         settings = editorSettings,
                         decorationProviders = decorationProviders,
                         onGestureResult = {},
@@ -274,7 +257,7 @@ fun App() {
                         onContextMenuRequest = {},
                         onSelectionHandleDragStateChange = {},
                         completions = { selectedIndex, items, renderer ->
-                            val theme = editorAppearance.theme
+                            val theme = editorTheme
                             val background = theme.colors.gutterBackground
                             val borderColor = theme.colors.scrollbarThumb
                             val selectedColor = theme.colors.selection

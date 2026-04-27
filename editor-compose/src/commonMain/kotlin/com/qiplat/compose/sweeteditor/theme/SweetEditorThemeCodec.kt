@@ -1,175 +1,21 @@
-package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor.theme
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
-import com.qiplat.compose.sweeteditor.runtime.EditorTextMeasurer
-import com.qiplat.compose.sweeteditor.theme.SweetEditorColors
-import com.qiplat.compose.sweeteditor.theme.SweetEditorColorsInternal
-import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
-import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
-import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextStyle
 import com.qiplat.compose.sweeteditor.model.decoration.SpanFontStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextStyle
 
-data class SweetEditorFontConfig(
-    val fontFamily: FontFamily = FontFamily.Monospace,
-    val fontSize: TextUnit = 14.sp,
-    val lineNumberFontSize: TextUnit = 13.sp,
-    val inlayHintFontSize: TextUnit = 12.sp,
-    val iconSize: TextUnit = 16.sp,
-)
-
-data class SweetEditorAppearance(
-    val fontConfig: SweetEditorFontConfig,
-    val theme: SweetEditorTheme,
-    val textMeasurer: EditorTextMeasurer,
-)
-
-@Composable
-fun rememberSweetEditorAppearance(
-    themeContent: String? = null,
-    fontConfig: SweetEditorFontConfig = SweetEditorFontConfig(),
-    darkMode: Boolean = true,
-): SweetEditorAppearance {
-    val theme = rememberSweetEditorTheme(
-        themeContent = themeContent,
-        fontConfig = fontConfig,
-        darkMode = darkMode,
-    )
-    val textMeasurer = rememberSweetEditorTextMeasurer(fontConfig)
-    return remember(fontConfig, theme, textMeasurer) {
-        SweetEditorAppearance(
-            fontConfig = fontConfig,
-            theme = theme,
-            textMeasurer = textMeasurer,
-        )
-    }
-}
-
-@Composable
-fun rememberSweetEditorTheme(
-    themeContent: String? = null,
-    fontConfig: SweetEditorFontConfig = SweetEditorFontConfig(),
-    darkMode: Boolean = true,
-): SweetEditorTheme {
-    return remember(themeContent, fontConfig, darkMode) {
-        val baseTheme = if (darkMode) {
-            SweetEditorTheme.dark(
-                typography = SweetEditorDefaults.typography(
-                    fontFamily = fontConfig.fontFamily,
-                    fontSize = fontConfig.fontSize,
-                    lineNumberFontSize = fontConfig.lineNumberFontSize,
-                    inlayHintFontSize = fontConfig.inlayHintFontSize,
-                ),
-            )
-        } else {
-            SweetEditorTheme.light(
-                typography = SweetEditorDefaults.typography(
-                    fontFamily = fontConfig.fontFamily,
-                    fontSize = fontConfig.fontSize,
-                    lineNumberFontSize = fontConfig.lineNumberFontSize,
-                    inlayHintFontSize = fontConfig.inlayHintFontSize,
-                ),
-            )
-        }
-        SweetEditorThemeParser.parse(
-            content = themeContent,
-            fallback = baseTheme,
-            fontConfig = fontConfig,
-        )
-    }
-}
-
-@OptIn(ExperimentalTextApi::class)
-@Composable
-fun rememberSweetEditorTextMeasurer(
-    fontConfig: SweetEditorFontConfig,
-): EditorTextMeasurer {
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-
-    return remember(textMeasurer, density, fontConfig) {
-        object : EditorTextMeasurer {
-            private var scale: Float = 1f
-
-            override fun setScale(scale: Float) {
-                this.scale = scale.coerceAtLeast(0.1f)
-            }
-
-            override fun measureTextWidth(text: String, fontStyle: Int): Float =
-                textMeasurer.measure(
-                    text = text,
-                    style = editorComposeTextStyle(
-                        fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.fontSize * scale,
-                        fontStyleFlags = fontStyle,
-                    ),
-                ).size.width.toFloat()
-
-            override fun measureInlayHintWidth(text: String): Float =
-                textMeasurer.measure(
-                    text = text,
-                    style = editorComposeTextStyle(
-                        fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.inlayHintFontSize * scale,
-                        fontStyleFlags = 0,
-                    ),
-                ).size.width.toFloat()
-
-            override fun measureIconWidth(iconId: Int): Float =
-                with(density) { (fontConfig.iconSize * scale).toPx() }
-
-            override fun getFontMetrics(): FloatArray {
-                val layout = textMeasurer.measure(
-                    text = "Hg",
-                    style = editorComposeTextStyle(
-                        fontFamily = fontConfig.fontFamily,
-                        fontSize = fontConfig.fontSize * scale,
-                        fontStyleFlags = 0,
-                    ),
-                )
-                val ascent = -layout.firstBaseline
-                val descent = (layout.size.height.toFloat() - layout.firstBaseline).coerceAtLeast(0f)
-                return floatArrayOf(ascent, descent)
-            }
-        }
-    }
-}
-
-private object SweetEditorThemeParser {
+internal object SweetEditorThemeParser {
     fun parse(
         content: String?,
         fallback: SweetEditorTheme,
-        fontConfig: SweetEditorFontConfig,
     ): SweetEditorTheme {
         if (content.isNullOrBlank()) {
-            return fallback.copy(
-                typography = fallback.typography.copy(
-                    fontFamily = fontConfig.fontFamily,
-                    fontSize = fontConfig.fontSize,
-                    lineNumberFontSize = fontConfig.lineNumberFontSize,
-                    inlayHintFontSize = fontConfig.inlayHintFontSize,
-                ),
-            )
+            return fallback
         }
 
         return fallback.copy(
             colors = buildColors(content, fallback.colors),
-            typography = fallback.typography.copy(
-                fontFamily = fontConfig.fontFamily,
-                fontSize = fontConfig.fontSize,
-                lineNumberFontSize = fontConfig.lineNumberFontSize,
-                inlayHintFontSize = fontConfig.inlayHintFontSize,
-            ),
+            typography = fallback.typography,
             spanStyles = fallback.spanStyles.withOverrides(parseSpanStyles(content)),
             cornerRadius = findFloat(content, "cornerRadius") ?: fallback.cornerRadius,
         )
@@ -213,7 +59,9 @@ private object SweetEditorThemeParser {
     }
 
     private fun parseSpanStyles(content: String): Map<Int, EditorTextStyle> {
-        val block = findObjectContent(content, "spanStyles") ?: return emptyMap()
+        val block = findObjectContent(content, "textStyles")
+            ?: findObjectContent(content, "spanStyles")
+            ?: return emptyMap()
         val entryPattern = Regex("\"([^\"]+)\"\\s*:\\s*\\{([^{}]*)\\}")
         return buildMap {
             entryPattern.findAll(block).forEach { match ->
@@ -326,13 +174,104 @@ private object SweetEditorThemeParser {
     }
 }
 
-private fun editorComposeTextStyle(
-    fontFamily: FontFamily,
-    fontSize: TextUnit,
-    fontStyleFlags: Int,
-): TextStyle = TextStyle(
-    fontFamily = fontFamily,
-    fontSize = fontSize,
-    fontWeight = if ((fontStyleFlags and 1) != 0) FontWeight.Bold else FontWeight.Normal,
-    fontStyle = if ((fontStyleFlags and 2) != 0) FontStyle.Italic else FontStyle.Normal,
-)
+internal object SweetEditorThemeContentCodec {
+    private data class ColorEntry(val key: String, val argb: Int)
+
+    private val styleKeyById: Map<Int, String> = mapOf(
+        SweetEditorSpanStyleKeys.Keyword.id to "keyword",
+        SweetEditorSpanStyleKeys.String.id to "string",
+        SweetEditorSpanStyleKeys.Comment.id to "comment",
+        SweetEditorSpanStyleKeys.Number.id to "number",
+        SweetEditorSpanStyleKeys.Builtin.id to "builtin",
+        SweetEditorSpanStyleKeys.Type.id to "type",
+        SweetEditorSpanStyleKeys.Class.id to "class",
+        SweetEditorSpanStyleKeys.Function.id to "function",
+        SweetEditorSpanStyleKeys.Variable.id to "variable",
+        SweetEditorSpanStyleKeys.Punctuation.id to "punctuation",
+        SweetEditorSpanStyleKeys.Annotation.id to "annotation",
+        SweetEditorSpanStyleKeys.Preprocessor.id to "preprocessor",
+        SweetEditorSpanStyleKeys.Property.id to "property",
+        SweetEditorSpanStyleKeys.Parameter.id to "parameter",
+        SweetEditorSpanStyleKeys.Constant.id to "constant",
+        SweetEditorSpanStyleKeys.Operator.id to "operator",
+        SweetEditorSpanStyleKeys.Field.id to "field",
+        SweetEditorSpanStyleKeys.Namespace.id to "namespace",
+        SweetEditorSpanStyleKeys.EnumMember.id to "enum_member",
+        SweetEditorSpanStyleKeys.Interface.id to "interface",
+        SweetEditorSpanStyleKeys.Enum.id to "enum",
+        SweetEditorSpanStyleKeys.Struct.id to "struct",
+    )
+
+    fun toThemeContent(theme: SweetEditorTheme): String {
+        val colors = theme.colors.toInternal()
+        val styles = theme.spanStyles.toMap()
+        val styleEntries = styleKeyById.entries
+            .sortedBy { it.key }
+            .mapNotNull { (id, key) -> styles[id]?.let { key to it.toInternal() } }
+        val colorEntries = listOf(
+            ColorEntry("backgroundColor", colors.background),
+            ColorEntry("textColor", colors.text),
+            ColorEntry("cursorColor", colors.cursor),
+            ColorEntry("selectionColor", colors.selection),
+            ColorEntry("lineNumberColor", colors.lineNumber),
+            ColorEntry("currentLineNumberColor", colors.currentLineNumber),
+            ColorEntry("currentLineColor", colors.currentLine),
+            ColorEntry("guideColor", colors.guide),
+            ColorEntry("separatorLineColor", colors.separatorLine),
+            ColorEntry("splitLineColor", colors.splitLine),
+            ColorEntry("scrollbarTrackColor", colors.scrollbarTrack),
+            ColorEntry("scrollbarThumbColor", colors.scrollbarThumb),
+            ColorEntry("scrollbarThumbActiveColor", colors.scrollbarThumbActive),
+            ColorEntry("compositionUnderlineColor", colors.compositionUnderline),
+            ColorEntry("inlayHintBackgroundColor", colors.inlayHintBackground),
+            ColorEntry("inlayHintTextColor", colors.inlayHintText),
+            ColorEntry("foldPlaceholderBackgroundColor", colors.foldPlaceholderBackground),
+            ColorEntry("foldPlaceholderTextColor", colors.foldPlaceholderText),
+            ColorEntry("phantomTextColor", colors.phantomText),
+            ColorEntry("inlayHintIconColor", colors.inlayHintIcon),
+            ColorEntry("diagnosticErrorColor", colors.diagnosticError),
+            ColorEntry("diagnosticWarningColor", colors.diagnosticWarning),
+            ColorEntry("diagnosticInfoColor", colors.diagnosticInfo),
+            ColorEntry("diagnosticHintColor", colors.diagnosticHint),
+            ColorEntry("linkedEditingActiveColor", colors.linkedEditingActive),
+            ColorEntry("linkedEditingInactiveColor", colors.linkedEditingInactive),
+            ColorEntry("bracketHighlightBorderColor", colors.bracketHighlightBorder),
+            ColorEntry("bracketHighlightBackgroundColor", colors.bracketHighlightBackground),
+            ColorEntry("gutterBackgroundColor", colors.gutterBackground),
+        )
+        val builder = StringBuilder(2048)
+        builder.append("{")
+        colorEntries.forEachIndexed { index, entry ->
+            if (index > 0) {
+                builder.append(',')
+            }
+            builder.append('"')
+                .append(entry.key)
+                .append("\":\"")
+                .append(toHexArgb(entry.argb))
+                .append('"')
+        }
+        builder.append(",\"cornerRadius\":")
+            .append(theme.cornerRadius)
+            .append(",\"textStyles\":{")
+        styleEntries.forEachIndexed { index, (styleKey, style) ->
+            if (index > 0) {
+                builder.append(',')
+            }
+            builder.append('"')
+                .append(styleKey)
+                .append("\":{\"color\":\"")
+                .append(toHexArgb(style.color))
+                .append("\",\"backgroundColor\":\"")
+                .append(toHexArgb(style.backgroundColor))
+                .append("\",\"fontStyle\":")
+                .append(style.fontStyleBits)
+                .append('}')
+        }
+        builder.append("}}")
+        return builder.toString()
+    }
+
+    private fun toHexArgb(argb: Int): String =
+        "#${argb.toUInt().toString(16).uppercase().padStart(8, '0')}"
+}

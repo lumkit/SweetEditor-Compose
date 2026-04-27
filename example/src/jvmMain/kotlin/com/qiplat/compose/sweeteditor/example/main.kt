@@ -1,4 +1,4 @@
-package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor.example
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.DpSize

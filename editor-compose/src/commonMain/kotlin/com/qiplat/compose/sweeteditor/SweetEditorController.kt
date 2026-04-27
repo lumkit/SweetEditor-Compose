@@ -5,9 +5,16 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Density
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestionController
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.*
@@ -17,6 +24,7 @@ import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.runtime.*
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
 import kotlinx.coroutines.*
 import kotlin.reflect.KClass
 
@@ -109,6 +117,8 @@ class SweetEditorController(
     val wordRangeAtCursorState: State<TextRange> = _wordRangeAtCursorState
     private val _wordAtCursorState = mutableStateOf(getWordAtCursor())
     val wordAtCursorState: State<String?> = _wordAtCursorState
+    private val managedTextMeasurer: ManagedEditorTextMeasurer? =
+        editorController.textMeasurer() as? ManagedEditorTextMeasurer
 
     init {
         refreshComposeStates()
@@ -513,6 +523,12 @@ class SweetEditorController(
     fun onFontMetricsChanged() {
         editorController.onFontMetricsChanged()
         refreshComposeStates()
+    }
+
+    internal fun updateTypography(typography: SweetEditorTypography) {
+        if (managedTextMeasurer?.updateTypography(typography) == true) {
+            onFontMetricsChanged()
+        }
     }
 
     fun setFoldArrowMode(mode: FoldArrowMode) {
@@ -1114,6 +1130,105 @@ class SweetEditorController(
 
 private fun Char.isCompletionWordPart(): Boolean =
     isLetterOrDigit() || this == '_'
+
+private class ManagedEditorTextMeasurer(
+    private val textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    initialDensity: Density,
+) : EditorTextMeasurer {
+    private var scale: Float = 1f
+    private var density: Density = initialDensity
+    private var typography: SweetEditorTypography = SweetEditorTypography()
+
+    fun updateDensity(density: Density) {
+        this.density = density
+    }
+
+    fun updateTypography(typography: SweetEditorTypography): Boolean {
+        if (this.typography == typography) {
+            return false
+        }
+        this.typography = typography
+        return true
+    }
+
+    override fun setScale(scale: Float) {
+        this.scale = scale.coerceAtLeast(0.1f)
+    }
+
+    override fun measureTextWidth(text: String, fontStyle: Int): Float =
+        textMeasurer.measure(
+            text = text,
+            style = measureTextStyle(
+                typography = typography,
+                fontStyleFlags = fontStyle,
+                useInlayHintSize = false,
+                scale = scale,
+            ),
+        ).size.width.toFloat()
+
+    override fun measureInlayHintWidth(text: String): Float =
+        textMeasurer.measure(
+            text = text,
+            style = measureTextStyle(
+                typography = typography,
+                fontStyleFlags = 0,
+                useInlayHintSize = true,
+                scale = scale,
+            ),
+        ).size.width.toFloat()
+
+    override fun measureIconWidth(iconId: Int): Float =
+        with(density) { (typography.iconSize * scale).toPx() }
+
+    override fun getFontMetrics(): FloatArray {
+        val layout = textMeasurer.measure(
+            text = "Hg",
+            style = measureTextStyle(
+                typography = typography,
+                fontStyleFlags = 0,
+                useInlayHintSize = false,
+                scale = scale,
+            ),
+        )
+        val ascent = -layout.firstBaseline
+        val descent = (layout.size.height.toFloat() - layout.firstBaseline).coerceAtLeast(0f)
+        return floatArrayOf(ascent, descent)
+    }
+}
+
+private fun measureTextStyle(
+    typography: SweetEditorTypography,
+    fontStyleFlags: Int,
+    useInlayHintSize: Boolean,
+    scale: Float,
+): TextStyle = TextStyle(
+    fontFamily = typography.fontFamily,
+    fontSize = (if (useInlayHintSize) typography.inlayHintFontSize else typography.fontSize) * scale,
+    fontWeight = if ((fontStyleFlags and 1) != 0) FontWeight.Bold else FontWeight.Normal,
+    fontStyle = if ((fontStyleFlags and 2) != 0) FontStyle.Italic else FontStyle.Normal,
+)
+
+@OptIn(ExperimentalTextApi::class)
+@Composable
+fun rememberSweetEditorController(
+    state: SweetEditorState = rememberSweetEditorState(),
+): SweetEditorController {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val managedTextMeasurer = remember(textMeasurer) {
+        ManagedEditorTextMeasurer(
+            textMeasurer = textMeasurer,
+            initialDensity = density,
+        )
+    }
+    managedTextMeasurer.updateDensity(density)
+    return remember(state, managedTextMeasurer) {
+        SweetEditorController(
+            textMeasurer = managedTextMeasurer,
+            state = state,
+        )
+    }
+}
 
 @Composable
 fun rememberSweetEditorController(

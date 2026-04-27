@@ -75,11 +75,11 @@ kotlin {
 }
 
 android {
-    namespace = "com.qiplat.compose.sweeteditor"
+    namespace = "com.qiplat.compose.sweeteditor.example"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.qiplat.compose.sweeteditor"
+        applicationId = "com.qiplat.compose.sweeteditor.example"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
@@ -111,11 +111,11 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "com.qiplat.compose.sweeteditor.MainKt"
+        mainClass = "com.qiplat.compose.sweeteditor.example.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.qiplat.compose.sweeteditor"
+            packageName = "com.qiplat.compose.sweeteditor.example"
             packageVersion = "1.0.0"
         }
     }
