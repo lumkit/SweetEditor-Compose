@@ -2490,8 +2490,16 @@ private fun EditorTextStyle.toComposeTextStyle(
     theme: SweetEditorTheme,
     type: VisualRunType,
 ): TextStyle {
+    val resolvedColor = when {
+        color == Color.Unspecified -> null
+        else -> color
+    }
+    val resolvedBackgroundColor = when {
+        backgroundColor == Color.Unspecified -> null
+        else -> backgroundColor
+    }
     val decorations = buildList {
-    if (fontStyle.contains(SpanFontStyle.Strikethrough)) {
+        if (fontStyle.contains(SpanFontStyle.Strikethrough)) {
             add(TextDecoration.LineThrough)
         }
     }
@@ -2499,11 +2507,11 @@ private fun EditorTextStyle.toComposeTextStyle(
         color = when (type) {
             VisualRunType.FoldPlaceholder -> theme.colors.foldPlaceholderText
             VisualRunType.PhantomText -> theme.colors.phantomText
-            else -> theme.colors.text
+            else -> resolvedColor ?: theme.colors.text
         },
         background = when {
             type == VisualRunType.FoldPlaceholder || type == VisualRunType.InlayHint -> Color.Transparent
-            else -> Color.Transparent
+            else -> resolvedBackgroundColor ?: Color.Transparent
         },
         fontWeight = if (fontStyle.contains(SpanFontStyle.Bold)) FontWeight.Bold else null,
         fontStyle = if (fontStyle.contains(SpanFontStyle.Italic)) FontStyle.Italic else null,

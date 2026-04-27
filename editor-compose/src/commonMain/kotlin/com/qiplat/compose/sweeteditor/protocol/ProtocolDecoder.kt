@@ -2,6 +2,7 @@ package com.qiplat.compose.sweeteditor.protocol
 
 import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle
 import com.qiplat.compose.sweeteditor.model.decoration.SpanFontStyle
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyleInternal
 import com.qiplat.compose.sweeteditor.model.foundation.*
 import com.qiplat.compose.sweeteditor.model.visual.*
 

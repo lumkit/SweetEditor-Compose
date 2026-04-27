@@ -35,8 +35,8 @@ data class SpanStyle(
     val fontStyle: SpanFontStyle = SpanFontStyle.Normal,
 ) {
     private val internalStyle: SpanStyleInternal = SpanStyleInternal(
-        color = color.toArgb(),
-        backgroundColor = backgroundColor.toArgb(),
+        color = if (color == Color.Unspecified) 0 else color.toArgb(),
+        backgroundColor = if (backgroundColor == Color.Unspecified) 0 else backgroundColor.toArgb(),
         fontStyleBits = fontStyle.bits,
     )
 
@@ -44,8 +44,8 @@ data class SpanStyle(
 
     internal companion object {
         fun fromInternal(style: SpanStyleInternal): SpanStyle = SpanStyle(
-            color = Color(style.color),
-            backgroundColor = Color(style.backgroundColor),
+            color = if (style.color == 0) Color.Unspecified else Color(style.color),
+            backgroundColor = if (style.backgroundColor == 0) Color.Unspecified else Color(style.backgroundColor),
             fontStyle = SpanFontStyle.fromBits(style.fontStyleBits),
         )
     }
