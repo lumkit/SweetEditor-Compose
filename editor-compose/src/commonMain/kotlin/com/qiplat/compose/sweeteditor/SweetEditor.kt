@@ -519,6 +519,18 @@ private fun SweetEditorEffects(
 
 object SweetEditorDefaults {
 
+    fun theme(
+        colors: SweetEditorColors = darkColors(),
+        typography: SweetEditorTypography = SweetEditorTypography(),
+        spanStyles: SweetEditorSpanStyles = spanStyles(darkSpanColors()),
+        cornerRadius: Float = 1.5f,
+    ): SweetEditorTheme = SweetEditorTheme(
+        colors = colors,
+        typography = typography,
+        spanStyles = spanStyles,
+        cornerRadius = cornerRadius,
+    )
+
     fun lightColors(
         background: Color = ColorLightTokens.Background,
         text: Color = ColorLightTokens.Text,
@@ -769,6 +781,8 @@ object SweetEditorDefaults {
         annotation = DecorationTextStyle(spanColors.annotation),
         preprocessor = DecorationTextStyle(spanColors.preprocessor),
     )
+
+    val cornerRadius: Float = 1.5f
 
 }
 

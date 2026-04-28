@@ -25,6 +25,7 @@ import com.qiplat.compose.sweeteditor.runtime.*
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
+import com.qiplat.compose.sweeteditor.theme.parseSweetEditorTheme
 import kotlinx.coroutines.*
 import kotlin.reflect.KClass
 
@@ -40,7 +41,7 @@ class SweetEditorController(
     private val readyCallbacks = mutableListOf<() -> Unit>()
     private var isBound: Boolean = false
     private var isDisposed: Boolean = false
-    private var themeSnapshot: SweetEditorTheme = SweetEditorTheme.dark()
+    private var themeSnapshot: SweetEditorTheme = SweetEditorDefaults.theme()
     private var settingsSnapshot: SweetEditorSettings = SweetEditorSettings()
     internal val attachedDecorationProviders = mutableStateListOf<DecorationProvider>()
     private val completionProviderManager = CompletionProviderManager()
@@ -210,6 +211,18 @@ class SweetEditorController(
         themeSnapshot = theme
         editorController.applyTheme(theme)
         refreshComposeStates()
+    }
+
+    fun applyTheme(
+        themeContent: String?,
+        fallback: SweetEditorTheme = themeSnapshot,
+    ) {
+        applyTheme(
+            parseSweetEditorTheme(
+                themeContent = themeContent,
+                fallback = fallback,
+            ),
+        )
     }
 
     fun getTheme(): SweetEditorTheme = themeSnapshot

@@ -73,37 +73,22 @@ data class SweetEditorTheme(
     val typography: SweetEditorTypography,
     val spanStyles: SweetEditorSpanStyles,
     val cornerRadius: Float,
-) {
-    companion object {
-        private val DefaultDarkSpanStyles: SweetEditorSpanStyles = SweetEditorDefaults.spanStyles(
-            SweetEditorDefaults.darkSpanColors(),
-        )
-        private val DefaultLightSpanStyles: SweetEditorSpanStyles = SweetEditorDefaults.spanStyles(
-            SweetEditorDefaults.lightSpanColors(),
-        )
+)
 
-        fun dark(
-            colors: SweetEditorColors = SweetEditorDefaults.darkColors(),
-            typography: SweetEditorTypography = SweetEditorTypography(),
-            spanStyles: SweetEditorSpanStyles = DefaultDarkSpanStyles,
-            cornerRadius: Float = 1.5f,
-        ) = SweetEditorTheme(colors, typography, spanStyles, cornerRadius)
-
-        fun light(
-            colors: SweetEditorColors = SweetEditorDefaults.lightColors(),
-            typography: SweetEditorTypography = SweetEditorTypography(),
-            spanStyles: SweetEditorSpanStyles = DefaultLightSpanStyles,
-            cornerRadius: Float = 1.5f,
-        ) = SweetEditorTheme(colors, typography, spanStyles, cornerRadius)
-    }
-}
+internal fun parseSweetEditorTheme(
+    themeContent: String?,
+    fallback: SweetEditorTheme = SweetEditorDefaults.theme(),
+): SweetEditorTheme = SweetEditorThemeParser.parse(
+    content = themeContent,
+    fallback = fallback,
+)
 
 @Composable
 fun rememberSweetEditorTheme(
     colors: SweetEditorColors,
     typography: SweetEditorTypography,
     spanStyles: SweetEditorSpanStyles,
-    cornerRadius: Float = 1.5f,
+    cornerRadius: Float = SweetEditorDefaults.cornerRadius,
 ): SweetEditorTheme {
     return remember(colors, typography, spanStyles, cornerRadius) {
         SweetEditorTheme(
@@ -118,17 +103,12 @@ fun rememberSweetEditorTheme(
 @Composable
 fun rememberSweetEditorTheme(
     themeContent: String? = null,
-    darkMode: Boolean = true,
+    fallback: SweetEditorTheme = SweetEditorDefaults.theme(),
 ): SweetEditorTheme {
-    return remember(themeContent, darkMode) {
-        val baseTheme = if (darkMode) {
-            SweetEditorTheme.dark()
-        } else {
-            SweetEditorTheme.light()
-        }
-        SweetEditorThemeParser.parse(
-            content = themeContent,
-            fallback = baseTheme,
+    return remember(themeContent, fallback) {
+        parseSweetEditorTheme(
+            themeContent = themeContent,
+            fallback = fallback,
         )
     }
 }

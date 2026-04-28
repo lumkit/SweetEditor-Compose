@@ -5,7 +5,6 @@ import com.qiplat.compose.sweeteditor.model.visual.FoldMarkerRenderItem
 import com.qiplat.compose.sweeteditor.model.visual.FoldState
 import com.qiplat.compose.sweeteditor.model.visual.GutterIconRenderItem
 import com.qiplat.compose.sweeteditor.model.visual.VisualRunType
-import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -115,7 +114,7 @@ class SweetEditorDrawCacheCommonTest {
 
     @Test
     fun resolveEditorColorsUsesCurrentLineHelpers() {
-        val theme = SweetEditorTheme.dark().let { base ->
+        val theme = SweetEditorDefaults.theme().let { base ->
             base.copy(
                 colors = base.colors.copy(
                     currentLine = Color(0x11010203),

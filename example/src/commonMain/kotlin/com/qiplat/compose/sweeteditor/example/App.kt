@@ -7,7 +7,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.automirrored.outlined.WrapText
-import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,13 +17,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
-import com.qiplat.compose.sweeteditor.example.theme.rememberSweetEditorTheme
+import com.qiplat.compose.sweeteditor.example.theme.ThemeProfile
+import com.qiplat.compose.sweeteditor.example.theme.rememberExampleEditorThemeState
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
@@ -33,10 +31,7 @@ import com.qiplat.compose.sweeteditor.model.visual.PointF
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
-import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import kotlinx.coroutines.delay
-import org.jetbrains.compose.resources.Font
-import sweeteditor_compose.example.generated.resources.JetBrainsMono_Regular
 import sweeteditor_compose.example.generated.resources.Res
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,8 +39,8 @@ import sweeteditor_compose.example.generated.resources.Res
 @Preview
 fun App() {
     MaterialTheme {
-        var darkThemeState by rememberSaveable { mutableStateOf(true) }
-        val editorTheme = rememberSweetEditorTheme(darkThemeState)
+        val themeState = rememberExampleEditorThemeState()
+        val editorTheme = themeState.theme
         val editorController = rememberSweetEditorController()
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
@@ -158,14 +153,16 @@ fun App() {
                     actions = {
                         Actions(
                             editorController = editorController,
-                            darkThemeState = darkThemeState,
+                            themeProfile = themeState.profile,
+                            darkThemeMode = themeState.darkMode,
                             wrapMode = wrapMode,
                             readOnly = readOnly,
                             compositionEnabled = compositionEnabled,
                             gutterVisible = gutterVisible,
                             showSplitLine = showSplitLine,
                             currentLineRenderMode = currentLineRenderMode,
-                            onDarkThemeChanged = { darkThemeState = it },
+                            onCycleThemeProfile = themeState.cycleProfile,
+                            onToggleTheme = themeState.toggleDarkMode,
                             onCycleWrapMode = {
                                 wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
                             },
@@ -355,14 +352,16 @@ private fun ExampleStatusBar(
 @Composable
 private fun RowScope.Actions(
     editorController: SweetEditorController,
-    darkThemeState: Boolean,
+    themeProfile: ThemeProfile,
+    darkThemeMode: Boolean,
     wrapMode: WrapMode,
     readOnly: Boolean,
     compositionEnabled: Boolean,
     gutterVisible: Boolean,
     showSplitLine: Boolean,
     currentLineRenderMode: CurrentLineRenderMode,
-    onDarkThemeChanged: (Boolean) -> Unit,
+    onCycleThemeProfile: () -> Unit,
+    onToggleTheme: () -> Unit,
     onCycleWrapMode: () -> Unit,
     onToggleReadOnly: () -> Unit,
     onToggleComposition: () -> Unit,
@@ -433,16 +432,20 @@ private fun RowScope.Actions(
 
             DropdownMenuItem(
                 text = {
-                    Text(if (darkThemeState) "Dark" else "Light")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Colorize,
-                        contentDescription = null,
-                    )
+                    Text("Theme Profile: ${themeProfile.name}")
                 },
                 onClick = {
-                    onDarkThemeChanged(!darkThemeState)
+                    onCycleThemeProfile()
+                    menuState = false
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Text(if (darkThemeMode) "Theme: Dark" else "Theme: Light")
+                },
+                onClick = {
+                    onToggleTheme()
                     menuState = false
                 }
             )
