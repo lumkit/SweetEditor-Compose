@@ -21,8 +21,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
-import com.qiplat.compose.sweeteditor.example.theme.ThemeProfile
-import com.qiplat.compose.sweeteditor.example.theme.rememberExampleEditorThemeState
+import com.qiplat.compose.sweeteditor.example.theme.forestThemeProvider
+import com.qiplat.compose.sweeteditor.example.theme.oceanThemeProvider
+import com.qiplat.compose.sweeteditor.example.theme.rememberUserTheme
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
@@ -39,8 +40,18 @@ import sweeteditor_compose.example.generated.resources.Res
 @Preview
 fun App() {
     MaterialTheme {
-        val themeState = rememberExampleEditorThemeState()
-        val editorTheme = themeState.theme
+        val systemDarkMode = isSystemInDarkTheme()
+        var darkThemeMode by rememberSaveable { mutableStateOf(systemDarkMode) }
+        var useOceanTheme by rememberSaveable { mutableStateOf(true) }
+        val themeProvider = if (useOceanTheme) {
+            oceanThemeProvider()
+        } else {
+            forestThemeProvider()
+        }
+        val editorTheme = rememberUserTheme(
+            themeProvider = themeProvider,
+            darkMode = darkThemeMode,
+        )
         val editorController = rememberSweetEditorController()
         var loadedSamples by remember { mutableStateOf<List<LoadedExampleSample>>(emptyList()) }
         var selectedSampleIndex by remember { mutableIntStateOf(0) }
@@ -153,16 +164,16 @@ fun App() {
                     actions = {
                         Actions(
                             editorController = editorController,
-                            themeProfile = themeState.profile,
-                            darkThemeMode = themeState.darkMode,
+                            themeName = if (useOceanTheme) "Ocean" else "Forest",
+                            darkThemeMode = darkThemeMode,
                             wrapMode = wrapMode,
                             readOnly = readOnly,
                             compositionEnabled = compositionEnabled,
                             gutterVisible = gutterVisible,
                             showSplitLine = showSplitLine,
                             currentLineRenderMode = currentLineRenderMode,
-                            onCycleThemeProfile = themeState.cycleProfile,
-                            onToggleTheme = themeState.toggleDarkMode,
+                            onCycleTheme = { useOceanTheme = !useOceanTheme },
+                            onToggleThemeMode = { darkThemeMode = !darkThemeMode },
                             onCycleWrapMode = {
                                 wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
                             },
@@ -352,7 +363,7 @@ private fun ExampleStatusBar(
 @Composable
 private fun RowScope.Actions(
     editorController: SweetEditorController,
-    themeProfile: ThemeProfile,
+    themeName: String,
     darkThemeMode: Boolean,
     wrapMode: WrapMode,
     readOnly: Boolean,
@@ -360,8 +371,8 @@ private fun RowScope.Actions(
     gutterVisible: Boolean,
     showSplitLine: Boolean,
     currentLineRenderMode: CurrentLineRenderMode,
-    onCycleThemeProfile: () -> Unit,
-    onToggleTheme: () -> Unit,
+    onCycleTheme: () -> Unit,
+    onToggleThemeMode: () -> Unit,
     onCycleWrapMode: () -> Unit,
     onToggleReadOnly: () -> Unit,
     onToggleComposition: () -> Unit,
@@ -432,10 +443,10 @@ private fun RowScope.Actions(
 
             DropdownMenuItem(
                 text = {
-                    Text("Theme Profile: ${themeProfile.name}")
+                    Text("Theme: $themeName")
                 },
                 onClick = {
-                    onCycleThemeProfile()
+                    onCycleTheme()
                     menuState = false
                 }
             )
@@ -445,7 +456,7 @@ private fun RowScope.Actions(
                     Text(if (darkThemeMode) "Theme: Dark" else "Theme: Light")
                 },
                 onClick = {
-                    onToggleTheme()
+                    onToggleThemeMode()
                     menuState = false
                 }
             )

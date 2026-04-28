@@ -75,6 +75,24 @@ data class SweetEditorTheme(
     val cornerRadius: Float,
 )
 
+interface SweetEditorThemeProvider {
+    fun darkTheme(): SweetEditorTheme
+
+    fun lightTheme(): SweetEditorTheme
+}
+
+object DefaultSweetEditorThemeProvider : SweetEditorThemeProvider {
+    override fun darkTheme(): SweetEditorTheme = SweetEditorDefaults.theme(
+        colors = SweetEditorDefaults.darkColors(),
+        spanStyles = SweetEditorDefaults.spanStyles(SweetEditorDefaults.darkSpanColors()),
+    )
+
+    override fun lightTheme(): SweetEditorTheme = SweetEditorDefaults.theme(
+        colors = SweetEditorDefaults.lightColors(),
+        spanStyles = SweetEditorDefaults.spanStyles(SweetEditorDefaults.lightSpanColors()),
+    )
+}
+
 internal fun parseSweetEditorTheme(
     themeContent: String?,
     fallback: SweetEditorTheme = SweetEditorDefaults.theme(),
@@ -85,27 +103,25 @@ internal fun parseSweetEditorTheme(
 
 @Composable
 fun rememberSweetEditorTheme(
-    colors: SweetEditorColors,
-    typography: SweetEditorTypography,
-    spanStyles: SweetEditorSpanStyles,
-    cornerRadius: Float = SweetEditorDefaults.cornerRadius,
+    provider: SweetEditorThemeProvider = DefaultSweetEditorThemeProvider,
+    darkMode: Boolean = true,
 ): SweetEditorTheme {
-    return remember(colors, typography, spanStyles, cornerRadius) {
-        SweetEditorTheme(
-            colors = colors,
-            typography = typography,
-            spanStyles = spanStyles,
-            cornerRadius = cornerRadius,
-        )
+    return remember(provider, darkMode) {
+        if (darkMode) provider.darkTheme() else provider.lightTheme()
     }
 }
 
 @Composable
 fun rememberSweetEditorTheme(
+    provider: SweetEditorThemeProvider = DefaultSweetEditorThemeProvider,
     themeContent: String? = null,
-    fallback: SweetEditorTheme = SweetEditorDefaults.theme(),
+    darkMode: Boolean = true,
 ): SweetEditorTheme {
-    return remember(themeContent, fallback) {
+    val fallback = rememberSweetEditorTheme(
+        provider = provider,
+        darkMode = darkMode,
+    )
+    return remember(themeContent, fallback, provider, darkMode) {
         parseSweetEditorTheme(
             themeContent = themeContent,
             fallback = fallback,

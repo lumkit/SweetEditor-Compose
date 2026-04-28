@@ -1,0 +1,16 @@
+{
+  "backgroundColor": "#FFF8FAFC",
+  "textColor": "#FF1F2937",
+  "cursorColor": "#FF0EA5E9",
+  "selectionColor": "#4D60A5FA",
+  "currentLineColor": "#120EA5E9",
+  "lineNumberColor": "#FF94A3B8",
+  "currentLineNumberColor": "#FF2563EB",
+  "cornerRadius": 2.0,
+  "textStyles": {
+    "keyword": { "color": "#FF7C3AED", "fontStyle": "bold" },
+    "string": { "color": "#FF059669" },
+    "comment": { "color": "#FF64748B", "fontStyle": "italic" },
+    "function": { "color": "#FF1D4ED8" }
+  }
+}

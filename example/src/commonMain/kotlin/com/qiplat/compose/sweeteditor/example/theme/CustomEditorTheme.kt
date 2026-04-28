@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -12,7 +13,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.qiplat.compose.sweeteditor.SweetEditorDefaults
+import com.qiplat.compose.sweeteditor.theme.DefaultSweetEditorThemeProvider
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeProvider
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
 import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import org.jetbrains.compose.resources.Font
@@ -79,8 +82,8 @@ fun rememberCustomEditorTheme(
         lineNumberFontSize = 12.sp,
         inlayHintFontSize = 11.sp,
     )
-    val colors = if (darkMode) {
-        SweetEditorDefaults.darkColors(
+    val darkTheme = SweetEditorTheme(
+        colors = SweetEditorDefaults.darkColors(
             background = Color(0xFF151821),
             text = Color(0xFFDCE3EF),
             cursor = Color(0xFF61D6C7),
@@ -110,9 +113,35 @@ fun rememberCustomEditorTheme(
             bracketHighlightBorder = Color(0xD0A6DB73),
             bracketHighlightBackground = Color(0x309DCC6C),
             gutterBackground = Color(0xFF1A1E29),
-        )
-    } else {
-        SweetEditorDefaults.lightColors(
+        ),
+        typography = typography,
+        spanStyles = SweetEditorDefaults.spanStyles(
+            SweetEditorDefaults.darkSpanColors(
+                keyword = Color(0xFFCA9EFF),
+                string = Color(0xFFA9DFA1),
+                comment = Color(0xFF6FA77E),
+                number = Color(0xFFF4BF7B),
+                builtin = Color(0xFF73D0C8),
+                type = Color(0xFF9AC2FF),
+                className = Color(0xFF8DD6FF),
+                function = Color(0xFF7FB4FF),
+                variable = Color(0xFFDCE3EF),
+                property = Color(0xFF8FC4E8),
+                parameter = Color(0xFFE3D79E),
+                constant = Color(0xFFFFA9C7),
+                field = Color(0xFF9CD8B8),
+                namespace = Color(0xFF8EC9FF),
+                enumMember = Color(0xFFF6D291),
+                operator = Color(0xFFB8C4DE),
+                punctuation = Color(0xFF9FAECC),
+                annotation = Color(0xFF8FDBFF),
+                preprocessor = Color(0xFFF1A66E),
+            ),
+        ),
+        cornerRadius = 2f,
+    )
+    val lightTheme = SweetEditorTheme(
+        colors = SweetEditorDefaults.lightColors(
             background = Color(0xFFF7F9FD),
             text = Color(0xFF1D2738),
             cursor = Color(0xFF0F8FD6),
@@ -142,142 +171,69 @@ fun rememberCustomEditorTheme(
             bracketHighlightBorder = Color(0xCC13806D),
             bracketHighlightBackground = Color(0x2613806D),
             gutterBackground = Color(0xFFF1F4FA),
-        )
-    }
-    val spanColors = if (darkMode) {
-        SweetEditorDefaults.darkSpanColors(
-            keyword = Color(0xFFCA9EFF),
-            string = Color(0xFFA9DFA1),
-            comment = Color(0xFF6FA77E),
-            number = Color(0xFFF4BF7B),
-            builtin = Color(0xFF73D0C8),
-            type = Color(0xFF9AC2FF),
-            className = Color(0xFF8DD6FF),
-            function = Color(0xFF7FB4FF),
-            variable = Color(0xFFDCE3EF),
-            property = Color(0xFF8FC4E8),
-            parameter = Color(0xFFE3D79E),
-            constant = Color(0xFFFFA9C7),
-            field = Color(0xFF9CD8B8),
-            namespace = Color(0xFF8EC9FF),
-            enumMember = Color(0xFFF6D291),
-            operator = Color(0xFFB8C4DE),
-            punctuation = Color(0xFF9FAECC),
-            annotation = Color(0xFF8FDBFF),
-            preprocessor = Color(0xFFF1A66E),
-        )
-    } else {
-        SweetEditorDefaults.lightSpanColors(
-            keyword = Color(0xFF7A3FE0),
-            string = Color(0xFF0B8A63),
-            comment = Color(0xFF6F7A8E),
-            number = Color(0xFFB86B1F),
-            builtin = Color(0xFF0D9C95),
-            type = Color(0xFF2A63CF),
-            className = Color(0xFF0A7CB1),
-            function = Color(0xFF2C5FD1),
-            variable = Color(0xFF243244),
-            property = Color(0xFF1C6D95),
-            parameter = Color(0xFF8C5D14),
-            constant = Color(0xFFC43D76),
-            field = Color(0xFF2B8E67),
-            namespace = Color(0xFF3268B8),
-            enumMember = Color(0xFFAF6E1E),
-            operator = Color(0xFF5A6B86),
-            punctuation = Color(0xFF6E7E97),
-            annotation = Color(0xFF197EA5),
-            preprocessor = Color(0xFFBC6428),
-        )
-    }
-    val spanStyles = SweetEditorDefaults.spanStyles(spanColors)
-    return rememberSweetEditorTheme(
-        colors = colors,
+        ),
         typography = typography,
-        spanStyles = spanStyles,
+        spanStyles = SweetEditorDefaults.spanStyles(
+            SweetEditorDefaults.lightSpanColors(
+                keyword = Color(0xFF7A3FE0),
+                string = Color(0xFF0B8A63),
+                comment = Color(0xFF6F7A8E),
+                number = Color(0xFFB86B1F),
+                builtin = Color(0xFF0D9C95),
+                type = Color(0xFF2A63CF),
+                className = Color(0xFF0A7CB1),
+                function = Color(0xFF2C5FD1),
+                variable = Color(0xFF243244),
+                property = Color(0xFF1C6D95),
+                parameter = Color(0xFF8C5D14),
+                constant = Color(0xFFC43D76),
+                field = Color(0xFF2B8E67),
+                namespace = Color(0xFF3268B8),
+                enumMember = Color(0xFFAF6E1E),
+                operator = Color(0xFF5A6B86),
+                punctuation = Color(0xFF6E7E97),
+                annotation = Color(0xFF197EA5),
+                preprocessor = Color(0xFFBC6428),
+            ),
+        ),
         cornerRadius = 2f,
+    )
+    return rememberSweetEditorTheme(
+        provider = remember { StaticThemeProvider(dark = darkTheme, light = lightTheme) },
+        darkMode = darkMode,
     )
 }
 
 @Composable
 private fun rememberDefaultEditorTheme(darkMode: Boolean): SweetEditorTheme {
-    val colors = if (darkMode) {
-        SweetEditorDefaults.darkColors()
-    } else {
-        SweetEditorDefaults.lightColors()
-    }
-    val spanStyles = SweetEditorDefaults.spanStyles(
-        if (darkMode) {
-            SweetEditorDefaults.darkSpanColors()
-        } else {
-            SweetEditorDefaults.lightSpanColors()
-        },
-    )
     return rememberSweetEditorTheme(
-        fallback = SweetEditorDefaults.theme(
-            colors = colors,
-            spanStyles = spanStyles,
-        ),
+        provider = DefaultSweetEditorThemeProvider,
+        darkMode = darkMode,
     )
 }
 
 @Composable
 private fun rememberJsonEditorTheme(darkMode: Boolean): SweetEditorTheme {
-    val fallbackColors = if (darkMode) {
-        SweetEditorDefaults.darkColors()
+    val contentPath = if (darkMode) {
+        "files/editor/theme_dark.json"
     } else {
-        SweetEditorDefaults.lightColors()
+        "files/editor/theme_light.json"
     }
-    val fallbackSpanStyles = SweetEditorDefaults.spanStyles(
-        if (darkMode) {
-            SweetEditorDefaults.darkSpanColors()
-        } else {
-            SweetEditorDefaults.lightSpanColors()
-        },
-    )
-    val content = if (darkMode) {
-        """
-        {
-          "backgroundColor": "#FF111827",
-          "textColor": "#FFD1D9E6",
-          "cursorColor": "#FF34D399",
-          "selectionColor": "#553B82F6",
-          "currentLineColor": "#1AFFFFFF",
-          "lineNumberColor": "#FF6B7280",
-          "currentLineNumberColor": "#FF93C5FD",
-          "cornerRadius": 2.0,
-          "textStyles": {
-            "keyword": { "color": "#FFC4B5FD", "fontStyle": 1 },
-            "string": { "color": "#FF86EFAC" },
-            "comment": { "color": "#FF9CA3AF", "fontStyle": 2 },
-            "function": { "color": "#FF93C5FD" }
-          }
-        }
-        """.trimIndent()
-    } else {
-        """
-        {
-          "backgroundColor": "#FFF8FAFC",
-          "textColor": "#FF1F2937",
-          "cursorColor": "#FF0EA5E9",
-          "selectionColor": "#4D60A5FA",
-          "currentLineColor": "#120EA5E9",
-          "lineNumberColor": "#FF94A3B8",
-          "currentLineNumberColor": "#FF2563EB",
-          "cornerRadius": 2.0,
-          "textStyles": {
-            "keyword": { "color": "#FF7C3AED", "fontStyle": 1 },
-            "string": { "color": "#FF059669" },
-            "comment": { "color": "#FF64748B", "fontStyle": 2 },
-            "function": { "color": "#FF1D4ED8" }
-          }
-        }
-        """.trimIndent()
+    val content by produceState<String?>(initialValue = null, contentPath) {
+        value = Res.readBytes(contentPath).decodeToString()
     }
     return rememberSweetEditorTheme(
+        provider = DefaultSweetEditorThemeProvider,
         themeContent = content,
-        fallback = SweetEditorDefaults.theme(
-            colors = fallbackColors,
-            spanStyles = fallbackSpanStyles,
-        ),
+        darkMode = darkMode,
     )
+}
+
+private class StaticThemeProvider(
+    private val dark: SweetEditorTheme,
+    private val light: SweetEditorTheme,
+) : SweetEditorThemeProvider {
+    override fun darkTheme(): SweetEditorTheme = dark
+
+    override fun lightTheme(): SweetEditorTheme = light
 }
