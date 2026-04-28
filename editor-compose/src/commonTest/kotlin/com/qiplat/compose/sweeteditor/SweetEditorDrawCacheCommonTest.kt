@@ -1,4 +1,4 @@
-﻿package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor
 
 import androidx.compose.ui.graphics.Color
 import com.qiplat.compose.sweeteditor.model.visual.FoldMarkerRenderItem
@@ -114,7 +114,7 @@ class SweetEditorDrawCacheCommonTest {
 
     @Test
     fun resolveEditorColorsUsesCurrentLineHelpers() {
-        val theme = SweetEditorDefaults.theme().let { base ->
+        val theme = SweetEditorDefaults.theme().darkTheme.let { base ->
             base.copy(
                 colors = base.colors.copy(
                     currentLine = Color(0x11010203),

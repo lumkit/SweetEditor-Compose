@@ -7,8 +7,8 @@ import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextSt
 internal object SweetEditorThemeParser {
     fun parse(
         content: String?,
-        fallback: SweetEditorTheme,
-    ): SweetEditorTheme {
+        fallback: SweetEditorThemeScheme,
+    ): SweetEditorThemeScheme {
         if (content.isNullOrBlank()) {
             return fallback
         }

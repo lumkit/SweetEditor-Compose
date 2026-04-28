@@ -21,8 +21,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
-import com.qiplat.compose.sweeteditor.example.theme.ForestThemeTemplate
-import com.qiplat.compose.sweeteditor.example.theme.OceanThemeTemplate
+import com.qiplat.compose.sweeteditor.example.theme.JetBrainsIdeaEditorTheme
+import com.qiplat.compose.sweeteditor.example.theme.VisualStudioCodeEditorTheme
+import com.qiplat.compose.sweeteditor.example.theme.VisualStudioEditorTheme
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
@@ -31,6 +32,7 @@ import com.qiplat.compose.sweeteditor.model.visual.PointF
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
+import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import kotlinx.coroutines.delay
 import sweeteditor_compose.example.generated.resources.Res
@@ -42,16 +44,34 @@ fun App() {
     MaterialTheme {
         val systemDarkMode = isSystemInDarkTheme()
         var darkThemeMode by rememberSaveable { mutableStateOf(systemDarkMode) }
-        var useOceanTheme by rememberSaveable { mutableStateOf(true) }
-        val oceanTheme = remember { OceanThemeTemplate() }
-        val forestTheme = remember { ForestThemeTemplate() }
-        val selectedTheme = if (useOceanTheme) {
-            oceanTheme
-        } else {
-            forestTheme
+        val jsonDarkThemeContent by produceState<String?>(initialValue = null) {
+            value = Res.readBytes("files/editor/theme_dark.json").decodeToString()
         }
+        val jsonLightThemeContent by produceState<String?>(initialValue = null) {
+            value = Res.readBytes("files/editor/theme_light.json").decodeToString()
+        }
+        val jsonTheme = remember(jsonDarkThemeContent, jsonLightThemeContent) {
+            SweetEditorTheme.fromJson(
+                darkJson = jsonDarkThemeContent ?: "",
+                lightJson = jsonLightThemeContent ?: "",
+            )
+        }
+        val availableThemes = remember {
+            listOf(
+                ThemeOption("Default Theme", SweetEditorDefaults.theme()),
+                ThemeOption("JetBrains IDEA", JetBrainsIdeaEditorTheme()),
+                ThemeOption("Visual Studio Code", VisualStudioCodeEditorTheme()),
+                ThemeOption("Visual Studio", VisualStudioEditorTheme()),
+            )
+        }
+        val themes = remember(availableThemes, jsonTheme) {
+            availableThemes + ThemeOption("JSON Theme", jsonTheme)
+        }
+        var selectedThemeIndex by rememberSaveable { mutableIntStateOf(0) }
+        var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+        val selectedThemeOption = themes[selectedThemeIndex.coerceIn(0, themes.lastIndex)]
         val editorTheme = rememberSweetEditorTheme(
-            theme = selectedTheme,
+            theme = selectedThemeOption.theme,
             darkMode = darkThemeMode,
         )
         val editorController = rememberSweetEditorController()
@@ -166,7 +186,7 @@ fun App() {
                     actions = {
                         Actions(
                             editorController = editorController,
-                            themeName = if (useOceanTheme) "Ocean" else "Forest",
+                            themeName = themes[selectedThemeIndex].name,
                             darkThemeMode = darkThemeMode,
                             wrapMode = wrapMode,
                             readOnly = readOnly,
@@ -174,7 +194,7 @@ fun App() {
                             gutterVisible = gutterVisible,
                             showSplitLine = showSplitLine,
                             currentLineRenderMode = currentLineRenderMode,
-                            onCycleTheme = { useOceanTheme = !useOceanTheme },
+                            onOpenThemeDialog = { showThemeDialog = true },
                             onToggleThemeMode = { darkThemeMode = !darkThemeMode },
                             onCycleWrapMode = {
                                 wrapModeOrdinal = (wrapModeOrdinal + 1) % WrapMode.entries.size
@@ -306,6 +326,17 @@ fun App() {
                 }
             }
         }
+        if (showThemeDialog) {
+            ThemePickerDialog(
+                currentIndex = selectedThemeIndex,
+                options = themes.map { it.name },
+                onDismiss = { showThemeDialog = false },
+                onApply = { appliedIndex ->
+                    selectedThemeIndex = appliedIndex.coerceIn(0, themes.lastIndex)
+                    showThemeDialog = false
+                },
+            )
+        }
     }
 }
 
@@ -373,7 +404,7 @@ private fun RowScope.Actions(
     gutterVisible: Boolean,
     showSplitLine: Boolean,
     currentLineRenderMode: CurrentLineRenderMode,
-    onCycleTheme: () -> Unit,
+    onOpenThemeDialog: () -> Unit,
     onToggleThemeMode: () -> Unit,
     onCycleWrapMode: () -> Unit,
     onToggleReadOnly: () -> Unit,
@@ -445,10 +476,10 @@ private fun RowScope.Actions(
 
             DropdownMenuItem(
                 text = {
-                    Text("Theme: $themeName")
+                    Text("Theme Config: $themeName")
                 },
                 onClick = {
-                    onCycleTheme()
+                    onOpenThemeDialog()
                     menuState = false
                 }
             )
@@ -525,6 +556,63 @@ private fun RowScope.Actions(
         }
     }
 }
+
+@Composable
+private fun ThemePickerDialog(
+    currentIndex: Int,
+    options: List<String>,
+    onDismiss: () -> Unit,
+    onApply: (Int) -> Unit,
+) {
+    var pendingIndex by remember(currentIndex, options) {
+        mutableIntStateOf(currentIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0)))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Theme Config")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                options.forEachIndexed { index, label ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { pendingIndex = index }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = pendingIndex == index,
+                            onClick = { pendingIndex = index },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(label)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onApply(pendingIndex) },
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+private data class ThemeOption(
+    val name: String,
+    val theme: SweetEditorTheme,
+)
 
 private class ExampleDemoCompletionProvider : CompletionProvider {
     private val triggerChars = setOf(".", ":")

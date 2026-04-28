@@ -1,4 +1,4 @@
-﻿package com.qiplat.compose.sweeteditor
+package com.qiplat.compose.sweeteditor
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -56,6 +56,7 @@ import com.qiplat.compose.sweeteditor.theme.SweetEditorColors
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanColors
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyles
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeScheme
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
 import com.qiplat.compose.sweeteditor.theme.tokens.ColorDarkTokens
 import com.qiplat.compose.sweeteditor.theme.tokens.ColorLightTokens
@@ -74,7 +75,7 @@ import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle as EditorTextSt
 fun SweetEditor(
     controller: SweetEditorController,
     modifier: Modifier = Modifier,
-    theme: SweetEditorTheme = controller.getTheme(),
+    theme: SweetEditorThemeScheme = controller.getTheme(),
     settings: SweetEditorSettings = controller.getSettings(),
     decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
@@ -166,7 +167,7 @@ fun SweetEditor(
     state: SweetEditorState,
     controller: SweetEditorController,
     modifier: Modifier = Modifier,
-    theme: SweetEditorTheme = rememberSweetEditorTheme(),
+    theme: SweetEditorThemeScheme = rememberSweetEditorTheme(),
     settings: SweetEditorSettings = SweetEditorSettings(),
     decorationProviders: List<DecorationProvider> = emptyList(),
     onGestureResult: (GestureResult) -> Unit = {},
@@ -392,7 +393,7 @@ fun SweetEditor(
 private fun SweetEditorEffects(
     state: SweetEditorState,
     controller: NativeEditorController,
-    theme: SweetEditorTheme,
+    theme: SweetEditorThemeScheme,
     settings: SweetEditorSettings,
     decorationProviders: List<DecorationProvider>,
     onGestureResult: (GestureResult) -> Unit,
@@ -520,15 +521,21 @@ private fun SweetEditorEffects(
 object SweetEditorDefaults {
 
     fun theme(
-        colors: SweetEditorColors = darkColors(),
-        typography: SweetEditorTypography = SweetEditorTypography(),
-        spanStyles: SweetEditorSpanStyles = spanStyles(darkSpanColors()),
-        cornerRadius: Float = 1.5f,
+        darkTheme: SweetEditorThemeScheme = SweetEditorThemeScheme(
+            colors = darkColors(),
+            typography = SweetEditorTypography(),
+            spanStyles = spanStyles(darkSpanColors()),
+            cornerRadius = 1.5f,
+        ),
+        lightTheme: SweetEditorThemeScheme = SweetEditorThemeScheme(
+            colors = lightColors(),
+            typography = SweetEditorTypography(),
+            spanStyles = spanStyles(lightSpanColors()),
+            cornerRadius = 1.5f,
+        ),
     ): SweetEditorTheme = SweetEditorTheme(
-        colors = colors,
-        typography = typography,
-        spanStyles = spanStyles,
-        cornerRadius = cornerRadius,
+        darkTheme = darkTheme,
+        lightTheme = lightTheme,
     )
 
     fun lightColors(
@@ -794,7 +801,7 @@ private fun DrawScope.drawEditorSurface(
     iconPainter: EditorGutterIconPainter,
     renderSurfaceCache: RenderSurfaceCache,
     animatedCursor: AnimatedCursorRenderState,
-    theme: SweetEditorTheme,
+    theme: SweetEditorThemeScheme,
     colors: ResolvedEditorColors,
     platformType: PlatformType,
     mobilePlatformTypes: List<PlatformType>,
@@ -1226,7 +1233,7 @@ private fun DrawScope.drawLineNumber(
 private fun DrawScope.drawRuns(
     textMeasurer: TextMeasurer,
     line: VisualLine,
-    theme: SweetEditorTheme,
+    theme: SweetEditorThemeScheme,
     colors: ResolvedEditorColors,
     drawCache: SweetEditorDrawCache,
     viewportBounds: ViewportBounds,
@@ -1976,7 +1983,7 @@ private fun approximatelyEqual(
 
 private const val SELECTION_BAND_EPSILON = 0.5f
 
-private fun currentLineBorderColor(theme: SweetEditorTheme): Color {
+private fun currentLineBorderColor(theme: SweetEditorThemeScheme): Color {
     val color = theme.colors.currentLine
     return if (color.alpha < 0.63f) {
         color.copy(alpha = 0.63f)
@@ -1985,7 +1992,7 @@ private fun currentLineBorderColor(theme: SweetEditorTheme): Color {
     }
 }
 
-private fun currentLineAccentColor(theme: SweetEditorTheme): Color {
+private fun currentLineAccentColor(theme: SweetEditorThemeScheme): Color {
     val accent = theme.colors.currentLineNumber
     return accent.copy(alpha = 1f)
 }
@@ -2019,7 +2026,7 @@ internal data class ResolvedEditorColors(
     val scrollbarThumbActive: Color,
 )
 
-internal fun resolveEditorColors(theme: SweetEditorTheme): ResolvedEditorColors = ResolvedEditorColors(
+internal fun resolveEditorColors(theme: SweetEditorThemeScheme): ResolvedEditorColors = ResolvedEditorColors(
     background = theme.colors.background,
     currentLine = theme.colors.currentLine,
     currentLineBorderColor = currentLineBorderColor(theme),
@@ -2178,7 +2185,7 @@ private fun VisualLine.firstBaseline(): Float =
  * @property theme scaled theme snapshot used to create Compose text styles.
  */
 internal class SweetEditorDrawCache(
-    private val theme: SweetEditorTheme,
+    private val theme: SweetEditorThemeScheme,
     private val enableTextLayoutCache: Boolean,
 ) {
     private val runTextStyles = mutableMapOf<RunTextStyleKey, TextStyle>()
@@ -2201,7 +2208,7 @@ internal class SweetEditorDrawCache(
     fun runTextStyle(
         style: EditorTextStyle,
         type: VisualRunType,
-        theme: SweetEditorTheme,
+        theme: SweetEditorThemeScheme,
     ): TextStyle =
         runTextStyles.getOrPut(RunTextStyleKey(style, type)) {
             style.toComposeTextStyle(theme, type)
@@ -2247,7 +2254,7 @@ internal class SweetEditorDrawCache(
         text: String,
         style: EditorTextStyle,
         type: VisualRunType,
-        theme: SweetEditorTheme,
+        theme: SweetEditorThemeScheme,
     ): TextLayoutResult {
         val resolvedStyle = runTextStyle(style, type, theme)
         if (!enableTextLayoutCache || text.length > 2048) {
@@ -2493,7 +2500,7 @@ internal data class RunTextStyleKey(
 )
 
 private fun EditorTextStyle.toComposeTextStyle(
-    theme: SweetEditorTheme,
+    theme: SweetEditorThemeScheme,
     type: VisualRunType,
 ): TextStyle {
     val resolvedColor = when {
@@ -2527,7 +2534,7 @@ private fun EditorTextStyle.toComposeTextStyle(
     )
 }
 
-private fun SweetEditorTheme.scaled(scale: Float): SweetEditorTheme {
+private fun SweetEditorThemeScheme.scaled(scale: Float): SweetEditorThemeScheme {
     val normalizedScale = scale.coerceAtLeast(0.1f)
     return copy(
         typography = typography.copy(

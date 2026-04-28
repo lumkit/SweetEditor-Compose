@@ -16,7 +16,7 @@ import com.qiplat.compose.sweeteditor.protocol.ProtocolEncoder
 import com.qiplat.compose.sweeteditor.protocol.toNativeValue
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSyntaxStylesInternal
-import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeScheme
 
 /**
  * Coordinates the public editor API, native bridge calls, and Compose-facing state updates.
@@ -273,7 +273,7 @@ class NativeEditorController(
      *
      * @param theme theme whose text style definitions should be registered.
      */
-    fun applyTheme(theme: SweetEditorTheme) {
+    fun applyTheme(theme: SweetEditorThemeScheme) {
         ensureActive()
         val internalStyles = theme.spanStyles.toInternal()
         if (registeredThemeTextStylesSnapshot?.contentEquals(internalStyles) == true) {

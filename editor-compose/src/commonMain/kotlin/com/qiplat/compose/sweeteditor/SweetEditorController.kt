@@ -22,8 +22,8 @@ import com.qiplat.compose.sweeteditor.model.snippet.LinkedEditingModel
 import com.qiplat.compose.sweeteditor.model.visual.CursorRect
 import com.qiplat.compose.sweeteditor.model.visual.ScrollMetrics
 import com.qiplat.compose.sweeteditor.runtime.*
-import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeScheme
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
 import com.qiplat.compose.sweeteditor.theme.parseSweetEditorTheme
 import kotlinx.coroutines.*
@@ -41,7 +41,7 @@ class SweetEditorController(
     private val readyCallbacks = mutableListOf<() -> Unit>()
     private var isBound: Boolean = false
     private var isDisposed: Boolean = false
-    private var themeSnapshot: SweetEditorTheme = SweetEditorDefaults.theme()
+    private var themeSnapshot: SweetEditorThemeScheme = SweetEditorDefaults.theme().darkTheme
     private var settingsSnapshot: SweetEditorSettings = SweetEditorSettings()
     internal val attachedDecorationProviders = mutableStateListOf<DecorationProvider>()
     private val completionProviderManager = CompletionProviderManager()
@@ -54,7 +54,7 @@ class SweetEditorController(
     private val _totalLineCountState = mutableStateOf(getTotalLineCount())
     val totalLineCountState: State<Int> = _totalLineCountState
     private val _themeState = mutableStateOf(getTheme())
-    val themeState: State<SweetEditorTheme> = _themeState
+    val themeState: State<SweetEditorThemeScheme> = _themeState
     private val _settingsState = mutableStateOf(getSettings())
     val settingsState: State<SweetEditorSettings> = _settingsState
     private val _languageConfigurationState = mutableStateOf(getLanguageConfiguration())
@@ -207,7 +207,7 @@ class SweetEditorController(
 
     fun getTotalLineCount(): Int = state.document?.getLineCount() ?: 0
 
-    fun applyTheme(theme: SweetEditorTheme) {
+    fun applyTheme(theme: SweetEditorThemeScheme) {
         themeSnapshot = theme
         editorController.applyTheme(theme)
         refreshComposeStates()
@@ -215,7 +215,7 @@ class SweetEditorController(
 
     fun applyTheme(
         themeContent: String?,
-        fallback: SweetEditorTheme = themeSnapshot,
+        fallback: SweetEditorThemeScheme = themeSnapshot,
     ) {
         applyTheme(
             parseSweetEditorTheme(
@@ -225,7 +225,7 @@ class SweetEditorController(
         )
     }
 
-    fun getTheme(): SweetEditorTheme = themeSnapshot
+    fun getTheme(): SweetEditorThemeScheme = themeSnapshot
 
     fun applySettings(settings: SweetEditorSettings) {
         settingsSnapshot = settings

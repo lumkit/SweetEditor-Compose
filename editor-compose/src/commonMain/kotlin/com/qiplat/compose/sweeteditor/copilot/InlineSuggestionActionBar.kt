@@ -1,4 +1,4 @@
-﻿package com.qiplat.compose.sweeteditor.copilot
+package com.qiplat.compose.sweeteditor.copilot
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,14 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.qiplat.compose.sweeteditor.model.visual.Cursor
-import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeScheme
 import kotlin.math.roundToInt
 
 @Composable
 fun InlineSuggestionActionBar(
     suggestion: InlineSuggestion?,
     cursor: Cursor?,
-    theme: SweetEditorTheme,
+    theme: SweetEditorThemeScheme,
     editorWindowOffset: IntOffset,
     onAccept: () -> Unit,
     onDismiss: () -> Unit,
