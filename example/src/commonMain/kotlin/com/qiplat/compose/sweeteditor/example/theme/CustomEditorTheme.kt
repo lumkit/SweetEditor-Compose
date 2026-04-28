@@ -13,9 +13,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.qiplat.compose.sweeteditor.SweetEditorDefaults
-import com.qiplat.compose.sweeteditor.theme.DefaultSweetEditorThemeProvider
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTheme
-import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeProvider
+import com.qiplat.compose.sweeteditor.theme.DefaultSweetEditorThemeTemplate
+import com.qiplat.compose.sweeteditor.theme.SweetEditorThemeTemplate
 import com.qiplat.compose.sweeteditor.theme.SweetEditorTypography
 import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import org.jetbrains.compose.resources.Font
@@ -199,7 +199,12 @@ fun rememberCustomEditorTheme(
         cornerRadius = 2f,
     )
     return rememberSweetEditorTheme(
-        provider = remember { StaticThemeProvider(dark = darkTheme, light = lightTheme) },
+        theme = remember {
+            SweetEditorThemeTemplate(
+                darkTheme = darkTheme,
+                lightTheme = lightTheme,
+            )
+        },
         darkMode = darkMode,
     )
 }
@@ -207,7 +212,7 @@ fun rememberCustomEditorTheme(
 @Composable
 private fun rememberDefaultEditorTheme(darkMode: Boolean): SweetEditorTheme {
     return rememberSweetEditorTheme(
-        provider = DefaultSweetEditorThemeProvider,
+        theme = DefaultSweetEditorThemeTemplate,
         darkMode = darkMode,
     )
 }
@@ -223,17 +228,8 @@ private fun rememberJsonEditorTheme(darkMode: Boolean): SweetEditorTheme {
         value = Res.readBytes(contentPath).decodeToString()
     }
     return rememberSweetEditorTheme(
-        provider = DefaultSweetEditorThemeProvider,
+        theme = DefaultSweetEditorThemeTemplate,
         themeContent = content,
         darkMode = darkMode,
     )
-}
-
-private class StaticThemeProvider(
-    private val dark: SweetEditorTheme,
-    private val light: SweetEditorTheme,
-) : SweetEditorThemeProvider {
-    override fun darkTheme(): SweetEditorTheme = dark
-
-    override fun lightTheme(): SweetEditorTheme = light
 }

@@ -21,9 +21,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.qiplat.compose.sweeteditor.*
 import com.qiplat.compose.sweeteditor.copilot.InlineSuggestion
-import com.qiplat.compose.sweeteditor.example.theme.forestThemeProvider
-import com.qiplat.compose.sweeteditor.example.theme.oceanThemeProvider
-import com.qiplat.compose.sweeteditor.example.theme.rememberUserTheme
+import com.qiplat.compose.sweeteditor.example.theme.ForestThemeTemplate
+import com.qiplat.compose.sweeteditor.example.theme.OceanThemeTemplate
 import com.qiplat.compose.sweeteditor.model.decoration.*
 import com.qiplat.compose.sweeteditor.model.foundation.CurrentLineRenderMode
 import com.qiplat.compose.sweeteditor.model.foundation.TextPosition
@@ -32,6 +31,7 @@ import com.qiplat.compose.sweeteditor.model.visual.PointF
 import com.qiplat.compose.sweeteditor.theme.LanguageConfiguration
 import com.qiplat.compose.sweeteditor.theme.LanguageConfigurationParser
 import com.qiplat.compose.sweeteditor.theme.SweetEditorSpanStyleKeys
+import com.qiplat.compose.sweeteditor.theme.rememberSweetEditorTheme
 import kotlinx.coroutines.delay
 import sweeteditor_compose.example.generated.resources.Res
 
@@ -43,13 +43,15 @@ fun App() {
         val systemDarkMode = isSystemInDarkTheme()
         var darkThemeMode by rememberSaveable { mutableStateOf(systemDarkMode) }
         var useOceanTheme by rememberSaveable { mutableStateOf(true) }
-        val themeProvider = if (useOceanTheme) {
-            oceanThemeProvider()
+        val oceanTheme = remember { OceanThemeTemplate() }
+        val forestTheme = remember { ForestThemeTemplate() }
+        val selectedTheme = if (useOceanTheme) {
+            oceanTheme
         } else {
-            forestThemeProvider()
+            forestTheme
         }
-        val editorTheme = rememberUserTheme(
-            themeProvider = themeProvider,
+        val editorTheme = rememberSweetEditorTheme(
+            theme = selectedTheme,
             darkMode = darkThemeMode,
         )
         val editorController = rememberSweetEditorController()
