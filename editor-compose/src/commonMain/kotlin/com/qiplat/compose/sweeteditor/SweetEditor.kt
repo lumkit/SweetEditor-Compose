@@ -184,6 +184,7 @@ fun SweetEditor(
     val textMeasurer = rememberTextMeasurer(cacheSize = 256)
     val density = LocalDensity.current.density
     val renderModel = state.renderModel
+    val scrollMetrics = state.scrollMetrics
     val controllerScale = controller.scaleState.value
     val renderScale = state.scrollMetrics.scale.takeIf { it > 0f } ?: controllerScale.takeIf { it > 0f } ?: 1f
     val scaledTheme = remember(theme, renderScale) {
@@ -263,6 +264,14 @@ fun SweetEditor(
         lastCursorTextPosition = cursorTarget?.textPosition
     }
     var isFocused by remember { mutableStateOf(false) }
+    var hoverPosition by remember { mutableStateOf<Offset?>(null) }
+    val pointerHoverIcon = remember(renderModel, scrollMetrics, hoverPosition) {
+        resolveEditorPointerIcon(
+            renderModel = renderModel,
+            scrollMetrics = scrollMetrics,
+            hoverPosition = hoverPosition,
+        )
+    }
 
     DisposableEffect(controller) {
         onDispose {
@@ -300,6 +309,7 @@ fun SweetEditor(
                 isFocused = focusState.isFocused
             }
             .focusable(interactionSource = interactionSource)
+            .pointerHoverIcon(pointerHoverIcon)
             .onSizeChanged { size ->
                 if (size.width > 0 && size.height > 0) {
                     controller.setViewport(size.width, size.height)
@@ -327,6 +337,9 @@ fun SweetEditor(
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull { it.type == PointerType.Mouse }?.let { change ->
+                            hoverPosition = change.position
+                        }
                         val eventModifiers = event.toNativeModifiers()
                         val plan = buildPointerDispatchPlan(
                             scrollDelta = normalizeMouseWheelScrollDelta(
@@ -2364,6 +2377,56 @@ private class SimpleLruCache<K, V>(
 
 internal fun supportsReusableTextLayoutCache(platformType: PlatformType): Boolean =
     platformType != PlatformType.Android
+
+private fun resolveEditorPointerIcon(
+    renderModel: EditorRenderModel?,
+    scrollMetrics: ScrollMetrics,
+    hoverPosition: Offset?,
+): PointerIcon {
+    if (renderModel == null || hoverPosition == null) {
+        return PointerIcon.Default
+    }
+    if (renderModel.isInGutterArea(hoverPosition) || renderModel.isInScrollbarArea(hoverPosition)) {
+        return PointerIcon.Default
+    }
+    if (scrollMetrics.isInTextArea(hoverPosition)) {
+        return textInputPointerIcon()
+    }
+    return when (renderModel.pointerCursorType) {
+        PointerCursorType.Hand -> PointerIcon.Hand
+        else -> PointerIcon.Default
+    }
+}
+
+private fun EditorRenderModel.isInGutterArea(position: Offset): Boolean {
+    if (!gutterVisible) {
+        return false
+    }
+    val gutterWidth = splitX.coerceAtLeast(0f)
+    return position.x in 0f..gutterWidth
+}
+
+private fun EditorRenderModel.isInScrollbarArea(position: Offset): Boolean =
+    verticalScrollbar.track.contains(position) || horizontalScrollbar.track.contains(position)
+
+private fun ScrollMetrics.isInTextArea(position: Offset): Boolean {
+    val textLeft = textAreaX.coerceAtLeast(0f)
+    val textWidth = textAreaWidth.takeIf { it > 0f } ?: viewportWidth
+    val textRight = (textLeft + textWidth).coerceAtLeast(textLeft)
+    val textBottom = viewportHeight.takeIf { it > 0f } ?: Float.MAX_VALUE
+    return position.x in textLeft..textRight && position.y in 0f..textBottom
+}
+
+private fun ScrollbarRect.contains(position: Offset): Boolean {
+    if (width <= 0f || height <= 0f) {
+        return false
+    }
+    val left = origin.x
+    val top = origin.y
+    val right = left + width
+    val bottom = top + height
+    return position.x in left..right && position.y in top..bottom
+}
 
 /**
  * Cache key used by [SweetEditorDrawCache] for measured text layouts.
