@@ -2,6 +2,9 @@ package com.qiplat.compose.sweeteditor.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import com.qiplat.compose.sweeteditor.model.decoration.SpanStyle
 import com.qiplat.compose.sweeteditor.SweetEditorDefaults
 
 enum class SweetEditorSpanStyleKeys(internal val id: Int) {
@@ -79,23 +82,19 @@ open class SweetEditorTheme(
     open val darkTheme: SweetEditorThemeScheme,
     open val lightTheme: SweetEditorThemeScheme,
 ) {
-    companion object {
-        fun fromJson(
-            darkJson: String,
-            lightJson: String,
-            fallback: SweetEditorTheme = SweetEditorDefaults.theme(),
-        ): SweetEditorTheme = SweetEditorTheme(
-            darkTheme = parseSweetEditorTheme(
-                themeContent = darkJson,
-                fallback = fallback.darkTheme,
-            ),
-            lightTheme = parseSweetEditorTheme(
-                themeContent = lightJson,
-                fallback = fallback.lightTheme,
-            ),
-        )
-    }
+    fun fromJson(
+        darkJson: String?,
+        lightJson: String?,
+    ): SweetEditorTheme = SweetEditorTheme(
+        darkTheme = darkTheme.fromJson(darkJson),
+        lightTheme = lightTheme.fromJson(lightJson),
+    )
 }
+
+fun SweetEditorThemeScheme.fromJson(json: String?): SweetEditorThemeScheme = parseSweetEditorTheme(
+    themeContent = json,
+    fallback = this,
+)
 
 internal fun parseSweetEditorTheme(
     themeContent: String?,
@@ -114,3 +113,88 @@ fun rememberSweetEditorTheme(
         if (darkMode) theme.darkTheme else theme.lightTheme
     }
 }
+
+fun SweetEditorThemeScheme.toJson(): String {
+    val colors = colors.toInternal()
+    val spanStyles = spanStyles.toMap()
+    val styleKeyNames = mapOf(
+        SweetEditorSpanStyleKeys.Keyword.id to "keyword",
+        SweetEditorSpanStyleKeys.String.id to "string",
+        SweetEditorSpanStyleKeys.Comment.id to "comment",
+        SweetEditorSpanStyleKeys.Number.id to "number",
+        SweetEditorSpanStyleKeys.Builtin.id to "builtin",
+        SweetEditorSpanStyleKeys.Type.id to "type",
+        SweetEditorSpanStyleKeys.Class.id to "class",
+        SweetEditorSpanStyleKeys.Function.id to "function",
+        SweetEditorSpanStyleKeys.Variable.id to "variable",
+        SweetEditorSpanStyleKeys.Punctuation.id to "punctuation",
+        SweetEditorSpanStyleKeys.Annotation.id to "annotation",
+        SweetEditorSpanStyleKeys.Preprocessor.id to "preprocessor",
+        SweetEditorSpanStyleKeys.Property.id to "property",
+        SweetEditorSpanStyleKeys.Parameter.id to "parameter",
+        SweetEditorSpanStyleKeys.Constant.id to "constant",
+        SweetEditorSpanStyleKeys.Operator.id to "operator",
+        SweetEditorSpanStyleKeys.Field.id to "field",
+        SweetEditorSpanStyleKeys.Namespace.id to "namespace",
+        SweetEditorSpanStyleKeys.EnumMember.id to "enum_member",
+        SweetEditorSpanStyleKeys.Interface.id to "interface",
+        SweetEditorSpanStyleKeys.Enum.id to "enum",
+        SweetEditorSpanStyleKeys.Struct.id to "struct",
+    )
+
+    val textStylesLines = mutableListOf<String>()
+    for (id in SweetEditorSpanStyleKeys.StyleIds) {
+        val style = spanStyles[id] ?: continue
+        val key = styleKeyNames[id] ?: id.toString()
+        textStylesLines += """    "$key": ${style.toJsonObject()}"""
+    }
+    val textStylesJson = textStylesLines.joinToString(",\n")
+
+    return """
+{
+  "backgroundColor": ${colorToJson(colors.background)},
+  "textColor": ${colorToJson(colors.text)},
+  "cursorColor": ${colorToJson(colors.cursor)},
+  "selectionColor": ${colorToJson(colors.selection)},
+  "lineNumberColor": ${colorToJson(colors.lineNumber)},
+  "currentLineNumberColor": ${colorToJson(colors.currentLineNumber)},
+  "currentLineColor": ${colorToJson(colors.currentLine)},
+  "guideColor": ${colorToJson(colors.guide)},
+  "separatorLineColor": ${colorToJson(colors.separatorLine)},
+  "splitLineColor": ${colorToJson(colors.splitLine)},
+  "scrollbarTrackColor": ${colorToJson(colors.scrollbarTrack)},
+  "scrollbarThumbColor": ${colorToJson(colors.scrollbarThumb)},
+  "scrollbarThumbActiveColor": ${colorToJson(colors.scrollbarThumbActive)},
+  "compositionUnderlineColor": ${colorToJson(colors.compositionUnderline)},
+  "inlayHintBackgroundColor": ${colorToJson(colors.inlayHintBackground)},
+  "inlayHintTextColor": ${colorToJson(colors.inlayHintText)},
+  "foldPlaceholderBackgroundColor": ${colorToJson(colors.foldPlaceholderBackground)},
+  "foldPlaceholderTextColor": ${colorToJson(colors.foldPlaceholderText)},
+  "phantomTextColor": ${colorToJson(colors.phantomText)},
+  "inlayHintIconColor": ${colorToJson(colors.inlayHintIcon)},
+  "diagnosticErrorColor": ${colorToJson(colors.diagnosticError)},
+  "diagnosticWarningColor": ${colorToJson(colors.diagnosticWarning)},
+  "diagnosticInfoColor": ${colorToJson(colors.diagnosticInfo)},
+  "diagnosticHintColor": ${colorToJson(colors.diagnosticHint)},
+  "linkedEditingActiveColor": ${colorToJson(colors.linkedEditingActive)},
+  "linkedEditingInactiveColor": ${colorToJson(colors.linkedEditingInactive)},
+  "bracketHighlightBorderColor": ${colorToJson(colors.bracketHighlightBorder)},
+  "bracketHighlightBackgroundColor": ${colorToJson(colors.bracketHighlightBackground)},
+  "gutterBackgroundColor": ${colorToJson(colors.gutterBackground)},
+  "cornerRadius": $cornerRadius,
+  "textStyles": {
+$textStylesJson
+  }
+}
+""".trim()
+}
+
+private fun SpanStyle.toJsonObject(): String {
+    val colorValue = colorToJsonColor(color)
+    val backgroundValue = colorToJsonColor(backgroundColor)
+    return """{"color": $colorValue, "backgroundColor": $backgroundValue, "fontStyle": ${fontStyle.bits}}"""
+}
+
+private fun colorToJsonColor(color: Color): String = if (color == Color.Unspecified) "0" else colorToJson(color.toArgb())
+
+private fun colorToJson(color: Int): String = """"#${color.toUInt().toString(16).padStart(8, '0').uppercase()}""""

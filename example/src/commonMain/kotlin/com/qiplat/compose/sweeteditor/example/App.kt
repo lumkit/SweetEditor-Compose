@@ -51,9 +51,9 @@ fun App() {
             value = Res.readBytes("files/editor/theme_light.json").decodeToString()
         }
         val jsonTheme = remember(jsonDarkThemeContent, jsonLightThemeContent) {
-            SweetEditorTheme.fromJson(
-                darkJson = jsonDarkThemeContent ?: "",
-                lightJson = jsonLightThemeContent ?: "",
+            SweetEditorDefaults.theme().fromJson(
+                darkJson = jsonDarkThemeContent,
+                lightJson = jsonLightThemeContent,
             )
         }
         val availableThemes = remember {
